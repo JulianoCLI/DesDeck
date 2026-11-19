@@ -1,0 +1,113 @@
+# DesDeck
+
+Navegador multi-conta para jogos idle, feito em Electron. É uma versão customizada do
+DigiDeck com **proxy por tela**, **auto-update controlado** e um conjunto de
+**ferramentas de automação** configuráveis por conta.
+
+---
+
+## Como rodar
+
+Dois cliques em **`iniciar.bat`**.
+
+Ele confere o ambiente antes de abrir (arquivos do programa, Electron instalado) e,
+se faltar alguma dependência, tenta instalar sozinho. Se algo der errado, a janela
+fica aberta explicando o quê.
+
+Pela linha de comando, se preferir:
+
+```bash
+cd dd-src
+npm install
+npm start
+```
+
+Para gerar um `.exe` portátil (sai em `dd-src/dist/win-unpacked/`):
+
+```bash
+cd dd-src
+npm run build
+```
+
+---
+
+## Ferramentas
+
+Botão **Ferramentas** na barra lateral. Cada uma liga/desliga **por conta** e tem
+ajustes próprios. Alterar a configuração vale na hora, **sem recarregar a página**.
+
+| Ferramenta | O que faz |
+|---|---|
+| **Auto Refill** | Compra na Loja quando um item chega ao mínimo e repõe até o máximo (scanners, poções, revives). |
+| **Vender ovos** | Vende ovos dos tiers escolhidos de tempos em tempos. Por padrão **não** vende S, SS nem SSS. |
+| **Auto Melhor Hunt** | Confere a hunt recomendada do Mapa e troca se não estivermos nela. Também tira a conta do Hospital quando ela fica parada lá. **Nunca** troca durante o Labirinto da Guild. |
+| **Auto Scan** | Lança o scan nos corpos caídos — útil em contas sem VIP. Funciona com a cena desligada (Modo Economia). |
+
+### Como foram feitas
+
+As ferramentas não "clicam" na tela: elas falam o mesmo protocolo WebSocket que o
+jogo usa, com os comandos que os próprios botões mandam (`market.comprar`,
+`ovo.vender`, `hunt.select`, `ball.throw`). Uma ponte (`window.__ddGame`) escuta o
+socket por um canal à parte, então o cliente do jogo segue intacto.
+
+Duas decisões que vale registrar:
+
+- **Nada de regra reimplementada.** O tier do ovo vem do módulo do próprio jogo
+  (`/js/ovo-tier.js`) e a hunt recomendada é a função `sugeridaOff()` do cliente,
+  copiada sem alterações. Se algo falhar ao carregar, a ferramenta **não age** em vez
+  de adivinhar.
+- **Configuração ao vivo.** A config fica num objeto mutável na ponte, então salvar
+  um ajuste troca os valores do laço que já está rodando — sem criar um segundo laço
+  (o que duplicaria compras).
+
+---
+
+## Outros recursos
+
+- **Proxy por tela** — formato `host:porta:usuário:senha`, com botão de testar o IP
+  de saída. Sem fallback: se o proxy falhar, a conta não conecta pelo seu IP real.
+- **Isolamento** — cada conta usa a própria sessão/partição.
+- **Auto-update** — verifica a cada 4h e avisa, mas **não** força a instalação ao sair.
+- **Scripts de usuário** — botão "Scripts" na barra lateral, injetados no `dom-ready`.
+
+---
+
+## Estrutura
+
+```
+DesDeck-Dev/
+├── iniciar.bat               # Abre o app, conferindo o ambiente antes
+├── dd-src/
+│   ├── src/
+│   │   ├── main.js           # Processo principal, proxy, ciclo de vida
+│   │   ├── preload.js        # Ponte IPC (contextIsolation ligado)
+│   │   ├── vault.js          # Cofre criptografado (AES-256-GCM)
+│   │   ├── updater.js        # Auto-update
+│   │   └── renderer/
+│   │       ├── app.js        # Interface, telas, contas, scripts
+│   │       └── tools.js      # As ferramentas de automação
+│   ├── package.json
+│   └── electron-builder.json
+└── README.md
+```
+
+---
+
+## Onde ficam os seus dados
+
+```
+%APPDATA%\DesDeck\digideck.json
+```
+
+Contas, telas, scripts e proxies vivem **só aí**, criptografados. Esse arquivo e a
+pasta `scripts/` estão no `.gitignore` de propósito: são seus e não devem ir para o
+repositório.
+
+---
+
+## Aviso
+
+Este projeto automatiza um jogo de terceiros. Verifique as regras do jogo antes de
+usar — a responsabilidade pelo uso é sua.
+
+Licença MIT.

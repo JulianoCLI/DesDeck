@@ -1,0 +1,17 @@
+{
+  "name": "desdeck",
+  "productName": "DesDeck",
+  "version": "0.3.0-beta.3",
+  "description": "Navegador multi-conta para jogos idle com suporte a proxy.",
+  "author": "DesDeck",
+  "main": "src/main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win"
+  },
+  "dependencies": {
+    "electron": "^33.4.11",
+    "electron-updater": "^6.8.11"
+  }
+}

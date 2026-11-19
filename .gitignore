@@ -1,0 +1,18 @@
+# Dependências e saídas de build (pesadas e geradas por "npm install" / "npm run build")
+node_modules/
+dist/
+
+# ---------------------------------------------------------------- DADOS PESSOAIS
+# NUNCA publique estes arquivos. O digideck.json é o cofre do DesDeck: ele guarda
+# as suas contas, telas e proxies. É criptografado, mas a chave vem da DPAPI do
+# Windows (ou da sua senha), então publicá-lo expõe os seus dados.
+digideck.json
+digideck.ilegivel-*.json
+*.backup-*.json
+
+# Scripts de usuário podem conter ids de conta, proxies ou outros dados seus.
+scripts/
+
+# Saídas de teste e logs
+*.log
+*.out.txt

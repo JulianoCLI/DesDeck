@@ -1,0 +1,17 @@
+{
+  "appId": "com.desdeck.app",
+  "productName": "DesDeck",
+  "directories": {
+    "output": "dist"
+  },
+  "win": {
+    "target": [
+      "portable"
+    ]
+  },
+  "files": [
+    "src/**/*",
+    "node_modules/**/*",
+    "package.json"
+  ]
+}

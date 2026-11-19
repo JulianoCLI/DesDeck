@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src https: http:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>DigiDeck</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="titlebar" id="titlebar">
+    <button id="btnSide" class="tb-btn" title="Mostrar/ocultar menu (Ctrl+B)" aria-label="Mostrar ou ocultar menu"></button>
+    <div class="tb-brand"><img class="tb-logo" src="mark.png" alt="" draggable="false"><b>DigiDeck</b></div>
+    <span class="tb-status" id="tbStatus" title="Contas online"><span class="dot off" id="tbDot"></span><span id="tbOnline">—</span></span>
+    <span class="tb-where" id="tbWhere"></span>
+  </header>
+  <div class="body">
+    <aside class="sidebar" id="sidebar">
+      <div class="side-inner">
+        <nav class="views" id="views" aria-label="Visualização">
+          <button data-view="grid" data-icon="grid" title="Todas lado a lado (Ctrl+G)">Grade</button>
+          <button data-view="main" data-icon="main" title="Uma grande + miniaturas (Ctrl+E)">Principal</button>
+          <button data-view="focus" data-icon="focus" title="Uma conta em tela cheia (Ctrl+F)">Foco</button>
+          <button data-view="dash" data-icon="chart" title="Estatísticas e atividade (Ctrl+D)">Painel</button>
+          <button id="btnTools" data-icon="sliders" title="Automações prontas, ligadas por conta">Ferramentas</button>
+        </nav>
+        <div class="side-stats">
+          <div class="srow"><span><span class="dot ok"></span>Online</span><b data-live="kpi:online">0/0</b></div>
+          <div class="srow" title="Há quanto tempo a conta mais antiga está online sem cair"><span>Farmando</span><b class="mono" data-live="kpi:farm">—</b></div>
+          <div class="srow" title="Quedas hoje / recuperadas sozinhas"><span>Quedas · voltaram</span><b><span data-live="kpi:drops">0</span> · <span data-live="kpi:recov">0</span></b></div>
+          <div class="srow net-off hidden" id="netOff"><span>Sem internet</span></div>
+        </div>
+        <div class="side-list" id="sideList"></div>
+        <div class="side-foot">
+          <div class="foot-row">
+            <button id="btnAdd" class="btn primary sm" title="Adicionar conta (Ctrl+N)"></button>
+            <button id="btnAddGroup" class="btn sm" title="Nova tela (grupo)"></button>
+          </div>
+          <div class="foot-row tools">
+            <span class="spacer"></span>
+            <button id="btnLock" class="icon-btn sm" title="Bloquear (Ctrl+L)"></button>
+            <button id="btnMuteAll" class="icon-btn sm" title="Silenciar tudo (Ctrl+M)"></button>
+            <button id="btnSettings" class="icon-btn sm" title="Configurações"></button>
+          </div>
+        </div>
+      </div>
+    </aside>
+    <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" title="Arraste para ajustar ou fechar o menu · clique para recolher"></div>
+    <main class="stage" id="stage" data-view="grid">
+      <div class="screenbar" id="screenbar"></div>
+      <div class="tiles" id="tiles"><div class="veil"></div></div>
+      <div class="thumbs" id="thumbs"></div>
+      <section class="dash" id="dash"></section>
+      <div class="empty hidden" id="empty"></div>
+    </main>
+  </div>
+  <div id="menuRoot"></div>
+  <div id="modalRoot"></div>
+  <div id="lockRoot"></div>
+  <div id="toasts" aria-live="polite"></div>
+  <script src="tools.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
