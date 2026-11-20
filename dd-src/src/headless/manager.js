@@ -113,6 +113,23 @@ class HeadlessManager extends EventEmitter {
   }
 
   /**
+   * Liga uma ferramenta numa conta headless. Idempotente: se já rodava, só
+   * troca a config (o laço em curso passa a ler os valores novos).
+   */
+  startTool(accountIndex, toolId, config) {
+    const client = this.clients.get(accountIndex);
+    if (!client) return false;
+    return client.startTool(toolId, config);
+  }
+
+  /** Desliga uma ferramenta numa conta headless. */
+  stopTool(accountIndex, toolId) {
+    const client = this.clients.get(accountIndex);
+    if (!client) return false;
+    return client.stopTool(toolId);
+  }
+
+  /**
    * Pede a config de hunts para uma conta.
    */
   requestOfflineCfg(accountIndex) {

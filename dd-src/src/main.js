@@ -477,6 +477,21 @@ function registerIpc() {
   handle('headless:status', (_e, accId) => {
     return headlessManager.getStatus(accId);
   });
+
+  // ---- Ferramentas no headless
+  // Em headless não há página para injetar o script da ferramenta, então ela roda
+  // aqui, no processo principal, sobre o socket. A config é a mesma que o renderer
+  // usaria no webview (defaults da ferramenta + os ajustes da pessoa).
+  handle('headless:tool:start', (_e, accId, toolId, config = {}) => {
+    const ok = headlessManager.startTool(accId, String(toolId), config);
+    // Falha normal: o socket ainda não conectou. O renderer religa as ferramentas
+    // na transição de status para 'connected', então não é um erro fatal.
+    return { ok, error: ok ? null : 'conta não está ativa em headless' };
+  });
+
+  handle('headless:tool:stop', (_e, accId, toolId) => {
+    return { ok: headlessManager.stopTool(accId, String(toolId)) };
+  });
 }
 
 // Grava no disco os cookies de login de todas as contas.
