@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const { makeIcon, makeDot, writeIco } = require('./icon');
 const { Vault, encryptBackup, decryptBackup } = require('./vault');
 const { createUpdater } = require('./updater');
+const { HeadlessManager } = require('./headless/manager');
 
 const DEV = !app.isPackaged;
 
@@ -48,6 +49,9 @@ const icons = {};
 // Session não expõe a partição, então a chave é o próprio objeto da sessão
 // (session.fromPartition devolve sempre a mesma instância para a mesma partição).
 const proxyCredentials = new Map(); // Session -> { user, pass }
+
+// Gerenciador de clientes headless (Fase 1)
+const headlessManager = new HeadlessManager();
 
 const storeFile = () => path.join(app.getPath('userData'), 'digideck.json');
 
@@ -455,6 +459,24 @@ function registerIpc() {
   handle('update:check', () => updater.check());
   handle('update:install', () => updater.installNow());
   handle('update:channel', (_e, c) => updater.setChannel(String(c)));
+
+  // ---- Headless (Fase 1)
+  handle('headless:start', (_e, accId, options = {}) => {
+    const acc = state.accounts?.find((a) => a.id === accId);
+    if (!acc) return { ok: false, error: 'Conta não encontrada' };
+    const partition = `persist:acc-${accId}`;
+    headlessManager.start(accId, partition, { name: acc.name, ...options });
+    return { ok: true };
+  });
+
+  handle('headless:stop', (_e, accId) => {
+    headlessManager.stop(accId);
+    return { ok: true };
+  });
+
+  handle('headless:status', (_e, accId) => {
+    return headlessManager.getStatus(accId);
+  });
 }
 
 // ---------------------------------------------------------------- boot
@@ -538,6 +560,17 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     buildTray();
     updater.init();
+
+    // Headless manager listeners (Fase 1)
+    headlessManager.on('account:update', ({ index, state }) => {
+      send('headless:account:update', { index, state });
+    });
+    headlessManager.on('account:status', ({ index, status }) => {
+      send('headless:account:status', { index, status });
+    });
+    headlessManager.on('account:error', ({ index, message }) => {
+      send('headless:account:error', { index, message });
+    });
 
     // Ajudante de desenvolvimento: tira um print da janela e (opcional) fecha.
     if (DEV && process.env.DIGIDECK_SHOT) {

@@ -280,6 +280,7 @@ const DEFAULT_SETTINGS = {
 const DEFAULT_ACCOUNT = {
   enabled: true, muted: false, zoom: 1, autoReloadMin: 0, freezeMin: 0, freezeAction: 'alert', watchWords: [], notes: '',
   alwaysRender: false, color: null,
+  headless: false,
 };
 
 function defaultState() {
@@ -520,6 +521,7 @@ function createRuntime(acc) {
     lastHash: null, hashSince: Date.now(), frozenAlerted: false, wordActive: {}, wordAlertAt: {},
     dropAlerted: false, attention: false, thumb: null, thumbAt: 0, metrics: null,
     front: true, sleeping: false, goingToSleep: false, peeking: false, sleepOkAt: Infinity,
+    headlessStatus: 'disconnected', headlessState: null,
   };
 
   const wv = document.createElement('webview');
@@ -556,6 +558,7 @@ function createRuntime(acc) {
     iconBtn('reload', 'Recarregar (F5)', () => manualReload(id)),
     muteBtn,
     focusBtn,
+    iconBtn('power', 'Alterna modo headless', () => toggleHeadlessMode(id, !acc.headless)),
     iconBtn('more', 'Mais opções', (e) => openAccountMenu(id, e.currentTarget))));
   const banner = h('div', { class: 'banner' },
     icon('reload'),
@@ -579,6 +582,34 @@ function createRuntime(acc) {
 
   rt.set(id, r);
   $('#tiles').append(r.tile);
+
+  // ---- listeners headless (Fase 2)
+  if (acc.headless) {
+    deck.headlessStart(id).catch(err => console.error('[headless] erro ao iniciar:', err));
+  }
+
+  const unsubHeadlessUpdate = deck.onHeadlessUpdate(({index, state}) => {
+    if (index !== id) return;
+    const rr = rt.get(id);
+    if (!rr) return;
+    rr.headlessState = state;
+    updateLive();
+  });
+
+  const unsubHeadlessStatus = deck.onHeadlessStatus(({index, status}) => {
+    if (index !== id) return;
+    const rr = rt.get(id);
+    if (!rr) return;
+    rr.headlessStatus = status;
+    updateLive();
+  });
+
+  // Limpa listeners ao destruir
+  r._cleanup = () => {
+    if (unsubHeadlessUpdate) unsubHeadlessUpdate();
+    if (unsubHeadlessStatus) unsubHeadlessStatus();
+    if (acc.headless) deck.headlessStop(id).catch(() => {});
+  };
 
   // O primeiro carregamento usa o atributo "src": loadURL() só funciona depois do dom-ready,
   // e o dom-ready só acontece quando o webview tem uma página para carregar. Sem src, nada carrega.
@@ -614,6 +645,7 @@ function createRuntime(acc) {
 function destroyRuntime(id) {
   const r = rt.get(id);
   if (!r) return;
+  if (r._cleanup) r._cleanup();
   clearTimeout(r.retryTimer);
   r.tile.remove();
   rt.delete(id);
@@ -642,6 +674,70 @@ function applyAudio(id) {
   const acc = accById(id), r = rt.get(id);
   if (!acc || !r || (!r.ready && !r.wcId)) return;
   try { r.wv.setAudioMuted(!!acc.muted || !!state.muteAll); } catch { /* ainda carregando */ }
+}
+
+// ---- Headless Mode (Fase 2)
+async function toggleHeadlessMode(accId, enable) {
+  const acc = accById(accId);
+  const r = rt.get(accId);
+  if (!acc || !r) return false;
+
+  try {
+    if (enable && !acc.headless) {
+      // Entrando em headless
+      console.log(`[headless] ativando para ${acc.name}`);
+      acc.headless = true;
+      save();
+      await deck.headlessStart(accId);
+      if (r.wv && r.wv.parentElement) { r.wv.remove(); r.wv = null; r.wcId = null; }
+      r.tile.classList.add('headless-mode');
+      log('info', acc, 'Modo headless ativado');
+    } else if (!enable && acc.headless) {
+      // Saindo de headless
+      console.log(`[headless] desativando para ${acc.name}`);
+      await deck.headlessStop(accId);
+      acc.headless = false;
+      save();
+
+      const url = acc.url || '';
+      if (!/^https?:\/\//i.test(url)) {
+        raiseAlert(acc, 'URL inválida', 'Configure a URL antes');
+        return false;
+      }
+
+      const wv = document.createElement('webview');
+      wv.setAttribute('partition', `persist:acc-${accId}`);
+      wv.setAttribute('allowpopups', '');
+      wv.setAttribute('webpreferences', 'backgroundThrottling=yes');
+      r.wv = wv;
+      r.wcId = null;
+      r.ready = false;
+      r.sleepOkAt = Infinity;
+
+      const wvWrap = r.tile.querySelector('.wv-wrap');
+      if (wvWrap) wvWrap.insertBefore(wv, wvWrap.firstChild);
+      wireWebview(acc, r, wv);
+
+      const group = groupOf(acc);
+      if (group?.proxy) {
+        try {
+          await deck.applyProxy(`persist:acc-${accId}`, group.proxy);
+        } catch (err) {
+          raiseAlert(acc, 'Proxy', 'Erro ao aplicar');
+          return false;
+        }
+      }
+
+      wv.setAttribute('src', url);
+      r.tile.classList.remove('headless-mode');
+      log('info', acc, 'Modo webview restaurado');
+    }
+    return true;
+  } catch (err) {
+    console.error(`[headless] erro:`, err);
+    raiseAlert(acc, 'Erro', err.message);
+    return false;
+  }
 }
 
 // ---- economia: conta que ninguém está vendo para de desenhar (a página se vê oculta, como uma aba de
@@ -968,8 +1064,19 @@ function liveValue(key) {
   const r = id && rt.get(id);
   const now = Date.now();
   switch (k) {
-    case 'status': return statusText(id);
+    case 'status': {
+      if (!r) return '—';
+      // Se em headless, mostra status do headless
+      if (acc?.headless && r.headlessStatus) {
+        return r.headlessStatus === 'connected' ? '⚡ Headless' : `⚡ ${r.headlessStatus}`;
+      }
+      return statusText(id);
+    }
     case 'banner': {
+      // Em headless, mostra info de conexão
+      if (acc?.headless && r.headlessState) {
+        return `⚡ Nível ${r.headlessState.nivel} · ${r.headlessState.bits} bits`;
+      }
       if (!r || r.status !== 'reconnecting') return '';
       const when = now - r.attemptAt < 4000 || !r.retryAt ? 'tentando agora…' : `próxima tentativa em ${Math.max(1, Math.ceil((r.retryAt - now) / 1000))}s`;
       return `Caiu: ${r.reason}. ${when}${r.retries ? ` (tentativa ${r.retries + 1})` : ''}`;

@@ -627,6 +627,30 @@ textarea.input { height: auto; min-height: 66px; padding: 9px 11px; resize: vert
 
 .summary-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
 .summary-kpis .stat .value { font-size: 21px; }
+
+/* ---- Headless Mode (Fase 2) */
+.tile.headless-mode {
+  --tile-bg: #0a1a2e;
+  border: 2px solid var(--cyan-soft);
+  opacity: 0.9;
+}
+
+.tile.headless-mode .tile-head {
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.1) 0%, rgba(34, 211, 238, 0.05) 100%);
+}
+
+.tile.headless-mode::before {
+  content: "⚡";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.tile.headless-mode .wv-wrap {
+  display: none;
+}
 .summary-list { max-height: 260px; overflow: auto; }
 
 /* -------------------------------------------------------------- bloqueio */

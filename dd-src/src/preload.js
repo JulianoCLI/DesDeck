@@ -42,4 +42,12 @@ contextBridge.exposeInMainWorld('deck', {
   onNotifyClick: on('notify-click'),
   onAway: on('win:away'),
   onBack: on('win:back'),
+
+  // Headless (Fase 1)
+  headlessStart: (accId, options) => ipcRenderer.invoke('headless:start', accId, options),
+  headlessStop: (accId) => ipcRenderer.invoke('headless:stop', accId),
+  headlessStatus: (accId) => ipcRenderer.invoke('headless:status', accId),
+  onHeadlessUpdate: on('headless:account:update'),
+  onHeadlessStatus: on('headless:account:status'),
+  onHeadlessError: on('headless:account:error'),
 });
