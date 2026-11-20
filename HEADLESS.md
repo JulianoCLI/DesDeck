@@ -1,7 +1,8 @@
 # Modo headless
 
 O modo headless roda a conta pelo WebSocket do jogo, sem webview. O objetivo é
-RAM: cada webview é um processo Chromium completo, e um socket não é.
+RAM: uma conta em headless custa **10 MB**, contra **~254 MB** de cada webview
+adicional ([medido](#a-economia-de-ram-medida)).
 
 A troca é: a conta continua jogando e as automações continuam funcionando, mas
 não há tela. É por conta, não global — dá para deixar a conta que você olha em
@@ -83,6 +84,10 @@ node test-ipc-tools.js
 # substituído por um espião que registra em vez de enviar, então
 # nenhum scanner, bit ou ovo é gasto.
 .\node_modules\electron\dist\electron.exe test-tools-headless.js <login> <senha> 150
+
+# A RAM nos dois modos. O DesDeck precisa estar FECHADO: o servidor
+# aceita uma conexão por conta. Leva ~2,5 min.
+.\node_modules\electron\dist\electron.exe measure-ram.js <login> <senha>
 ```
 
 Os dois últimos escrevem em `*-report.txt`: o stdout do Electron no Windows se
@@ -100,11 +105,36 @@ perde quando o processo sai logo depois de escrever. Os relatórios estão no
 - **A corrente até a UI:** os 5 canais IPC existem dos dois lados, religar uma
   ferramenta troca a config sem duplicar o laço, e sem socket nada é enviado.
 
-### O que ainda não foi medido
+## A economia de RAM, medida
 
-**A redução de RAM.** É a razão de o modo existir e continua sendo uma estimativa:
-falta medir com 5 contas, webview contra headless. Qualquer número de economia
-que você vir em doc antigo deste repositório era chute, não medição.
+Medido na mesma conta, nos dois modos, com `app.getAppMetrics()`
+(`measure-ram.js`). Os números antigos deste repositório eram chute; estes não.
+
+| | RAM |
+|---|---|
+| headless, por conta | **10 MB** |
+| webview, cada conta a mais | **254 MB** |
+| webview, a primeira conta | 1013 MB |
+| base do app (paga nos dois modos) | ~195 MB |
+
+A primeira webview custa muito mais que as seguintes porque arrasta os serviços
+**compartilhados** do Chromium: a GPU salta de 67 para 366 MB, e entram áudio
+(85 MB) e captura de vídeo (115 MB). Esses ~760 MB são pagos uma vez, não por
+conta — o que escala é o marginal de 254 MB.
+
+Projeção, somando base + compartilhado + N × marginal:
+
+| contas | webview | headless | economia |
+|---|---|---|---|
+| 1 | 1207 MB | 204 MB | 1003 MB (83%) |
+| 4 | 1970 MB | 234 MB | 1736 MB (88%) |
+| 5 | 2225 MB | 244 MB | 1981 MB (89%) |
+| 10 | 3497 MB | 294 MB | 3203 MB (92%) |
+
+Com as ressalvas de sempre: é uma medida, numa máquina, e o Chromium varia com o
+uso. A projeção assume que o marginal se repete igual, o que é otimista — na
+prática as contas disputam cache. E a base de ~195 MB você paga em headless
+também, porque o Electron continua de pé.
 
 ## Histórico
 
