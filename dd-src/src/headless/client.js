@@ -48,8 +48,11 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       ovos: [],
       a: { segundos: 0, xph: 0, bitsph: 0 },
       vip: false,
+      vipAte: 0,
       travaSaidaAte: null,
       huntSlug: null,
+      campo: null,
+      offCfg: null,
     };
 
     this.sessionStartTime = Date.now();
@@ -131,6 +134,13 @@ class DigiiIdleHeadlessClient extends EventEmitter {
         this.state.ativoId = msg.ativoId || null;
         this.state.local = msg.local || null;
         this.state.itens = msg.itens || {};
+        // Campos que as guardas das ferramentas precisam. Antes eram descartados,
+        // então huntSlug ficava null (a ferramenta de hunt não sabia onde estava)
+        // e o VIP nunca era detectado. O jogo manda vipAte (timestamp), não 'vip'.
+        this.state.huntSlug = msg.huntSlug || null;
+        this.state.vipAte = msg.vipAte || 0;
+        this.state.vip = (msg.vipAte || 0) > Date.now();
+        this.state.travaSaidaAte = msg.travaSaidaAte || null;
         this.emit('update');
         break;
 
@@ -140,17 +150,27 @@ class DigiiIdleHeadlessClient extends EventEmitter {
         break;
 
       case 'campo':
-        // A cena: só se o headless pediu explicitamente ou se economia=false
-        // Para Fase 1, ignoramos
+        // A cena. Com Modo Economia o servidor não manda isto, e as ferramentas
+        // não dependem dela — mas quando vem, 'arena.lab' diz se estamos no
+        // Labirinto, onde não existe scan de corpo.
+        if (!msg.delta) this.state.campo = msg;
         break;
 
       case 'offline.cfg':
-        // Config para hunt recomendada
+        // A lista de hunts com perigo/xpH: é daqui que sai a área recomendada.
+        this.state.offCfg = msg;
         this.emit('offline-cfg', msg);
         break;
 
       case 'batalha':
-        // Eventos de combate
+        // Chega mesmo com a cena desligada. Cada evento com morto:true traz em
+        // 'para' o id do inimigo que caiu — é a via do scan sem a cena.
+        for (const e of msg.ev || []) {
+          if (!e || !e.morto) continue;
+          const id = Number(e.para);
+          if (!id) continue; // 'a' é o nosso Digimon: morte nossa, não corpo
+          this.emit('corpo', id);
+        }
         this.emit('battle', msg);
         break;
 
@@ -280,6 +300,9 @@ class DigiiIdleHeadlessClient extends EventEmitter {
     if (!config) return false;
     const existing = this.tools.get(toolId);
     if (existing) {
+      // Já rodava: só troca os valores, como o G.aplicar() da versão do webview.
+      // O laço em curso passa a ler a config nova na volta seguinte, sem criar um
+      // segundo laço (que duplicaria compras).
       existing.config = config;
       return true;
     }

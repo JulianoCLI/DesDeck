@@ -16,3 +16,6 @@ scripts/
 # Saídas de teste e logs
 *.log
 *.out.txt
+# Relatorios dos testes headless (o stdout do Electron no Windows se perde, entao
+# eles escrevem em arquivo). Podem conter nick e saldo da conta testada.
+*-report.txt

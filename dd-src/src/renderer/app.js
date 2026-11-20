@@ -196,6 +196,40 @@ function scriptsFor(url, accId) {
     && scriptMatches(s.matchUrl, url));
 }
 
+// Esta conta está rodando sem webview (modo headless)?
+function isHeadless(accId) {
+  const acc = state.accounts?.find((a) => a.id === accId);
+  if (!acc) return false;
+  return !!(acc.headless || state.settings?.bootHeadless);
+}
+
+// Liga/desliga uma ferramenta numa conta headless. A config é a mesma da versão
+// do webview (defaults + ajustes da pessoa); quem executa é src/headless/tools.js.
+async function applyToolHeadless(toolId, accId, tool, conf) {
+  try {
+    if (conf && conf.enabled) {
+      const cfg = { ...tool.defaults(), ...(conf.cfg || {}) };
+      await deck.headlessToolStart(accId, toolId, cfg);
+    } else {
+      await deck.headlessToolStop(accId, toolId);
+    }
+    return true;
+  } catch (err) {
+    console.error('[ferramentas] headless falhou', toolId, accId, err);
+    return false;
+  }
+}
+
+// Liga em uma conta headless todas as ferramentas marcadas para ela. Chamado
+// quando o socket fica de pé (conexão e cada reconexão).
+function applyToolsHeadless(accId) {
+  for (const t of (window.DDTools?.TOOLS || [])) {
+    const conf = state.tools?.[t.id]?.[accId];
+    if (!conf || !conf.enabled) continue;
+    applyToolHeadless(t.id, accId, t, conf);
+  }
+}
+
 // Ferramentas ligadas para esta conta, já viradas em código. Só valem no DigiIdle:
 // os comandos ('market.comprar', 'ovo.vender') são do jogo e não existem em outro site.
 function toolScriptsFor(url, accId) {
@@ -219,14 +253,22 @@ function toolScriptsFor(url, accId) {
 // Contas fechadas ou noutro site são ignoradas: elas recebem a config nova no dom-ready.
 async function applyToolLive(toolId, accId) {
   const r = rt.get(accId);
-  if (!r || !r.wv) return false;
-  let url = '';
-  try { url = r.wv.getURL(); } catch { return false; }
-  if (!isDigi(url)) return false;
+  if (!r) return false;
 
   const tool = window.DDTools?.toolById(toolId);
   if (!tool) return false;
   const conf = state.tools?.[toolId]?.[accId];
+
+  // Conta em headless: não há página para injetar. A mesma ferramenta roda no
+  // processo principal, sobre o socket, e recebe a config por IPC.
+  if (!r.wv) {
+    if (!isHeadless(accId)) return false;
+    return applyToolHeadless(toolId, accId, tool, conf);
+  }
+
+  let url = '';
+  try { url = r.wv.getURL(); } catch { return false; }
+  if (!isDigi(url)) return false;
 
   try {
     if (conf && conf.enabled) {
@@ -584,7 +626,9 @@ function createRuntime(acc) {
   $('#tiles').append(r.tile);
 
   // ---- listeners headless (Fase 2)
-  if (acc.headless) {
+  // Vale tanto para o toggle da conta quanto para o "iniciar todas em headless":
+  // antes só olhava acc.headless, então com bootHeadless o socket nunca subia.
+  if (isHeadless(id)) {
     deck.headlessStart(id).catch(err => console.error('[headless] erro ao iniciar:', err));
   }
 
@@ -600,7 +644,12 @@ function createRuntime(acc) {
     if (index !== id) return;
     const rr = rt.get(id);
     if (!rr) return;
+    const antes = rr.headlessStatus;
     rr.headlessStatus = status;
+    // As ferramentas só agem com o socket de pé, e o socket pode cair e voltar.
+    // Ligar na transição para 'connected' cobre a conexão inicial e cada
+    // reconexão — startTool é idempotente, então religar não duplica laço.
+    if (status === 'connected' && antes !== 'connected') applyToolsHeadless(id);
     updateLive();
   });
 
@@ -608,7 +657,7 @@ function createRuntime(acc) {
   r._cleanup = () => {
     if (unsubHeadlessUpdate) unsubHeadlessUpdate();
     if (unsubHeadlessStatus) unsubHeadlessStatus();
-    if (acc.headless) deck.headlessStop(id).catch(() => {});
+    if (isHeadless(id)) deck.headlessStop(id).catch(() => {});
   };
 
   // O primeiro carregamento usa o atributo "src": loadURL() só funciona depois do dom-ready,
@@ -691,10 +740,23 @@ async function toggleHeadlessMode(accId, enable) {
       await deck.headlessStart(accId);
       if (r.wv && r.wv.parentElement) { r.wv.remove(); r.wv = null; r.wcId = null; }
       r.tile.classList.add('headless-mode');
+      // As ferramentas marcadas para a conta tinham que seguir rodando: a página
+      // acabou de ser destruída, então quem passa a executá-las é o socket.
+      // (O listener de status também liga em 'connected'; aqui cobre o caso de o
+      // socket já estar de pé, onde a transição não acontece de novo.)
+      applyToolsHeadless(accId);
       log('info', acc, 'Modo headless ativado');
     } else if (!enable && acc.headless) {
       // Saindo de headless
       console.log(`[headless] desativando para ${acc.name}`);
+      // Para as ferramentas do socket antes de derrubá-lo. Sem isto, elas
+      // continuariam ligadas no processo principal e, quando a página voltasse
+      // com as suas próprias cópias, cada compra sairia em dobro.
+      // (headlessStop já pararia tudo, mas ser explícito deixa o par simétrico
+      // com a entrada e sobrevive a mudanças no stop.)
+      for (const t of (window.DDTools?.TOOLS || [])) {
+        try { await deck.headlessToolStop(accId, t.id); } catch { /* já estava parada */ }
+      }
       await deck.headlessStop(accId);
       acc.headless = false;
       save();
