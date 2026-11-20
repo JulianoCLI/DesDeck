@@ -2908,6 +2908,7 @@ function openSettings() {
     reloadAfterOutage: cb('reloadAfterOutage'),
     remotePrivacy: cb('remotePrivacy'),
     economy: cb('economy'),
+    bootHeadless: cb('bootHeadless'),
     summaryAfterMin: h('input', { class: 'input', type: 'number', min: 0, max: 1440, value: s.summaryAfterMin }),
     autoLockMin: h('input', { class: 'input', type: 'number', min: 0, max: 1440, value: s.autoLockMin }),
     alertAfterRetries: h('input', { class: 'input', type: 'number', min: 0, max: 50, value: s.alertAfterRetries }),
@@ -2920,7 +2921,7 @@ function openSettings() {
   inputs.watchWords.value = (s.watchWords || []).join('\n');
 
   const collect = () => {
-    for (const k of ['closeToTray', 'preventSleep', 'openAtLogin', 'sound', 'notifications', 'flash', 'notifyEveryDrop', 'reloadAfterOutage', 'remotePrivacy', 'economy']) s[k] = inputs[k].checked;
+    for (const k of ['closeToTray', 'preventSleep', 'openAtLogin', 'sound', 'notifications', 'flash', 'notifyEveryDrop', 'reloadAfterOutage', 'remotePrivacy', 'economy', 'bootHeadless']) s[k] = inputs[k].checked;
     for (const id of rt.keys()) applyPainting(id);
     updateSleep();
     s.summaryAfterMin = Math.max(0, Number(inputs.summaryAfterMin.value) || 0);
@@ -2974,6 +2975,7 @@ function openSettings() {
         checkRow(inputs.closeToTray, 'Fechar a janela manda para a bandeja', 'As contas continuam farmando. Para sair de verdade, use Sair no ícone da bandeja.'),
         checkRow(inputs.preventSleep, 'Impedir que o PC entre em suspensão', 'A tela pode desligar normalmente.'),
         checkRow(inputs.economy, 'Economia de recursos (recomendado)', 'Conta que não está na tela (outra tela, atrás da principal, painel, bloqueio, janela minimizada ou na bandeja) para de desenhar e segue jogando. No DigiIdle o servidor continua caçando e manda só o estado. Bem menos CPU, GPU e rede. Contas de outros jogos já vêm com "Sempre desenhar" marcado (dá para desmarcar na conta, se o jogo seguir rodando oculto).'),
+        checkRow(inputs.bootHeadless, 'Iniciar todas as contas em modo headless', 'Sem renderizar a interface: apenas WebSocket. Reduz RAM de 2.5 GB para 600 MB com 5 contas. Pode usar o botão de poder em cada conta para alternar dinamicamente.'),
         checkRow(inputs.openAtLogin, 'Iniciar com o Windows (minimizado)', info.packaged ? (hasPw ? 'Com senha mestra, as contas só começam depois que você desbloquear.' : null) : 'Só funciona na versão instalada.'),
         h('div', { class: 'row' },
           field('Mostrar resumo ao voltar depois de (min)', inputs.summaryAfterMin, '0 = nunca'),
