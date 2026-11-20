@@ -47,9 +47,15 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       itens: {},
       ovos: [],
       a: { segundos: 0, xph: 0, bitsph: 0 },
+      vip: false,
+      travaSaidaAte: null,
+      huntSlug: null,
     };
 
     this.sessionStartTime = Date.now();
+
+    // Ferramentas headless (Phase 3)
+    this.tools = new Map();
   }
 
   async connect() {
@@ -262,6 +268,58 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       this.ws = null;
     }
     this.setStatus('disconnected');
+
+    // Para todas as ferramentas
+    for (const tool of this.tools.values()) {
+      tool.stop();
+    }
+    this.tools.clear();
+  }
+
+  startTool(toolId, config) {
+    if (!config) return false;
+    const existing = this.tools.get(toolId);
+    if (existing) {
+      existing.config = config;
+      return true;
+    }
+    try {
+      const { createHeadlessTool } = require('./tools');
+      const tool = createHeadlessTool(this, toolId, config);
+      if (!tool) return false;
+      tool.start();
+      this.tools.set(toolId, tool);
+      console.log(`[headless] ferramenta ${toolId} iniciada`);
+      return true;
+    } catch (err) {
+      console.error(`[headless] erro ao iniciar ${toolId}:`, err);
+      return false;
+    }
+  }
+
+  stopTool(toolId) {
+    const tool = this.tools.get(toolId);
+    if (tool) {
+      tool.stop();
+      this.tools.delete(toolId);
+      return true;
+    }
+    return false;
+  }
+
+  get connected() {
+    return this.status === 'connected' && this.ws && this.ws.readyState === 1;
+  }
+
+  sendCommand(type, data) {
+    if (!this.connected) return false;
+    try {
+      this.ws.send(JSON.stringify({ t: type, ...data }));
+      return true;
+    } catch (err) {
+      console.error(`[headless] erro ao enviar:`, err);
+      return false;
+    }
   }
 }
 

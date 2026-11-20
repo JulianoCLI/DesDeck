@@ -43,10 +43,12 @@ contextBridge.exposeInMainWorld('deck', {
   onAway: on('win:away'),
   onBack: on('win:back'),
 
-  // Headless (Fase 1)
+  // Headless (Fase 1-3)
   headlessStart: (accId, options) => ipcRenderer.invoke('headless:start', accId, options),
   headlessStop: (accId) => ipcRenderer.invoke('headless:stop', accId),
   headlessStatus: (accId) => ipcRenderer.invoke('headless:status', accId),
+  headlessToolStart: (accId, toolId, config) => ipcRenderer.invoke('headless:tool:start', accId, toolId, config),
+  headlessToolStop: (accId, toolId) => ipcRenderer.invoke('headless:tool:stop', accId, toolId),
   onHeadlessUpdate: on('headless:account:update'),
   onHeadlessStatus: on('headless:account:status'),
   onHeadlessError: on('headless:account:error'),
