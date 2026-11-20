@@ -479,6 +479,14 @@ function registerIpc() {
   });
 }
 
+// Grava no disco os cookies de login de todas as contas.
+function flushAccountCookies() {
+  for (const acc of state.accounts || []) {
+    if (!acc || !acc.id) continue;
+    try { session.fromPartition(`persist:acc-${acc.id}`).cookies.flushStore(); } catch { /* ignora */ }
+  }
+}
+
 // ---------------------------------------------------------------- boot
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -584,6 +592,15 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  app.on('before-quit', () => { quitting = true; });
+  // Ao sair, grava os cookies de cada conta no disco. O Chromium salva de forma
+  // preguiçosa: sem este flush, um encerramento abrupto perde a sessão do jogo e
+  // a conta aparece deslogada (e o modo headless fica sem como autenticar).
+  app.on('before-quit', () => {
+    quitting = true;
+    flushAccountCookies();
+  });
+  // Rede de segurança: se o app cair sem passar pelo before-quit, o login mais
+  // recente já está no disco (perde no máximo 5 min).
+  setInterval(flushAccountCookies, 5 * 60 * 1000).unref?.();
   app.on('window-all-closed', () => app.quit());
 }

@@ -75,7 +75,7 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       this.cookieHeader = await getCookieHeader(this.partition);
       if (!this.cookieHeader) {
         this.setStatus('failed');
-        this.emit('error', 'Sem cookies: a conta precisa fazer login na interface gráfica');
+        this.emit('error', 'Sem sessão nesta conta: abra a conta normalmente e faça login uma vez antes de usar o headless');
         return;
       }
     } catch (err) {
