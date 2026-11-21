@@ -12,7 +12,8 @@ const { app, session, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-app.setPath('userData', path.join(process.env.APPDATA || '', 'DigiDeck'));
+// O perfil REAL do app, nao um nome chutado (ver perfil-real.js).
+require('./perfil-real').usar();
 const SAIDA = path.join(__dirname, 'lab-campos.txt');
 const out = [];
 const log = (...a) => { const t = a.join(' '); out.push(t); console.log(t); try { fs.writeFileSync(SAIDA, out.join('\n') + '\n'); } catch {} };

@@ -13,7 +13,8 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { app, safeStorage, session } = require('electron');
 
-const DATA_DIR = path.join(process.env.APPDATA || '', 'DigiDeck');
+// O perfil REAL do app, nao um nome chutado (ver perfil-real.js).
+const DATA_DIR = require('./perfil-real').usar();
 const AAD_STATE = 'digideck/state/v2';
 app.setPath('userData', DATA_DIR);
 

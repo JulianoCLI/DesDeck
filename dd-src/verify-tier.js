@@ -12,7 +12,8 @@ const { app, BrowserWindow, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-app.setPath('userData', path.join(process.env.APPDATA || '', 'DigiDeck'));
+// O perfil REAL do app, nao um nome chutado (ver perfil-real.js).
+require('./perfil-real').usar();
 
 const SAIDA = path.join(__dirname, 'tier-report.txt');
 const linhas = [];

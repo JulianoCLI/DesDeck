@@ -12,7 +12,8 @@
 const { app, session, net } = require('electron');
 const path = require('path');
 
-const DATA_DIR = path.join(process.env.APPDATA || '', 'DigiDeck');
+// O perfil REAL do app, nao um nome chutado (ver perfil-real.js).
+const DATA_DIR = require('./perfil-real').usar();
 app.setPath('userData', DATA_DIR);
 
 const TIMEOUT_MS = 30000;

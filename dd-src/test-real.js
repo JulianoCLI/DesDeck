@@ -14,7 +14,8 @@ const crypto = require('crypto');
 const { app, safeStorage } = require('electron');
 
 const TIMEOUT_MS = 25000;
-const DATA_DIR = path.join(process.env.APPDATA || '', 'DigiDeck');
+// O perfil REAL do app, nao um nome chutado (ver perfil-real.js).
+const DATA_DIR = require('./perfil-real').usar();
 const AAD_STATE = 'digideck/state/v2';
 
 // Usa a MESMA pasta de dados do app: as particoes (cookies) vivem aqui.
