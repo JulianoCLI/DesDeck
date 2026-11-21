@@ -67,6 +67,44 @@ async function ilhaPorSlug() {
   return out;
 }
 
+/**
+ * A ficha de cada espécie, por id: nome e a grade da folha de sprites.
+ * É o que o card precisa para mostrar o retrato e o nome do Digimon.
+ */
+async function especiePorId() {
+  const esp = await carregar('especies');
+  const lista = Array.isArray(esp) ? esp : (esp.especies || []);
+  const out = {};
+  for (const e of lista) {
+    if (!e || !e.id) continue;
+    out[e.id] = { id: e.id, nome: e.nome || e.id, sprite: e.sprite, colunas: e.colunas, frames: e.frames };
+  }
+  return out;
+}
+
+/**
+ * Quem mora em cada área de caça, por slug.
+ *
+ * O socket diz o slug da hunt (huntSlug), não contra quem a conta luta. As
+ * espécies da área saem daqui; a mais provável é a de maior 'pontos'.
+ */
+async function especiesDaArea() {
+  const areas = await carregar('areas');
+  const lista = Array.isArray(areas) ? areas : (areas.areas || []);
+  const out = {};
+  for (const a of lista) {
+    if (!a || !a.slug) continue;
+    const esp = (a.especies || []).slice().sort((x, y) => (y.pontos || 0) - (x.pontos || 0));
+    out[a.slug] = {
+      nome: a.nome || a.slug,
+      nivel: a.nivel || 0,
+      ilha: a.ilha || null,
+      especies: esp.map((e) => e.id),
+    };
+  }
+  return out;
+}
+
 /** Calculador de tier de ovo, alimentado pelos catálogos do jogo. */
 async function tierOvo() {
   const [especies, itens] = await Promise.all([carregar('especies'), carregar('itens')]);
@@ -74,4 +112,4 @@ async function tierOvo() {
   return criarTierOvo(especies, itens);
 }
 
-module.exports = { carregar, precos, ilhaPorSlug, tierOvo };
+module.exports = { carregar, precos, ilhaPorSlug, tierOvo, especiePorId, especiesDaArea };

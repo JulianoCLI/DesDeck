@@ -83,6 +83,17 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       // O lobby do Labirinto da Guild. Chega no pacote 'lab' (resposta de
       // 'lab.info') e é o que a ferramenta de labirinto lê para decidir.
       lab: null,
+
+      // ---- O que o card mostra. Sem webview não há nada para olhar, então
+      // estes campos são a única noção do que a conta está fazendo.
+      nick: null,
+      equipe: [],        // o time; equipe[0] com ativoId é quem está lutando
+      sessao: null,      // abates, capturas, xp e bits desta sessão
+      online: 0,         // segundos conectado, segundo o servidor
+      evp: 0,
+      evpMax: 0,
+      eventoXP: null,
+      ultimoAbate: null, // { nome, em } do pacote 'log' tipo abate
     };
 
     this.sessionStartTime = Date.now();
@@ -174,7 +185,29 @@ class DigiiIdleHeadlessClient extends EventEmitter {
         this.state.vipAte = msg.vipAte || 0;
         this.state.vip = (msg.vipAte || 0) > Date.now();
         this.state.travaSaidaAte = msg.travaSaidaAte || null;
+        // O que o card mostra. O pacote 'estado' ja trazia tudo isto; era
+        // descartado porque so as ferramentas liam o estado.
+        this.state.nick = msg.nick || null;
+        this.state.equipe = Array.isArray(msg.equipe) ? msg.equipe : [];
+        this.state.sessao = msg.sessao || null;
+        this.state.online = msg.online || 0;
+        this.state.evp = msg.evp || 0;
+        this.state.evpMax = msg.evpMax || 0;
+        this.state.eventoXP = msg.eventoXP || null;
         this.emit('update');
+        break;
+
+      // O diario do jogo. Interessa o abate: e a unica fonte do NOME do
+      // inimigo que acabou de cair ("Gaomon derrotado! +20 xp tamer").
+      // O pacote 'batalha' so traz o id numerico do alvo.
+      case 'log':
+        if (msg.tipo === 'abate' && typeof msg.txt === 'string') {
+          const m = /^(.+?)\s+derrotado/i.exec(msg.txt);
+          if (m) {
+            this.state.ultimoAbate = { nome: m[1], em: msg.em || Date.now() };
+            this.emit('update');
+          }
+        }
         break;
 
       case 'ovos':

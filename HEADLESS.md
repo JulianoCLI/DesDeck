@@ -82,6 +82,44 @@ reconexão. Os códigos de fechamento 4000 (jogo aberto em outro lugar) e 4001
 para rodar os testes abaixo, e a mesma conta não pode estar em webview e headless
 ao mesmo tempo (o toggle cuida disso).
 
+## O painel do card
+
+Sem webview não há nada para olhar, então o card mostra um resumo do que a conta
+está fazendo: o Digimon ativo contra o alvo (com os retratos dos dois), onde está
+caçando, há quanto tempo, e os contadores da sessão (abates, capturas, bits, xp).
+
+O pacote `estado` já trazia tudo isso — `nick`, `equipe[]` (com `especie`,
+`nivel`, `hp/hpMax`, `shiny`), `sessao`, `online`, `evp` — e era descartado
+porque só as ferramentas liam o estado.
+
+**Contra quem a conta está batendo** tem duas fontes, porque o socket não manda o
+nome do inimigo atual:
+
+1. O pacote `log` de `tipo:'abate'` (`"Gaomon derrotado! +20 xp tamer"`) é a
+   **única** fonte do nome. Vale por 60 s.
+2. Antes do primeiro abate, as espécies da área (`huntSlug` + `/shared/areas.json`)
+   dizem quem mora lá. É uma previsão, e o painel a marca com `~` para não afirmar
+   o que não sabe.
+
+**Os retratos** são recortados no processo principal (`src/headless/sprites.js`).
+O jogo não publica retratos: publica folhas de animação (`/img/digimon/<id>.png`,
+dezenas de quadros numa grade de `colunas` × `frames`). O primeiro quadro (0,0) é
+a pose parada. O recorte fica no processo principal porque a CSP da janela é
+`img-src 'self' data:`, e afrouxá-la para `https://digiidle.com` abriria a janela
+para qualquer imagem remota. A folha do Agumon tem 508 KB; o retrato recortado,
+~10 KB. Ficam em cache em memória e em disco (`userData/sprites/`): 15 espécies
+custam 88 KB.
+
+O resumo é montado no máximo **1 vez a cada 2 s por conta** (`PAINEL_MIN_MS`): o
+pacote `estado` chega várias vezes por minuto, e ninguém lê um card que muda 20x
+por minuto.
+
+O card é redimensionável, e com 8 contas numa coluna sobram ~90 px de altura. O
+painel se adapta por `@container` em vez de transbordar: primeiro saem os
+detalhes secundários, depois o retrato, e no card achatado as três linhas viram
+uma só (onde | quem × quem | números). Verificado em 12 tamanhos, de 1152×803 a
+160×80, sem corte em nenhum.
+
 ## As ferramentas
 
 As mesmas 4 da webview, com a mesma configuração. A diferença é onde rodam: na
@@ -131,6 +169,18 @@ node test-boot-headless.js
 # O socket caiu DEPOIS de conectado: volta das quedas comuns e não
 # insiste nos códigos definitivos (4000, 4001). Não toca em conta real.
 .\node_modules\electron\dist\electron.exe test-queda.js
+
+# O resumo do card: com um 'estado' montado à mão, identifica os dois
+# lados? E o retrato sai recortado certo (96x94, não uma tira)?
+# Não toca em conta real; baixa os catálogos e sprites públicos.
+.\node_modules\electron\dist\electron.exe test-painel.js
+
+# O que o socket manda, de verdade: tipos de pacote, campos de cada um
+# e os pacotes inteiros que importam. Foi assim que se descobriu que o
+# nome do inimigo só existe no log de abate. Só escuta, não envia nada.
+# ATENÇÃO: conecta na conta real, então ela tem que estar FORA do
+# headless no DesDeck (ou o app fechado), senão uma das duas cai.
+.\node_modules\electron\dist\electron.exe lab-pacotes.js "DigiIdle 8"
 
 # Qual modo e qual sessão cada conta real tem. Read-only.
 .\node_modules\electron\dist\electron.exe diag-sessoes.js

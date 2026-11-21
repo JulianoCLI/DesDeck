@@ -591,6 +591,10 @@ if (!app.requestSingleInstanceLock()) {
     headlessManager.on('account:status', ({ index, status }) => {
       send('headless:account:status', { index, status });
     });
+    // O resumo do card: quem esta lutando contra quem, e com que resultado.
+    headlessManager.on('account:painel', ({ index, painel }) => {
+      send('headless:account:painel', { index, painel });
+    });
     headlessManager.on('account:error', ({ index, message }) => {
       send('headless:account:error', { index, message });
     });

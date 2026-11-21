@@ -13,6 +13,12 @@ const { DigiiIdleHeadlessClient } = require('./client');
 const ENTRADA_MIN_MS = 3000;
 const ENTRADA_MAX_MS = 11000;
 
+// De quanto em quanto o card de uma conta e atualizado. O pacote 'estado' chega
+// varias vezes por minuto e o resumo monta nome, retrato e contadores: refazer
+// isso a cada pacote, vezes 8 contas, seria trabalho jogado fora - ninguem le um
+// card que muda 20x por minuto.
+const PAINEL_MIN_MS = 2000;
+
 class HeadlessManager extends EventEmitter {
   constructor() {
     super();
@@ -21,6 +27,27 @@ class HeadlessManager extends EventEmitter {
     // fila, então a ordem de chegada é respeitada sem ninguém ficar sem vez.
     this.proximaEntrada = 0;
     this.entradas = new Map(); // accountIndex -> timer da entrada agendada
+    this.painelEm = new Map(); // accountIndex -> quando o card foi atualizado
+  }
+
+  /**
+   * Monta o resumo do card e manda para a UI, no maximo a cada PAINEL_MIN_MS.
+   * Falha em silencio: um card sem retrato e um detalhe, nao um motivo para
+   * derrubar a conta.
+   */
+  mandarPainel(accountIndex, client) {
+    const agora = Date.now();
+    if (agora - (this.painelEm.get(accountIndex) || 0) < PAINEL_MIN_MS) return;
+    this.painelEm.set(accountIndex, agora);
+
+    const { resumo } = require('./painel');
+    resumo(client.state)
+      .then((p) => {
+        if (p && this.clients.get(accountIndex) === client) {
+          this.emit('account:painel', { index: accountIndex, painel: p });
+        }
+      })
+      .catch((err) => console.error(`[headless:painel] conta ${accountIndex}:`, err.message));
   }
 
   /**
@@ -36,6 +63,7 @@ class HeadlessManager extends EventEmitter {
 
     client.on('update', () => {
       this.emit('account:update', { index: accountIndex, state: client.state });
+      this.mandarPainel(accountIndex, client);
     });
 
     client.on('status', (status) => {
@@ -99,6 +127,7 @@ class HeadlessManager extends EventEmitter {
       client.disconnect();
       this.clients.delete(accountIndex);
     }
+    this.painelEm.delete(accountIndex);
   }
 
   /**
@@ -111,6 +140,7 @@ class HeadlessManager extends EventEmitter {
       client.disconnect();
     }
     this.clients.clear();
+    this.painelEm.clear();
     this.proximaEntrada = 0;
   }
 

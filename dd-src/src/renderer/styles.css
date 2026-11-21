@@ -651,6 +651,131 @@ textarea.input { height: auto; min-height: 66px; padding: 9px 11px; resize: vert
 .tile.headless-mode .wv-wrap {
   display: none;
 }
+
+/* O resumo da conta headless: ocupa o lugar que era do webview. Fora do modo
+   headless o painel fica vazio, e sem conteudo nao desenha nada. */
+.hl-painel:empty { display: none; }
+/* O painel so mede o espaco disponivel; quem se adapta e .hl-in dentro dele.
+   O card e redimensionavel (numa grade de 8 contas sobram ~200px de altura, em
+   coluna ~90px), e as @container queries encolhem o conteudo em vez de deixa-lo
+   transbordar. O wrapper e necessario porque um elemento nao pode ser
+   estilizado pela sua propria @container query. */
+.hl-painel {
+  flex: 1; min-height: 0; overflow: hidden;
+  container-name: hlp;
+  container-type: size;
+  display: flex;
+}
+.hl-in {
+  flex: 1; min-width: 0; min-height: 0; overflow: auto;
+  padding: 10px; font-size: 12px;
+  /* O conteudo e pouco e o card pode ser grande (um card sozinho na tela tem
+     800px de altura): esparramado nele, o retrato de 56px ficava perdido no
+     meio do vazio. Centralizado e com largura maxima, o bloco se le junto em
+     qualquer tamanho de card. */
+  display: flex; flex-direction: column; gap: 10px;
+  justify-content: center;
+}
+.hl-in > * { width: 100%; max-width: 360px; margin-inline: auto; flex: none; }
+.hl-vazio { margin: auto; opacity: .5; font-size: 12px; }
+
+.hl-onde { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.hl-local { color: var(--cyan-soft); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hl-tempo { opacity: .6; font-variant-numeric: tabular-nums; flex: none; }
+
+.hl-arena { display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 6px; }
+.hl-lado { min-width: 0; text-align: center; }
+.hl-vs { align-self: center; opacity: .4; font-size: 11px; text-transform: uppercase; }
+
+/* Altura fixa: sem ela, o retrato que ainda nao baixou faz o card pular. */
+.hl-face {
+  height: 56px; display: grid; place-items: center;
+  margin-bottom: 4px;
+}
+.hl-face img {
+  max-height: 56px; max-width: 100%;
+  image-rendering: pixelated; /* sprite pequeno ampliado fica borrado sem isto */
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .5));
+}
+.hl-face.alvo img { transform: scaleX(-1); } /* encarando o nosso */
+.hl-semfoto {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(255, 255, 255, .06); color: rgba(255, 255, 255, .45);
+  font-weight: 700;
+}
+
+.hl-nome { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hl-nome.incerto { opacity: .6; font-style: italic; }
+.hl-sub { opacity: .5; font-size: 10px; }
+
+.hl-hp { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .1); margin-top: 4px; overflow: hidden; }
+.hl-hp i { display: block; height: 100%; background: #4ade80; transition: width .3s; }
+.hl-hp i.baixo { background: #f87171; }
+
+.hl-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+  padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, .07);
+}
+.hl-stat { text-align: center; min-width: 0; }
+.hl-stat b { display: block; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+.hl-stat span { font-size: 9px; opacity: .5; text-transform: uppercase; }
+
+.hl-extra { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; font-size: 10px; opacity: .6; }
+
+/* Card baixo (grade cheia): o essencial e "quem x quem" e os contadores. O
+   retrato encolhe e os detalhes secundarios saem. */
+@container hlp (max-height: 260px) {
+  .hl-in { padding: 6px 8px; gap: 5px; font-size: 11px; }
+  .hl-face { height: 34px; }
+  .hl-face img { max-height: 34px; }
+  .hl-semfoto { width: 26px; height: 26px; font-size: 11px; }
+  .hl-sub, .hl-extra { display: none; }
+  .hl-stats { padding-top: 5px; }
+}
+
+/* Card muito baixo: sobra so a linha de cima e os numeros. Um retrato de 20px
+   nao se reconhece, e empurraria os contadores para fora. */
+@container hlp (max-height: 150px) {
+  .hl-in { padding: 4px 8px; gap: 3px; }
+  .hl-arena { gap: 4px; }
+  .hl-face { display: none; }
+  .hl-stat span { display: none; }
+}
+
+/* Card achatado (8 contas numa coluna so: sobram ~90px por card). Empilhar
+   nao cabe de jeito nenhum, entao as tres linhas viram uma: onde | quem x quem
+   | numeros. Melhor uma linha legivel do que tres com barra de rolagem. */
+@container hlp (max-height: 118px) {
+  .hl-in {
+    flex-direction: row; align-items: center; gap: 10px;
+    padding: 4px 8px; overflow: hidden;
+  }
+  .hl-in > * { width: auto; max-width: none; margin-inline: 0; }
+  /* 'onde' e o primeiro a ceder: o nome da ilha corta com elipse, enquanto
+     "quem x quem" e os numeros ficam inteiros. Num card estreito nada disso
+     cabe somado, e estourar daria barra de rolagem horizontal. */
+  .hl-onde { flex: 1 1 0; min-width: 0; display: flex; gap: 6px; overflow: hidden; }
+  .hl-arena { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 5px; }
+  .hl-lado { text-align: left; }
+  .hl-hp { width: 46px; }
+  .hl-stats { flex: 0 1 auto; min-width: 0; display: flex; gap: 10px; padding-top: 0; border-top: 0; overflow: hidden; }
+  .hl-stat { display: flex; gap: 3px; align-items: baseline; flex: none; }
+  .hl-stat b { display: inline; }
+  .hl-stat span { display: inline; font-size: 9px; }
+}
+
+/* Achatado E estreito: nao cabem os quatro contadores. Abates e capturas sao o
+   que diz se a conta esta rendendo; bits e xp saem. */
+@container hlp (max-height: 118px) and (max-width: 360px) {
+  .hl-stat:nth-child(n+3) { display: none; }
+  .hl-stat span { display: none; }
+}
+
+/* Card estreito: 4 contadores lado a lado viram tiras ilegiveis. */
+@container hlp (max-width: 240px) {
+  .hl-stats { grid-template-columns: repeat(2, 1fr); row-gap: 6px; }
+}
 .summary-list { max-height: 260px; overflow: auto; }
 
 /* -------------------------------------------------------------- bloqueio */

@@ -594,6 +594,7 @@ function createRuntime(acc) {
     dropAlerted: false, attention: false, thumb: null, thumbAt: 0, metrics: null,
     front: true, sleeping: false, goingToSleep: false, peeking: false, sleepOkAt: Infinity,
     headlessStatus: 'disconnected', headlessState: null, headlessError: null, headlessUltimoErro: null,
+  painel: null, // o resumo do card em headless (ver desenhaPainel)
   };
 
   const wv = document.createElement('webview');
@@ -648,7 +649,10 @@ function createRuntime(acc) {
     if (!isFree() || e.button !== 0 || e.target.closest('button')) return;
     startFree(e, id, 'move');
   });
-  r.tile = h('div', { class: 'tile', dataset: { id } }, head, h('div', { class: 'wv-wrap' }, wv, banner), handles);
+  // Onde o resumo da conta headless é desenhado. Fica fora do .wv-wrap porque
+  // esse é escondido no modo headless (não há webview para mostrar).
+  r.els.painel = h('div', { class: 'hl-painel' });
+  r.tile = h('div', { class: 'tile', dataset: { id } }, head, h('div', { class: 'wv-wrap' }, wv, banner), r.els.painel, handles);
   wireTileDrop(r.tile, id);
   updateTileMeta(acc, r);
 
@@ -671,6 +675,16 @@ function createRuntime(acc) {
     if (!rr) return;
     rr.headlessState = state;
     updateLive();
+  });
+
+  // O resumo do que a conta está fazendo. Em headless não há tela: é por aqui
+  // que se vê qual Digimon está lutando, contra quem e com que resultado.
+  const unsubHeadlessPainel = deck.onHeadlessPainel(({index, painel}) => {
+    if (index !== id) return;
+    const rr = rt.get(id);
+    if (!rr) return;
+    rr.painel = painel;
+    desenhaPainel(id);
   });
 
   // O motivo da falha. Sem isto, o card dizia só "disconnected" e a explicação
@@ -710,6 +724,8 @@ function createRuntime(acc) {
     // Ligar na transição para 'connected' cobre a conexão inicial e cada
     // reconexão — startTool é idempotente, então religar não duplica laço.
     if (status === 'connected' && antes !== 'connected') applyToolsHeadless(id);
+    // O painel mostra o status enquanto o primeiro 'estado' não chega.
+    if (!rr.painel) desenhaPainel(id);
     updateLive();
   });
 
@@ -718,6 +734,7 @@ function createRuntime(acc) {
     if (unsubHeadlessUpdate) unsubHeadlessUpdate();
     if (unsubHeadlessStatus) unsubHeadlessStatus();
     if (unsubHeadlessError) unsubHeadlessError();
+    if (unsubHeadlessPainel) unsubHeadlessPainel();
     if (isHeadless(id)) deck.headlessStop(id).catch(() => {});
   };
 
@@ -803,6 +820,90 @@ function applyAudio(id) {
 }
 
 // ---- Headless Mode (Fase 2)
+// Um retrato de Digimon. Sem imagem (sprite que não baixou, espécie fora do
+// catálogo) sobra a inicial do nome: um card sem foto ainda informa, um card
+// com buraco parece defeito.
+function retratoEl(nome, img, cls) {
+  const corpo = img
+    ? h('img', { src: img, alt: nome || '', draggable: 'false' })
+    : h('span', { class: 'hl-semfoto' }, String(nome || '?').slice(0, 1).toUpperCase());
+  return h('div', { class: 'hl-face ' + cls, title: nome || '' }, corpo);
+}
+
+/**
+ * Desenha o resumo da conta headless no card.
+ *
+ * Em headless não há webview: este painel é a única forma de ver o que a conta
+ * está fazendo. Mostra o Digimon ativo contra o alvo (como o Pio faz), onde
+ * está caçando, e os contadores da sessão.
+ *
+ * Reconstrói o conteúdo inteiro a cada chamada. Cabe porque o manager já limita
+ * a 1 resumo a cada 2 s por conta: um diff aqui seria complexidade sem ganho.
+ */
+function desenhaPainel(accId) {
+  const r = rt.get(accId);
+  if (!r || !r.els.painel) return;
+  const el = r.els.painel;
+
+  // Fora do headless o painel não aparece: a página é a própria informação.
+  if (!isHeadless(accId)) { el.replaceChildren(); return; }
+
+  const p = r.painel;
+  if (!p) {
+    // O socket pode estar de pé e o primeiro 'estado' ainda não ter chegado.
+    el.replaceChildren(h('div', { class: 'hl-vazio' },
+      r.headlessStatus === 'connected' ? 'Aguardando dados do jogo…' : (HEADLESS_ROTULO[r.headlessStatus] || '—')));
+    return;
+  }
+
+  const meu = p.digimon;
+  const alvo = p.alvo;
+
+  // A arena: eu × ele. A vida do meu entra como barra porque é o que se olha de
+  // relance para saber se a conta está em apuros.
+  const arena = h('div', { class: 'hl-arena' },
+    h('div', { class: 'hl-lado' },
+      retratoEl(meu && meu.nome, meu && meu.img, 'meu'),
+      h('div', { class: 'hl-nome' }, meu ? (meu.shiny ? '✦ ' : '') + meu.nome : '—'),
+      meu ? h('div', { class: 'hl-sub' }, `Nv ${fmtNum(meu.nivel)}`) : null,
+      meu && meu.hpMax ? h('div', { class: 'hl-hp', title: `${fmtNum(meu.hp)} / ${fmtNum(meu.hpMax)} HP` },
+        h('i', { style: { width: Math.max(0, Math.min(100, meu.hpPct)) + '%' },
+          class: meu.hpPct <= 30 ? 'baixo' : '' })) : null),
+    h('div', { class: 'hl-vs' }, 'vs'),
+    h('div', { class: 'hl-lado' },
+      retratoEl(alvo && alvo.nome, alvo && alvo.img, 'alvo'),
+      // O alvo "incerto" é quem mora na área, não quem está na frente agora: o
+      // socket só revela o nome do inimigo quando ele cai. Marcar com '~' evita
+      // afirmar o que não se sabe.
+      h('div', { class: 'hl-nome' + (alvo && !alvo.certo ? ' incerto' : '') },
+        alvo ? (alvo.certo ? alvo.nome : '~ ' + alvo.nome) : '—'),
+      alvo ? h('div', { class: 'hl-sub' }, alvo.certo ? 'último abate' : 'nativo da área') : null));
+
+  const f = p.farm;
+  const stat = (rotulo, valor) => h('div', { class: 'hl-stat' },
+    h('b', null, valor), h('span', null, rotulo));
+
+  // Tudo dentro de .hl-in, não direto no painel: o painel é o container das
+  // @container queries, e um elemento não pode ser estilizado pela própria
+  // query. Sem este wrapper, o layout compacto dos cards baixos não aplicava.
+  el.replaceChildren(h('div', { class: 'hl-in' },
+    h('div', { class: 'hl-onde' },
+      h('span', { class: 'hl-local' }, p.onde),
+      h('span', { class: 'hl-tempo' }, fmtDur((p.online || 0) * 1000))),
+    arena,
+    h('div', { class: 'hl-stats' },
+      stat('abates', fmtNum(f.abates)),
+      stat('capturas', fmtNum(f.capturas)),
+      stat('bits', fmtNum(f.bits)),
+      stat('xp tamer', fmtNum(f.xpTamer))),
+    // Só aparece quando há algo a dizer: linha fixa com '—' é ruído.
+    (f.shinyVistos || p.evpMax || p.evento) ? h('div', { class: 'hl-extra' },
+      f.shinyVistos ? h('span', null, `✦ ${fmtNum(f.shinyVistos)} shiny`) : null,
+      p.evpMax ? h('span', null, `EVP ${fmtNum(p.evp)}/${fmtNum(p.evpMax)}`) : null,
+      p.evento ? h('span', null, `${p.evento.nome} ${p.evento.pct}%`) : null) : null,
+  ));
+}
+
 async function toggleHeadlessMode(accId, enable) {
   const acc = accById(accId);
   const r = rt.get(accId);
@@ -828,6 +929,7 @@ async function toggleHeadlessMode(accId, enable) {
       // (O listener de status também liga em 'connected'; aqui cobre o caso de o
       // socket já estar de pé, onde a transição não acontece de novo.)
       applyToolsHeadless(accId);
+      desenhaPainel(accId);
       log('info', acc, 'Modo headless ativado');
     } else {
       // Saindo de headless
@@ -882,6 +984,10 @@ async function toggleHeadlessMode(accId, enable) {
 
       wv.setAttribute('src', url);
       r.tile.classList.remove('headless-mode');
+      // O resumo é do socket que acabou de cair: deixá-lo na tela mostraria
+      // dados congelados ao lado da página ao vivo.
+      r.painel = null;
+      desenhaPainel(accId);
       log('info', acc, 'Modo webview restaurado');
     }
     return true;
