@@ -53,6 +53,9 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       huntSlug: null,
       campo: null,
       offCfg: null,
+      // O lobby do Labirinto da Guild. Chega no pacote 'lab' (resposta de
+      // 'lab.info') e é o que a ferramenta de labirinto lê para decidir.
+      lab: null,
     };
 
     this.sessionStartTime = Date.now();
@@ -78,12 +81,15 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       this.cookieHeader = await getCookieHeader(this.partition);
       if (!this.cookieHeader) {
         this.setStatus('failed');
-        this.emit('error', 'Sem sessão nesta conta: abra a conta normalmente e faça login uma vez antes de usar o headless');
+        // A causa mais comum de o headless não conectar. O modo não tem como
+        // fazer login (o cookie é HttpOnly, criado pela página), então ele
+        // depende de um login feito antes na webview.
+        this.falhar('Sem login nesta conta. Deixe-a em modo normal, entre no jogo, e então ligue o headless.');
         return;
       }
     } catch (err) {
       this.setStatus('failed');
-      this.emit('error', `Erro ao ler cookies: ${err.message}`);
+      this.falhar(`Erro ao ler cookies: ${err.message}`);
       return;
     }
 
@@ -105,7 +111,7 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       this.ws.onerror = (err) => this.onError(err);
     } catch (err) {
       this.setStatus('failed');
-      this.emit('error', `Erro ao criar WebSocket: ${err.message}`);
+      this.falhar(`Erro ao criar WebSocket: ${err.message}`);
     }
   }
 
@@ -162,6 +168,27 @@ class DigiiIdleHeadlessClient extends EventEmitter {
         this.emit('offline-cfg', msg);
         break;
 
+      // O lobby do Labirinto. Conferido numa conta real: o pacote se chama
+      // 'lab' (não 'lab.info', que é só o pedido) e traz
+      // bauHoje, cfg, dif, eu, fila, gerente, guild, noLobby, pronto, t, ultimo.
+      case 'lab':
+        this.state.lab = msg;
+        this.emit('lab', msg);
+        break;
+
+      // O servidor avisa que o lobby mudou sem mandar o conteúdo: quem quiser
+      // o estado novo pede 'lab.info' de novo (é o que o jogo faz).
+      case 'lab.mudou':
+        this.emit('lab-mudou', msg);
+        break;
+
+      // A corrida acabou. Vem logo antes de a conta ser mandada ao Hospital,
+      // então é o gatilho mais cedo que existe para o retorno à hunt.
+      case 'lab.fim':
+        this.state.lab = null;
+        this.emit('lab-fim', msg);
+        break;
+
       case 'batalha':
         // Chega mesmo com a cena desligada. Cada evento com morto:true traz em
         // 'para' o id do inimigo que caiu — é a via do scan sem a cena.
@@ -193,14 +220,14 @@ class DigiiIdleHeadlessClient extends EventEmitter {
     if (ev.code === 4000) {
       this.autoReconnect = false;
       this.setStatus('failed');
-      this.emit('error', 'Jogo aberto em outro lugar (code 4000)');
+      this.falhar('Jogo aberto em outro lugar (code 4000)');
       return;
     }
 
     if (ev.code === 4001) {
       this.autoReconnect = false;
       this.setStatus('failed');
-      this.emit('error', 'Conta bloqueada pelo administrador (code 4001)');
+      this.falhar('Conta bloqueada pelo administrador (code 4001)');
       return;
     }
 
@@ -215,10 +242,10 @@ class DigiiIdleHeadlessClient extends EventEmitter {
   }
 
   onError(err) {
-    this.lastError = err?.message || String(err);
-    if (this.status !== 'failed') {
-      this.emit('error', `WebSocket error: ${this.lastError}`);
-    }
+    const motivo = err?.message || String(err);
+    // Não sobrescreve um 'failed' anterior: o primeiro erro é o que explica a
+    // falha; os seguintes são consequência dele.
+    if (this.status !== 'failed') this.falhar(`Erro de conexão: ${motivo}`);
   }
 
   startPingTimer() {
@@ -272,6 +299,15 @@ class DigiiIdleHeadlessClient extends EventEmitter {
     }
   }
 
+  // Todo erro passa por aqui, para o motivo ficar guardado além do evento.
+  // Antes só o erro de socket gravava lastError, então getStatus() devolvia
+  // error: null nos casos mais comuns — como a conta sem sessão — e quem
+  // consultasse o status depois não tinha como saber o que falhou.
+  falhar(mensagem) {
+    this.lastError = mensagem;
+    this.emit('error', mensagem);
+  }
+
   disconnect() {
     this.autoReconnect = false;
     this.stopPingTimer();
@@ -287,7 +323,10 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       }
       this.ws = null;
     }
-    this.setStatus('disconnected');
+    // 'failed' é um diagnóstico (sem sessão, credencial ruim) e precisa
+    // sobreviver ao desligamento: sobrescrevê-lo com 'disconnected' apagava o
+    // motivo justamente quando a pessoa ia ler o card.
+    if (this.status !== 'failed') this.setStatus('disconnected');
 
     // Para todas as ferramentas
     for (const tool of this.tools.values()) {

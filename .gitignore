@@ -19,3 +19,5 @@ scripts/
 # Relatorios dos testes headless (o stdout do Electron no Windows se perde, entao
 # eles escrevem em arquivo). Podem conter nick e saldo da conta testada.
 *-report.txt
+# Idem: saída do test-lab-campos, traz o nick da conta.
+lab-campos.txt

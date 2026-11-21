@@ -16,6 +16,12 @@
 
 const catalogo = require('./catalogo');
 
+// Janela usada para espalhar a PRIMEIRA ação de cada ferramenta depois de
+// conectar. Com 4 contas, cada uma estreia num ponto diferente destes ~40 s
+// (metade do deslocamento fixo da conta, metade sorteada), em vez de todas
+// agirem no mesmo segundo do boot.
+const ENTRADA_SPREAD_MS = 80000;
+
 class HeadlessTool {
   constructor(client, toolId, config) {
     this.client = client;
@@ -40,7 +46,10 @@ class HeadlessTool {
         this.inicioFalhou = true;
         this.log(`não consegui preparar (${err.message}). Por segurança, não vou agir.`);
       })
-      .finally(() => { if (this.running) this.agendar(this.primeiroAtrasoMs()); });
+      // O boot é o pior momento para coincidir: as contas sobem juntas e o
+      // primeiro atraso é curto, então 25% dele espalharia pouco. Aqui o jitter
+      // é calculado sobre uma janela própria, bem maior que o atraso em si.
+      .finally(() => { if (this.running) this.agendar(this.primeiroAtrasoMs() + this.jitterMs(ENTRADA_SPREAD_MS)); });
   }
 
   stop() {
@@ -57,11 +66,45 @@ class HeadlessTool {
   /** Espera antes do primeiro passo, para não agir no susto ao conectar. */
   primeiroAtrasoMs() { return 5000; }
 
+  /**
+   * Espalha no tempo o que, sem isto, sairia no mesmo instante em todas as
+   * contas.
+   *
+   * Várias contas sobem juntas (boot do app, religação depois de queda de rede)
+   * e todas as ferramentas usam o mesmo intervalo configurado. Sem espalhar, as
+   * 4 contas mandam o mesmo comando no mesmo segundo, repetidamente — um padrão
+   * que nenhum jogador produz.
+   *
+   * São dois componentes, e os dois são necessários:
+   *   - base: um deslocamento FIXO por conta+ferramenta. É o que impede que as
+   *     contas fiquem em fase. Só aleatório não resolve: a cada volta elas se
+   *     reaproximariam e, no agregado, voltariam a coincidir.
+   *   - sorteio: um ruído por volta, para que o intervalo de cada conta também
+   *     não seja um relógio exato.
+   */
+  jitterMs(baseMs) {
+    const spread = Math.max(1500, Math.min(45000, Math.round(baseMs * 0.25)));
+    const semente = `${this.client && this.client.index}:${this.toolId}`;
+    let h = 0;
+    for (const ch of String(semente)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const fixo = (h % 1000) / 1000;                  // 0..1, estável para esta conta
+    const base = Math.round(spread * fixo);
+    const sorteio = Math.round(Math.random() * spread);
+    return base + sorteio;
+  }
+
   agendar(ms) {
     if (!this.running) return;
     if (this.loopTimer) clearTimeout(this.loopTimer);
-    this.loopTimer = setTimeout(() => this.loop(), ms);
+    this.loopTimer = setTimeout(() => this.loop(), ms + this.jitterMs(ms));
     if (this.loopTimer.unref) this.loopTimer.unref();
+  }
+
+  /** Pausa curta antes de um comando, para duas contas não o mandarem juntas. */
+  async respirar(maxMs = 4000) {
+    const ms = 250 + Math.round(Math.random() * Math.max(0, maxMs - 250));
+    await new Promise((r) => setTimeout(r, ms));
+    return this.running && !this.desligada;
   }
 
   async loop() {
@@ -280,6 +323,45 @@ class ToolHunt extends HeadlessTool {
     super(client, 'hunt', config);
     this.ilhaPorSlug = {};
     this.ultimaTroca = 0;
+    // A última área em que a conta estava de fato caçando. É o que devolve a
+    // conta à hunt original quando ela sai do Labirinto pelo Hospital.
+    this.ultimaHunt = null;
+  }
+
+  // Anota a hunt enquanto ela é verdade. Chamado a cada passo e também a cada
+  // 'estado', porque uma corrida de Labirinto pode começar e acabar entre dois
+  // passos (o intervalo padrão é de 5 min) — sem o gancho no 'estado' a memória
+  // nunca veria a hunt de antes.
+  lembrarHunt(st) {
+    if (st && st.local === 'hunt' && st.huntSlug) this.ultimaHunt = st.huntSlug;
+  }
+
+  start() {
+    // O gancho tem de ser removido no stop(): sem isso, religar a ferramenta
+    // acumularia um ouvinte por religação no mesmo client.
+    this.aoEstado = () => this.lembrarHunt(this.client && this.client.state);
+    this.client.on('update', this.aoEstado);
+    this.lembrarHunt(this.client && this.client.state);
+    super.start();
+  }
+
+  stop() {
+    if (this.aoEstado) {
+      this.client.removeListener('update', this.aoEstado);
+      this.aoEstado = null;
+    }
+    super.stop();
+  }
+
+  /**
+   * O slug para onde voltar ao sair do Labirinto/Hospital.
+   * Preferimos o que vimos com os próprios olhos; se a ferramenta subiu depois
+   * de a conta já estar na praça (religação, app reaberto), o próprio jogo ainda
+   * guarda a última área em huntSlug — é a mesma fonte que o Mapa usa para
+   * marcar "você estava aqui". Com as duas, o retorno nunca fica sem destino.
+   */
+  alvoDeVolta(st) {
+    return this.ultimaHunt || (st && st.huntSlug) || null;
   }
 
   async preparar() {
@@ -329,6 +411,7 @@ class ToolHunt extends HeadlessTool {
     if (this.desligada) return;
     const E = this.estado;
     if (!E) return;
+    this.lembrarHunt(E);
 
     // --- As guardas, antes de qualquer coisa ---
     if (E.local === 'lab') return;                              // Labirinto: não tocamos
@@ -336,6 +419,29 @@ class ToolHunt extends HeadlessTool {
     if (!E.ativoId) return;                                     // sem Digimon em campo
     if (E.travaSaidaAte && E.travaSaidaAte > Date.now()) return; // trava de saída do servidor
     if (Date.now() - this.ultimaTroca < 60000) return;           // respiro depois de trocar
+
+    // Voltar à hunt original não depende da lista do servidor: o destino já é
+    // conhecido. Resolver isto ANTES do pedirCfg() é o que torna o retorno
+    // confiável — se 'offline.cfg' não responder (5 s de espera, servidor
+    // ocupado, religação), o caminho antigo desistia e a conta passava o ciclo
+    // inteiro parada no Hospital.
+    if (E.local === 'praca' && this.config.voltarUltima !== false) {
+      const alvo = this.alvoDeVolta(E);
+      if (alvo) {
+        // Um grupo que faz Labirinto junto cai no Hospital junto. Sem este
+        // respiro, as 4 contas mandariam hunt.select no mesmo instante.
+        if (!(await this.respirar())) return;
+        const B = this.estado;
+        if (!B || B.local !== 'praca' || !B.ativoId) return; // saiu sozinho na espera
+        if (B.travaSaidaAte && B.travaSaidaAte > Date.now()) return;
+        if (!this.send('hunt.select', { slug: alvo })) return;
+        this.ultimaTroca = Date.now();
+        this.log(`estava parado no Hospital/praça; voltei para a última hunt (${alvo})`);
+        return;
+      }
+      // Sem destino conhecido (conta nova, nunca caçou): cai para a recomendada
+      // abaixo, que é melhor do que deixar a conta parada.
+    }
 
     const cfg = await this.pedirCfg();
     if (!cfg || !Array.isArray(cfg.hunts) || !cfg.hunts.length) return;
@@ -449,6 +555,143 @@ class ToolEggs extends HeadlessTool {
   }
 }
 
+// ------------------------------------------------------------- auto labirinto
+// Mantém a conta no lobby do Labirinto da Guild, para ela nunca perder uma
+// corrida que a guild comece.
+//
+// Conferido numa conta real (test-lab-campos.js, conta ms1):
+//   - 'lab.info' PEDE o lobby; a resposta é o pacote 't: "lab"', com os campos
+//     bauHoby/cfg/dif/eu/fila/gerente/guild/noLobby/pronto/ultimo;
+//   - entrar é enviar('lab.entrar'); sair é 'lab.sair' (guild.js:547-548);
+//   - 'noLobby' diz se JÁ estamos no lobby — é o que evita reentrar em laço;
+//   - 'eu' só existe com um Digimon que possa lutar; sem ele o jogo desabilita
+//     o botão de entrar, então mandar o comando seria recusado;
+//   - 'pronto' false = o mapa do Labirinto não está instalado no servidor;
+//   - 'run' presente e sem 'acabou' = corrida rodando: o lobby está fechado;
+//   - 'cfg.max' é o teto do lobby (30 na conta observada).
+//
+// O que esta ferramenta NÃO faz, de propósito:
+//   - não manda 'lab.iniciar': começar exige ser dono ou sub-dono ('gerente'),
+//     e decidir a hora de começar é do jogador, não nossa;
+//   - não manda 'lab.dificuldade': mexer na dificuldade do grupo afeta todos;
+//   - não entra em corrida já em andamento com 'lab.voltar' sem ser pedido.
+class ToolLab extends HeadlessTool {
+  constructor(client, config) {
+    super(client, 'lab', config);
+    this.ultimaEntrada = 0;
+    this.ultimoPedido = 0;
+  }
+
+  getInterval() {
+    return Math.max(30000, (this.config.intervaloMin || 2) * 60000);
+  }
+
+  primeiroAtrasoMs() { return 25000; }
+
+  start() {
+    // O servidor avisa 'lab.mudou' quando o lobby muda (alguém entrou, a
+    // corrida acabou). Reagir a isso é o que torna a inscrição rápida sem
+    // precisar de um intervalo curto batendo no servidor.
+    this.aoMudou = () => {
+      if (!this.running || this.desligada) return;
+      // Um respiro antes, senão todas as contas da guild reagiriam ao mesmo
+      // aviso no mesmo instante.
+      this.respirar(6000).then((seguir) => { if (seguir) this.passoSeguro(); });
+    };
+    this.client.on('lab-mudou', this.aoMudou);
+    super.start();
+  }
+
+  stop() {
+    if (this.aoMudou) {
+      this.client.removeListener('lab-mudou', this.aoMudou);
+      this.aoMudou = null;
+    }
+    super.stop();
+  }
+
+  async passoSeguro() {
+    try { await this.step(); } catch (err) { this.log('passo falhou:', err.message); }
+  }
+
+  /** Pede o lobby e espera a resposta nova, como a hunt faz com offline.cfg. */
+  async pedirLab() {
+    const velho = this.client.state.lab;
+    this.client.state.lab = null;
+    if (!this.send('lab.info', {})) {
+      this.client.state.lab = velho;
+      return velho;
+    }
+    for (let i = 0; i < 20 && !this.client.state.lab; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    if (!this.client.state.lab) this.client.state.lab = velho;
+    return this.client.state.lab;
+  }
+
+  /**
+   * Por que não entraríamos no lobby agora.
+   * Devolve null quando pode entrar, ou o motivo (para o log) quando não.
+   * Separado do step() porque é exatamente isto que os testes verificam.
+   */
+  motivoParaNaoEntrar(L, E) {
+    if (!L) return 'o servidor não respondeu o lobby';
+    if (L.guild === false) return 'a conta não está numa guild';
+    if (!L.pronto) return 'o mapa do Labirinto não está instalado no servidor';
+    if (L.noLobby) return null; // já estamos: o step trata como "nada a fazer"
+    if (!L.eu) return 'sem Digimon na equipe que possa lutar';
+    if (L.run && !L.run.acabou) return 'uma corrida está em andamento (o lobby reabre quando ela acabar)';
+    const max = (L.cfg && L.cfg.max) || 0;
+    if (max && Array.isArray(L.fila) && L.fila.length >= max) return `o lobby está cheio (${L.fila.length}/${max})`;
+    // No Labirinto a conta já está jogando: não há lobby para entrar.
+    if (E && E.local === 'lab') return 'a conta já está dentro do Labirinto';
+    return null;
+  }
+
+  async step() {
+    if (this.desligada) return;
+    const E = this.estado;
+    if (!E) return;
+
+    // Dentro do Labirinto não há nada a inscrever.
+    if (E.local === 'lab') return;
+    // Respiro depois de entrar: evita remandar o comando enquanto o servidor
+    // ainda não devolveu o lobby com noLobby true.
+    if (Date.now() - this.ultimaEntrada < 30000) return;
+
+    const L = await this.pedirLab();
+    if (!L) return;
+
+    if (L.noLobby) return; // já inscrito: é o estado que queremos
+
+    const motivo = this.motivoParaNaoEntrar(L, this.estado);
+    if (motivo) {
+      // Só loga quando o motivo muda, senão polui o log a cada volta.
+      if (this.ultimoMotivo !== motivo) {
+        this.ultimoMotivo = motivo;
+        this.log(`não entrei no lobby: ${motivo}`);
+      }
+      return;
+    }
+    this.ultimoMotivo = null;
+
+    // Um grupo inteiro reage ao mesmo 'lab.mudou': sem este respiro as contas
+    // mandariam lab.entrar no mesmo instante.
+    if (!(await this.respirar(5000))) return;
+
+    // Relê: na espera a corrida pode ter começado ou o lobby enchido.
+    const L2 = this.client.state.lab;
+    const motivo2 = this.motivoParaNaoEntrar(L2 || L, this.estado);
+    if (motivo2 || (L2 && L2.noLobby)) return;
+
+    if (!this.send('lab.entrar', {})) return;
+    this.ultimaEntrada = Date.now();
+    const n = Array.isArray(L.fila) ? L.fila.length : '?';
+    const max = (L.cfg && L.cfg.max) || '?';
+    this.log(`entrei no lobby do Labirinto (${n}/${max} antes de mim)`);
+  }
+}
+
 function createHeadlessTool(client, toolId, config) {
   if (!config) return null;
   switch (toolId) {
@@ -456,8 +699,9 @@ function createHeadlessTool(client, toolId, config) {
     case 'refill': return new ToolRefill(client, config);
     case 'hunt': return new ToolHunt(client, config);
     case 'eggs': return new ToolEggs(client, config);
+    case 'lab': return new ToolLab(client, config);
     default: return null;
   }
 }
 
-module.exports = { HeadlessTool, ToolScan, ToolRefill, ToolHunt, ToolEggs, createHeadlessTool };
+module.exports = { HeadlessTool, ToolScan, ToolRefill, ToolHunt, ToolEggs, ToolLab, createHeadlessTool };

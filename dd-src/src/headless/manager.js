@@ -6,10 +6,21 @@ const { DigiiIdleHeadlessClient } = require('./client');
  * Gerenciador de clientes headless. Mantém múltiplas contas rodando,
  * agrega eventos, sincroniza com a UI via IPC.
  */
+// Espera entre a entrada de uma conta e a da seguinte. Quem liga 4 contas de
+// uma vez (botão de ligar tudo, boot com bootHeadless) faria 4 autenticações no
+// mesmo instante, do mesmo IP — o padrão mais visível que este app pode
+// produzir. A faixa é sorteada por conta, então a sequência nunca é a mesma.
+const ENTRADA_MIN_MS = 3000;
+const ENTRADA_MAX_MS = 11000;
+
 class HeadlessManager extends EventEmitter {
   constructor() {
     super();
     this.clients = new Map(); // accountIndex -> DigiiIdleHeadlessClient
+    // Quando a próxima conta pode entrar. Cada start() reserva o seu lugar na
+    // fila, então a ordem de chegada é respeitada sem ninguém ficar sem vez.
+    this.proximaEntrada = 0;
+    this.entradas = new Map(); // accountIndex -> timer da entrada agendada
   }
 
   /**
@@ -52,7 +63,27 @@ class HeadlessManager extends EventEmitter {
     });
 
     this.clients.set(accountIndex, client);
-    client.connect();
+
+    // A primeira conta entra na hora; cada seguinte espera a sua vez na fila.
+    const agora = Date.now();
+    const quando = Math.max(agora, this.proximaEntrada);
+    const espera = quando - agora;
+    const passo = ENTRADA_MIN_MS + Math.round(Math.random() * (ENTRADA_MAX_MS - ENTRADA_MIN_MS));
+    this.proximaEntrada = quando + passo;
+
+    if (!espera) {
+      client.connect();
+    } else {
+      console.log(`[headless] conta ${accountIndex} entra em ${Math.round(espera / 1000)}s (entrada escalonada)`);
+      const t = setTimeout(() => {
+        this.entradas.delete(accountIndex);
+        // Pode ter sido parada enquanto esperava: só conecta se ainda é a conta
+        // registrada neste índice.
+        if (this.clients.get(accountIndex) === client) client.connect();
+      }, espera);
+      if (t.unref) t.unref();
+      this.entradas.set(accountIndex, t);
+    }
 
     return client;
   }
@@ -61,6 +92,8 @@ class HeadlessManager extends EventEmitter {
    * Para um cliente headless.
    */
   stop(accountIndex) {
+    const t = this.entradas.get(accountIndex);
+    if (t) { clearTimeout(t); this.entradas.delete(accountIndex); }
     const client = this.clients.get(accountIndex);
     if (client) {
       client.disconnect();
@@ -72,10 +105,13 @@ class HeadlessManager extends EventEmitter {
    * Para todos os clientes.
    */
   stopAll() {
+    for (const t of this.entradas.values()) clearTimeout(t);
+    this.entradas.clear();
     for (const [index, client] of this.clients) {
       client.disconnect();
     }
     this.clients.clear();
+    this.proximaEntrada = 0;
   }
 
   /**

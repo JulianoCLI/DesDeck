@@ -18,6 +18,33 @@ A conta **precisa ter feito login na webview pelo menos uma vez**. O headless n�
 tem tela de login: ele reusa o cookie de sessão da partição
 `persist:acc-<id>`. Sem o cookie `digiclone_sessao`, ele não conecta e diz isso.
 
+### Os três estados de uma conta
+
+`acc.headless` não é um booleano de dois valores — são três, porque a escolha
+feita numa conta tem que poder contrariar a preferência geral:
+
+| valor | efeito |
+|---|---|
+| `true` | headless, mesmo com `bootHeadless` desligado |
+| `false` | webview, mesmo com `bootHeadless` **ligado** |
+| `undefined` | segue `bootHeadless` |
+
+Sem o `false` explícito não havia como tirar **uma** conta do headless com a
+preferência ligada: a preferência vencia sempre e o botão de energia não saía do
+modo. Contas salvas antes disso migram com `false -> undefined`, porque aquele
+`false` era só o padrão antigo, não uma escolha.
+
+### Quando não conecta
+
+O card mostra `⚡ falhou` e o **motivo** no banner. O status vem do socket,
+traduzido: `desligado`, `conectando…`, `Headless`, `reconectando…`, `falhou`.
+Todo erro passa por `client.falhar()`, que guarda o motivo em `lastError` além de
+emitir o evento, e `disconnect()` não sobrescreve um `failed` — senão o
+diagnóstico desaparecia justamente quando a pessoa fosse ler o card.
+
+A causa mais comum é a conta nunca ter feito login; a mensagem diz o que fazer.
+Para ver isso de fora, sem abrir o app: `diag-sessoes.js` (abaixo).
+
 ## Como funciona
 
 ```
@@ -77,6 +104,22 @@ cd dd-src
 # Offline, sem conta, rápido. Pega handler IPC faltando.
 node test-ipc-tools.js
 
+# Os três estados de "esta conta roda em headless?". Extrai isHeadless()
+# do app.js e testa o código de verdade, não uma cópia.
+node test-modo-headless.js
+
+# O boot com bootHeadless ligado: roda o DesDeck real num perfil
+# separado e conta processos de renderer. 1 = só a janela (certo),
+# 3 = a janela + as webviews das contas (o bug das duas conexões).
+node test-boot-headless.js
+
+# Qual modo e qual sessão cada conta real tem. Read-only.
+.\node_modules\electron\dist\electron.exe diag-sessoes.js
+
+# Ligar o headless na mão, pelo caminho real, mostrando os eventos que
+# a UI receberia e por quê falhou. Não muta a conta.
+.\node_modules\electron\dist\electron.exe test-toggle-headless.js "DigiIdle 1"
+
 # O porte do tier contra o módulo do próprio jogo, em 4005 ovos.
 .\node_modules\electron\dist\electron.exe verify-tier.js
 
@@ -104,6 +147,10 @@ perde quando o processo sai logo depois de escrever. Os relatórios estão no
   dentro do filtro de tier.
 - **A corrente até a UI:** os 5 canais IPC existem dos dois lados, religar uma
   ferramenta troca a config sem duplicar o laço, e sem socket nada é enviado.
+- **O boot em headless:** com `bootHeadless` ligado e 2 contas, sobe 1 renderer
+  (a janela) e nenhuma página de conta — nenhum `src` é setado no `<webview>`.
+- **A falha sem login:** o toggle manual numa conta sem sessão termina em
+  `failed`, com o motivo preservado no `lastError` para o card exibir.
 
 ## A economia de RAM, medida
 

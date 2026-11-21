@@ -64,6 +64,7 @@ const ICONS = {
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
   move: '<path d="M12 3v18M3 12h18"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 5.2a3.5 3.5 0 0 1 0 5.6"/><path d="M17.5 14.2a6.5 6.5 0 0 1 4 5.8"/>',
 };
 function icon(name, size = 16) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -86,6 +87,18 @@ const logoEl = () => h('img', { class: 'logo', src: 'mark.png', alt: '', draggab
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const pad2 = (n) => String(n).padStart(2, '0');
+
+const fmtNum = (n) => Number(n || 0).toLocaleString('pt-BR');
+
+// Os status do socket headless, em português. No card eles apareciam crus
+// ('disconnected', 'failed'), o que não dizia nada a quem não leu o código.
+const HEADLESS_ROTULO = {
+  disconnected: 'desligado',
+  connecting: 'conectando…',
+  connected: 'Headless',
+  reconnecting: 'reconectando…',
+  failed: 'falhou',
+};
 
 function fmtDur(ms) {
   if (!ms || ms < 0) ms = 0;
@@ -197,10 +210,20 @@ function scriptsFor(url, accId) {
 }
 
 // Esta conta está rodando sem webview (modo headless)?
+//
+// São três estados, não dois, e por isso acc.headless é tri-estado:
+//   true      -> headless, independente da preferência geral
+//   false     -> webview, independente da preferência geral (a pessoa saiu do
+//                headless nesta conta mesmo com "iniciar todas em headless")
+//   undefined -> segue a preferência geral
+//
+// Sem o false explícito, com bootHeadless ligado não havia como tirar UMA conta
+// do headless: a preferência vencia sempre e o botão de energia não saía do modo.
 function isHeadless(accId) {
   const acc = state.accounts?.find((a) => a.id === accId);
   if (!acc) return false;
-  return !!(acc.headless || state.settings?.bootHeadless);
+  if (typeof acc.headless === 'boolean') return acc.headless;
+  return !!state.settings?.bootHeadless;
 }
 
 // Liga/desliga uma ferramenta numa conta headless. A config é a mesma da versão
@@ -322,7 +345,9 @@ const DEFAULT_SETTINGS = {
 const DEFAULT_ACCOUNT = {
   enabled: true, muted: false, zoom: 1, autoReloadMin: 0, freezeMin: 0, freezeAction: 'alert', watchWords: [], notes: '',
   alwaysRender: false, color: null,
-  headless: false,
+  // Tri-estado (ver isHeadless): undefined = segue "iniciar todas em headless".
+  // false aqui travaria toda conta nova fora do modo, ignorando a preferência.
+  headless: undefined,
 };
 
 function defaultState() {
@@ -351,6 +376,11 @@ function normalize(s) {
     ...DEFAULT_ACCOUNT, ...a,
     // Contas de antes da economia: só o DigiIdle sabe rodar oculto; outros jogos continuam desenhando.
     alwaysRender: typeof a.alwaysRender === 'boolean' ? a.alwaysRender : !isDigi(a.url),
+    // headless virou tri-estado. O 'false' das contas antigas era só o padrão de
+    // antes, não uma escolha — mantê-lo travaria todas elas fora de "iniciar
+    // todas em headless". Então false volta a ser "segue a preferência"; só o
+    // true (que só existe se a pessoa ligou o modo) é preservado.
+    headless: a.headless === true ? true : undefined,
     color: accColor(a),
     stats: { onlineMs: 0, drops: 0, recoveries: 0, ...(a.stats || {}) },
   }));
@@ -563,7 +593,7 @@ function createRuntime(acc) {
     lastHash: null, hashSince: Date.now(), frozenAlerted: false, wordActive: {}, wordAlertAt: {},
     dropAlerted: false, attention: false, thumb: null, thumbAt: 0, metrics: null,
     front: true, sleeping: false, goingToSleep: false, peeking: false, sleepOkAt: Infinity,
-    headlessStatus: 'disconnected', headlessState: null,
+    headlessStatus: 'disconnected', headlessState: null, headlessError: null,
   };
 
   const wv = document.createElement('webview');
@@ -600,7 +630,10 @@ function createRuntime(acc) {
     iconBtn('reload', 'Recarregar (F5)', () => manualReload(id)),
     muteBtn,
     focusBtn,
-    iconBtn('power', 'Alterna modo headless', () => toggleHeadlessMode(id, !acc.headless)),
+    // isHeadless() e não acc.headless: com "iniciar todas em headless" a conta
+    // está em headless com acc.headless false, e o botão tentava ENTRAR no modo
+    // em que ela já estava — não saía nunca.
+    iconBtn('power', 'Alterna modo headless', () => toggleHeadlessMode(id, !isHeadless(id))),
     iconBtn('more', 'Mais opções', (e) => openAccountMenu(id, e.currentTarget))));
   const banner = h('div', { class: 'banner' },
     icon('reload'),
@@ -640,12 +673,29 @@ function createRuntime(acc) {
     updateLive();
   });
 
+  // O motivo da falha. Sem isto, o card dizia só "disconnected" e a explicação
+  // do client ("abra a conta e faça login uma vez") era emitida e jogada fora —
+  // a pessoa via a conta não conectar sem nenhuma pista do porquê.
+  const unsubHeadlessError = deck.onHeadlessError(({index, message}) => {
+    if (index !== id) return;
+    const rr = rt.get(id);
+    if (!rr) return;
+    rr.headlessError = message;
+    const acc2 = accById(id);
+    if (acc2) {
+      log('erro', acc2, `Headless: ${message}`);
+      raiseAlert(acc2, 'Headless', message);
+    }
+    updateLive();
+  });
+
   const unsubHeadlessStatus = deck.onHeadlessStatus(({index, status}) => {
     if (index !== id) return;
     const rr = rt.get(id);
     if (!rr) return;
     const antes = rr.headlessStatus;
     rr.headlessStatus = status;
+    if (status === 'connected') rr.headlessError = null; // conectou: erro velho não vale mais
     // As ferramentas só agem com o socket de pé, e o socket pode cair e voltar.
     // Ligar na transição para 'connected' cobre a conexão inicial e cada
     // reconexão — startTool é idempotente, então religar não duplica laço.
@@ -657,8 +707,25 @@ function createRuntime(acc) {
   r._cleanup = () => {
     if (unsubHeadlessUpdate) unsubHeadlessUpdate();
     if (unsubHeadlessStatus) unsubHeadlessStatus();
+    if (unsubHeadlessError) unsubHeadlessError();
     if (isHeadless(id)) deck.headlessStop(id).catch(() => {});
   };
+
+  // Conta que abre em headless: a página NÃO é carregada.
+  //
+  // O servidor aceita uma conexão por conta. Carregar a página aqui abriria um
+  // segundo socket para a mesma conta e o jogo derrubaria um dos dois (code
+  // 4000, "jogo aberto em outro lugar") — era o bug em que o card dizia
+  // "headless" enquanto a tela carregava e o jogo reclamava de sessão
+  // duplicada. Fora isso, levantar o Chromium para derrubá-lo em seguida
+  // desperdiça justamente a RAM que o modo existe para poupar.
+  //
+  // O <webview> fica no DOM sem src (não custa processo nenhum enquanto não
+  // navega), pronto para toggleHeadlessMode() usar se a pessoa sair do headless.
+  if (isHeadless(id)) {
+    r.tile.classList.add('headless-mode');
+    return r;
+  }
 
   // O primeiro carregamento usa o atributo "src": loadURL() só funciona depois do dom-ready,
   // e o dom-ready só acontece quando o webview tem uma página para carregar. Sem src, nada carrega.
@@ -731,8 +798,14 @@ async function toggleHeadlessMode(accId, enable) {
   const r = rt.get(accId);
   if (!acc || !r) return false;
 
+  // O estado real, não só a marca da conta: com bootHeadless ligado a conta roda
+  // em headless com acc.headless false. Comparar com a marca fazia os dois ramos
+  // serem pulados, e o botão não respondia.
+  const agora = isHeadless(accId);
+  if (enable === agora) return true; // já está no modo pedido
+
   try {
-    if (enable && !acc.headless) {
+    if (enable) {
       // Entrando em headless
       console.log(`[headless] ativando para ${acc.name}`);
       acc.headless = true;
@@ -746,7 +819,7 @@ async function toggleHeadlessMode(accId, enable) {
       // socket já estar de pé, onde a transição não acontece de novo.)
       applyToolsHeadless(accId);
       log('info', acc, 'Modo headless ativado');
-    } else if (!enable && acc.headless) {
+    } else {
       // Saindo de headless
       console.log(`[headless] desativando para ${acc.name}`);
       // Para as ferramentas do socket antes de derrubá-lo. Sem isto, elas
@@ -758,6 +831,8 @@ async function toggleHeadlessMode(accId, enable) {
         try { await deck.headlessToolStop(accId, t.id); } catch { /* já estava parada */ }
       }
       await deck.headlessStop(accId);
+      // false explícito, não undefined: é uma escolha da pessoa para ESTA conta,
+      // e precisa vencer a preferência "iniciar todas em headless".
       acc.headless = false;
       save();
 
@@ -767,18 +842,23 @@ async function toggleHeadlessMode(accId, enable) {
         return false;
       }
 
-      const wv = document.createElement('webview');
-      wv.setAttribute('partition', `persist:acc-${accId}`);
-      wv.setAttribute('allowpopups', '');
-      wv.setAttribute('webpreferences', 'backgroundThrottling=yes');
-      r.wv = wv;
+      // Quando a conta abriu em headless, o <webview> já está no DOM sem src e
+      // com os eventos ligados: criar outro deixaria dois no mesmo card, e o
+      // antigo apareceria como uma faixa morta. Só criamos se não houver.
+      let wv = r.wv;
+      if (!wv) {
+        wv = document.createElement('webview');
+        wv.setAttribute('partition', `persist:acc-${accId}`);
+        wv.setAttribute('allowpopups', '');
+        wv.setAttribute('webpreferences', 'backgroundThrottling=yes');
+        r.wv = wv;
+        const wvWrap = r.tile.querySelector('.wv-wrap');
+        if (wvWrap) wvWrap.insertBefore(wv, wvWrap.firstChild);
+        wireWebview(acc, r, wv);
+      }
       r.wcId = null;
       r.ready = false;
       r.sleepOkAt = Infinity;
-
-      const wvWrap = r.tile.querySelector('.wv-wrap');
-      if (wvWrap) wvWrap.insertBefore(wv, wvWrap.firstChild);
-      wireWebview(acc, r, wv);
 
       const group = groupOf(acc);
       if (group?.proxy) {
@@ -1128,16 +1208,21 @@ function liveValue(key) {
   switch (k) {
     case 'status': {
       if (!r) return '—';
-      // Se em headless, mostra status do headless
-      if (acc?.headless && r.headlessStatus) {
-        return r.headlessStatus === 'connected' ? '⚡ Headless' : `⚡ ${r.headlessStatus}`;
+      // Em headless o status vem do socket. Traduzido: 'disconnected' e
+      // 'failed' no card não diziam nada a quem não leu o código.
+      if (isHeadless(id) && r.headlessStatus) {
+        return '⚡ ' + (HEADLESS_ROTULO[r.headlessStatus] || r.headlessStatus);
       }
       return statusText(id);
     }
     case 'banner': {
+      // O motivo da falha vem antes do estado: é o que a pessoa precisa ler.
+      if (isHeadless(id) && r.headlessError && r.headlessStatus !== 'connected') {
+        return `⚡ ${r.headlessError}`;
+      }
       // Em headless, mostra info de conexão
-      if (acc?.headless && r.headlessState) {
-        return `⚡ Nível ${r.headlessState.nivel} · ${r.headlessState.bits} bits`;
+      if (isHeadless(id) && r.headlessState) {
+        return `⚡ Nível ${r.headlessState.nivel} · ${fmtNum(r.headlessState.bits)} bits`;
       }
       if (!r || r.status !== 'reconnecting') return '';
       const when = now - r.attemptAt < 4000 || !r.retryAt ? 'tentando agora…' : `próxima tentativa em ${Math.max(1, Math.ceil((r.retryAt - now) / 1000))}s`;
@@ -2528,7 +2613,7 @@ function openToolAccounts(tool) {
 function openToolConfig(tool, acc, onDone) {
   const conf = state.tools[tool.id][acc.id];
   const cfg = { ...tool.defaults(), ...(conf.cfg || {}) };
-  const forms = { refill: refillForm, eggs: eggsForm, hunt: huntForm, scan: scanForm };
+  const forms = { refill: refillForm, eggs: eggsForm, hunt: huntForm, scan: scanForm, lab: labForm };
   const form = (forms[tool.id] || refillForm)(cfg);
 
   modal({
@@ -2614,12 +2699,14 @@ function huntForm(cfg) {
   const intervalo = h('input', { class: 'input', type: 'number', min: '1', value: String(cfg.intervaloMin || 5) });
   const ganho = h('input', { class: 'input', type: 'number', min: '0', value: String(cfg.ganhoMin || 0) });
   const tranq = h('input', { type: 'checkbox', checked: cfg.soTranquilas !== false });
+  const volta = h('input', { type: 'checkbox', checked: cfg.voltarUltima !== false });
 
   const el = h('div', {},
     field('Conferir a cada (minutos)', intervalo),
-    checkRow(tranq, 'Só trocar para áreas tranquilas', 'A recomendada do jogo já é a de menor perigo; isto recusa a troca se mesmo assim ela não for tranquila.'),
+    checkRow(volta, 'Ao sair do Hospital, voltar para a hunt em que estava', 'É o que acontece ao sair do Labirinto da Guild: o jogo manda a conta para o Hospital. Marcado, ela volta para a área de antes; desmarcado, vai para a recomendada do Mapa.'),
+    checkRow(tranq, 'Só trocar para áreas tranquilas', 'A recomendada do jogo já é a de menor perigo; isto recusa a troca se mesmo assim ela não for tranquila. Não afeta a volta para a hunt de antes.'),
     field('Ganho mínimo de XP para trocar (%)', ganho, '0 = troca sempre que não estivermos na recomendada. Ex.: 15 só troca se render 15% mais XP/h.'),
-    h('div', { class: 'warnbox' }, 'Durante o Labirinto da Guild a ferramenta não troca nada. Se a conta estiver parada no Hospital Digital, ela volta a caçar na recomendada (reconferindo a cada 30 s até sair de lá).'));
+    h('div', { class: 'warnbox' }, 'Durante o Labirinto da Guild a ferramenta não troca nada. Parada no Hospital Digital, ela reconfere a cada 30 s até a conta sair de lá. Se a conta nunca caçou, não há hunt de antes: nesse caso vai para a recomendada.'));
 
   return {
     el,
@@ -2627,7 +2714,22 @@ function huntForm(cfg) {
       intervaloMin: Math.max(1, +intervalo.value || 5),
       ganhoMin: Math.max(0, +ganho.value || 0),
       soTranquilas: tranq.checked,
+      voltarUltima: volta.checked,
     }),
+  };
+}
+
+// ---------------------------------------------- formulário do Auto Labirinto
+function labForm(cfg) {
+  const intervalo = h('input', { class: 'input', type: 'number', min: '1', value: String(cfg.intervaloMin || 2) });
+
+  const el = h('div', {},
+    field('Conferir o lobby a cada (minutos)', intervalo, 'Além disso, a ferramenta reage ao aviso do servidor de que o lobby mudou — então ela entra logo depois de a corrida acabar, sem esperar este intervalo.'),
+    h('div', { class: 'warnbox' }, 'A ferramenta só se INSCREVE no lobby. Ela nunca começa a corrida (isso exige ser dono ou sub-dono da guild) nem mexe na dificuldade, que vale para a guild inteira. Se a conta não tem guild, não tem Digimon que possa lutar, ou o lobby está cheio ou com corrida rodando, ela não faz nada e diz o motivo no log.'));
+
+  return {
+    el,
+    read: () => ({ intervaloMin: Math.max(1, +intervalo.value || 2) }),
   };
 }
 
@@ -3037,7 +3139,7 @@ function openSettings() {
         checkRow(inputs.closeToTray, 'Fechar a janela manda para a bandeja', 'As contas continuam farmando. Para sair de verdade, use Sair no ícone da bandeja.'),
         checkRow(inputs.preventSleep, 'Impedir que o PC entre em suspensão', 'A tela pode desligar normalmente.'),
         checkRow(inputs.economy, 'Economia de recursos (recomendado)', 'Conta que não está na tela (outra tela, atrás da principal, painel, bloqueio, janela minimizada ou na bandeja) para de desenhar e segue jogando. No DigiIdle o servidor continua caçando e manda só o estado. Bem menos CPU, GPU e rede. Contas de outros jogos já vêm com "Sempre desenhar" marcado (dá para desmarcar na conta, se o jogo seguir rodando oculto).'),
-        checkRow(inputs.bootHeadless, 'Iniciar todas as contas em modo headless', 'Sem renderizar a interface: apenas WebSocket. Reduz RAM de 2.5 GB para 600 MB com 5 contas. Pode usar o botão de poder em cada conta para alternar dinamicamente.'),
+        checkRow(inputs.bootHeadless, 'Iniciar todas as contas em modo headless', 'Sem renderizar a interface: apenas WebSocket. Medido: ~10 MB por conta em headless contra ~254 MB com janela (5 contas: 2.2 GB para 244 MB). A conta precisa ter feito login antes em modo normal. O botão de poder alterna conta por conta.'),
         checkRow(inputs.openAtLogin, 'Iniciar com o Windows (minimizado)', info.packaged ? (hasPw ? 'Com senha mestra, as contas só começam depois que você desbloquear.' : null) : 'Só funciona na versão instalada.'),
         h('div', { class: 'row' },
           field('Mostrar resumo ao voltar depois de (min)', inputs.summaryAfterMin, '0 = nunca'),

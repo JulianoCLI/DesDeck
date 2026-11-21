@@ -27,7 +27,13 @@ const PONTE_JS = `
 if (!window.__ddGame) {
   const G = window.__ddGame = {
     sock: null, estado: null, ovos: null, campo: null, offCfg: null, pronto: false,
-    espera: [], aoMorrer: [],
+    // O lobby do Labirinto da Guild: pacote 'lab', resposta de 'lab.info'.
+    // aoLabMudou: chamados quando o servidor avisa 'lab.mudou'.
+    lab: null, aoLabMudou: [],
+    // aoEstado: chamados a CADA pacote 'estado' (várias vezes por segundo).
+    // 'espera'/quando() dispara uma vez só, no primeiro estado — não serve para
+    // quem precisa acompanhar mudanças, como a memória da última hunt.
+    espera: [], aoMorrer: [], aoEstado: [],
     // A config de cada ferramenta que já está rodando nesta página. O objeto de cada
     // uma é criado UMA vez e depois só mutado: assim o laço da ferramenta, que guardou
     // a referência, passa a ler os valores novos sem precisar ser reinjetado (sem F5).
@@ -50,6 +56,32 @@ if (!window.__ddGame) {
       return true;
     },
     log(...a) { console.log('[ferramentas]', ...a); },
+    // --- Disfarce de tempo ---
+    // Várias contas sobem juntas e todas usam o mesmo intervalo configurado. Sem
+    // espalhar, elas mandam o mesmo comando no mesmo segundo, repetidamente — um
+    // padrão que nenhum jogador produz.
+    //
+    // São dois componentes, e os dois são necessários:
+    //   - base: deslocamento FIXO desta conta (semeado na identidade da conta, que
+    //     o servidor manda no 'welcome'/'estado'). É o que impede que as contas
+    //     fiquem em fase; só aleatório não resolve, porque a cada volta elas se
+    //     reaproximariam e, no agregado, voltariam a coincidir.
+    //   - sorteio: ruído por volta, para o intervalo não ser um relógio exato.
+    semente(id) {
+      const s = String((this.estado && (this.estado.contaId || this.estado.nick)) || location.host) + ':' + id;
+      let h = 0;
+      for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      return (h % 1000) / 1000;
+    },
+    jitter(id, baseMs) {
+      const spread = Math.max(1500, Math.min(45000, Math.round(baseMs * 0.25)));
+      return Math.round(spread * this.semente(id)) + Math.round(Math.random() * spread);
+    },
+    // Pausa curta antes de um comando, para duas contas não o mandarem juntas.
+    respirar(maxMs) {
+      const ms = 250 + Math.round(Math.random() * Math.max(0, (maxMs || 4000) - 250));
+      return new Promise((r) => setTimeout(r, ms));
+    },
   };
   const adotar = (ws) => {
     if (!ws || G.sock === ws) return;
@@ -59,7 +91,11 @@ if (!window.__ddGame) {
       if (typeof ev.data !== 'string') return; // pacote ainda comprimido: não é o nosso
       let m; try { m = JSON.parse(ev.data); } catch { return; }
       if (!m) return;
-      if (m.t === 'estado') { G.estado = m; if (!G.pronto) { G.pronto = true; G.espera.splice(0).forEach((f) => { try { f(); } catch (e) { console.error(e); } }); } }
+      if (m.t === 'estado') {
+        G.estado = m;
+        for (const fn of G.aoEstado) { try { fn(m); } catch (e) { console.error(e); } }
+        if (!G.pronto) { G.pronto = true; G.espera.splice(0).forEach((f) => { try { f(); } catch (e) { console.error(e); } }); }
+      }
       else if (m.t === 'ovos') G.ovos = m.lista || [];
       // 'campo' é a cena. No Labirinto ele vem como delta (campo-delta.js); não
       // remontamos nada: só guardamos o pacote cheio, que é onde os corpos aparecem.
@@ -78,6 +114,13 @@ if (!window.__ddGame) {
       // A lista de hunts com perigo/xpH do Digimon em campo: é daqui que o Mapa
       // tira a área recomendada. Pedida com enviar('offline.cfg').
       else if (m.t === 'offline.cfg') G.offCfg = m;
+      // O lobby do Labirinto da Guild. Conferido em conta real: o PEDIDO é
+      // 'lab.info', mas a RESPOSTA vem como 't: "lab"'.
+      else if (m.t === 'lab') G.lab = m;
+      // O servidor só avisa que o lobby mudou; quem quiser o conteúdo novo pede
+      // 'lab.info' de novo (é o que a própria tela do jogo faz).
+      else if (m.t === 'lab.mudou') { for (const fn of G.aoLabMudou) { try { fn(m); } catch (e) { console.error(e); } } }
+      else if (m.t === 'lab.fim') { G.lab = null; }
     });
     ws.addEventListener('close', () => { if (G.sock === ws) G.sock = null; });
   };
@@ -225,6 +268,7 @@ function codeHunt(cfg) {
     intervaloMs: Math.max(1, cfg.intervaloMin || 5) * 60000,
     soTranquilas: cfg.soTranquilas !== false,
     ganhoMin: Math.max(0, cfg.ganhoMin || 0),
+    voltarUltima: cfg.voltarUltima !== false,
   }, `
 (async () => {
   // Precisamos saber a ilha de cada área para excluir 'halloween', igual ao Mapa.
@@ -248,6 +292,22 @@ function codeHunt(cfg) {
   };
 
   let ultimaTroca = 0;
+  // A última área em que a conta estava de fato caçando: é para cá que ela volta
+  // ao sair do Labirinto pelo Hospital. O gancho em G.aoEstado recebe CADA pacote
+  // 'estado', então a memória é anotada mesmo que uma corrida de Labirinto comece
+  // e acabe entre dois passos (o intervalo padrão é de 5 min). G.quando() não
+  // serviria: ele dispara uma vez só, no primeiro estado.
+  // Reinjetar a ferramenta não duplica este gancho, porque comCfg() retorna antes
+  // de chegar aqui quando o laço já existe.
+  let ultimaHunt = null;
+  const lembrarHunt = (E) => { if (E && E.local === 'hunt' && E.huntSlug) ultimaHunt = E.huntSlug; };
+  lembrarHunt(G.estado);
+  G.aoEstado.push(lembrarHunt);
+  // Preferimos o que vimos acontecer; se a ferramenta subiu com a conta já na
+  // praça (recarga da página, app reaberto), o próprio jogo ainda guarda a última
+  // área em E.huntSlug (app.js:3709-3710) — a mesma fonte que o Mapa usa para
+  // marcar "você estava aqui". Com as duas, o retorno nunca fica sem destino.
+  const alvoDeVolta = (E) => ultimaHunt || (E && E.huntSlug) || null;
   // Espera a resposta de 'offline.cfg' chegar (ela cai em G.offCfg pela ponte). Sem
   // isso o passo pedia a lista e lia G.offCfg no MESMO instante: na primeira volta
   // ainda não havia resposta, então ele desistia e só agia na volta seguinte — a
@@ -264,6 +324,7 @@ function codeHunt(cfg) {
   const passo = async () => {
     const E = G.estado;
     if (!E || CFG.__off) return;
+    lembrarHunt(E);
 
     // --- As guardas, antes de qualquer coisa ---
     // Labirinto da Guild: o usuário está fazendo Labirinto. Não tocamos em nada.
@@ -281,6 +342,29 @@ function codeHunt(cfg) {
     // próprio botão de sair. Mandar hunt.select agora seria recusado.
     if (E.travaSaidaAte && E.travaSaidaAte > Date.now()) return;
     if (Date.now() - ultimaTroca < 60000) return; // respiro depois de trocar
+
+    // Voltar à hunt original não depende da lista do servidor: o destino já é
+    // conhecido. Resolver isto ANTES do pedirCfg() é o que torna o retorno
+    // confiável — se 'offline.cfg' não responder (5 s de espera, servidor ocupado,
+    // religação), o caminho antigo desistia e a conta passava o ciclo inteiro
+    // parada no Hospital.
+    if (E.local === 'praca' && CFG.voltarUltima) {
+      const alvo = alvoDeVolta(E);
+      if (alvo) {
+        // Um grupo que faz Labirinto junto cai no Hospital junto. Sem este
+        // respiro, as contas mandariam hunt.select no mesmo instante.
+        await G.respirar(4000);
+        const B = G.estado;
+        if (!B || CFG.__off || B.local !== 'praca' || !B.ativoId) return; // saiu na espera
+        if (B.travaSaidaAte && B.travaSaidaAte > Date.now()) return;
+        if (!G.enviar('hunt.select', { slug: alvo })) return;
+        ultimaTroca = Date.now();
+        G.log('hunt: estava parado no Hospital/praça; voltei para a última hunt (' + alvo + ')');
+        return;
+      }
+      // Sem destino conhecido (conta nova, nunca caçou): cai para a recomendada
+      // abaixo, que é melhor do que deixar a conta parada.
+    }
 
     const cfg = await pedirCfg(); // pede a lista fresca e espera a resposta
     if (!cfg || !Array.isArray(cfg.hunts) || !cfg.hunts.length) return;
@@ -324,14 +408,20 @@ function codeHunt(cfg) {
   // Parado na praça/Hospital a conta não rende nada, então não faz sentido esperar o
   // intervalo cheio (5 min por padrão) para tirá-la de lá: nesse caso reconferimos a
   // cada 30 s. Caçando, segue o intervalo que a pessoa escolheu.
-  const proximo = () => (G.estado && G.estado.local === 'praca' ? Math.min(30000, CFG.intervaloMs) : CFG.intervaloMs);
+  // O jitter em cima disso é o disfarce: sem ele, todas as contas abertas conferem
+  // no mesmo segundo, para sempre.
+  const proximo = () => {
+    const base = G.estado && G.estado.local === 'praca' ? Math.min(30000, CFG.intervaloMs) : CFG.intervaloMs;
+    return base + G.jitter('hunt', base);
+  };
   // Reagenda só DEPOIS que o passo termina (ele agora espera a resposta do servidor),
   // para não haver duas voltas sobrepostas.
   const laco = async () => {
     try { await passo(); } catch (e) { G.log('hunt: passo falhou', e); }
     setTimeout(laco, proximo());
   };
-  G.quando(() => setTimeout(laco, 20000));
+  // A estreia também é espalhada: o boot é quando as contas mais coincidem.
+  G.quando(() => setTimeout(laco, 20000 + G.jitter('hunt-inicio', 80000)));
 })();`));
 }
 
@@ -473,6 +563,99 @@ function codeEggs(cfg) {
 })();`));
 }
 
+// ------------------------------------------------------------- auto labirinto
+// Espelho de ToolLab (src/headless/tools.js) para o modo normal (webview).
+// Mantém a conta inscrita no lobby do Labirinto da Guild, para ela não perder
+// uma corrida que a guild comece.
+//
+// Conferido em conta real (test-lab-campos.js, conta ms1):
+//   - 'lab.info' PEDE o lobby; a resposta é o pacote 't: "lab"';
+//   - campos de decisão: noLobby, pronto, eu, guild, run, fila, cfg.max;
+//   - entrar é 'lab.entrar'.
+//
+// O que NÃO faz, de propósito: não manda 'lab.iniciar' (começar exige ser
+// dono/sub-dono e a hora é decisão do jogador), não mexe em 'lab.dificuldade'
+// (afeta a guild inteira) e não entra em corrida já rodando.
+function codeLab(cfg) {
+  return isolar(comCfg('lab', {
+    intervaloMs: Math.max(0.5, cfg.intervaloMin || 2) * 60000,
+  }, `
+(async () => {
+  let ultimaEntrada = 0;
+  let ultimoMotivo = null;
+
+  // Pede o lobby e espera a resposta NOVA, como a hunt faz com offline.cfg.
+  const pedirLab = async () => {
+    const velho = G.lab;
+    G.lab = null;
+    if (!G.enviar('lab.info', {})) { G.lab = velho; return velho; }
+    for (let i = 0; i < 20 && !G.lab; i++) await new Promise((r) => setTimeout(r, 250));
+    if (!G.lab) G.lab = velho;
+    return G.lab;
+  };
+
+  // Por que não entraríamos agora. null = pode entrar.
+  const motivoParaNaoEntrar = (L, E) => {
+    if (!L) return 'o servidor não respondeu o lobby';
+    if (L.guild === false) return 'a conta não está numa guild';
+    if (!L.pronto) return 'o mapa do Labirinto não está instalado no servidor';
+    if (L.noLobby) return null;                 // já estamos: nada a fazer
+    if (!L.eu) return 'sem Digimon na equipe que possa lutar';
+    if (L.run && !L.run.acabou) return 'uma corrida está em andamento (o lobby reabre quando ela acabar)';
+    const max = (L.cfg && L.cfg.max) || 0;
+    if (max && Array.isArray(L.fila) && L.fila.length >= max) return 'o lobby está cheio (' + L.fila.length + '/' + max + ')';
+    if (E && E.local === 'lab') return 'a conta já está dentro do Labirinto';
+    return null;
+  };
+
+  const passo = async () => {
+    if (CFG.__off) return;
+    const E = G.estado;
+    if (!E) return;
+    if (E.local === 'lab') return;              // já jogando: não há lobby a entrar
+    // Respiro depois de entrar: o servidor pode não ter devolvido noLobby ainda.
+    if (Date.now() - ultimaEntrada < 30000) return;
+
+    const L = await pedirLab();
+    if (!L || CFG.__off) return;
+    if (L.noLobby) { ultimoMotivo = null; return; } // é o estado que queremos
+
+    const motivo = motivoParaNaoEntrar(L, G.estado);
+    if (motivo) {
+      if (ultimoMotivo !== motivo) { ultimoMotivo = motivo; G.log('labirinto: não entrei no lobby: ' + motivo); }
+      return;
+    }
+    ultimoMotivo = null;
+
+    // A guild inteira reage ao mesmo 'lab.mudou': sem este respiro as contas
+    // mandariam lab.entrar no mesmo instante.
+    await G.respirar(5000);
+    if (CFG.__off) return;
+    // Relê: na espera a corrida pode ter começado ou o lobby enchido.
+    const L2 = G.lab || L;
+    if (L2.noLobby || motivoParaNaoEntrar(L2, G.estado)) return;
+
+    if (!G.enviar('lab.entrar', {})) return;
+    ultimaEntrada = Date.now();
+    const n = Array.isArray(L.fila) ? L.fila.length : '?';
+    const max = (L.cfg && L.cfg.max) || '?';
+    G.log('labirinto: entrei no lobby (' + n + '/' + max + ' antes de mim)');
+  };
+
+  const seguro = async () => { try { await passo(); } catch (e) { G.log('labirinto: passo falhou', e); } };
+  const laco = async () => { await seguro(); setTimeout(laco, CFG.intervaloMs + G.jitter('lab', CFG.intervaloMs)); };
+
+  // Reagir ao aviso do servidor é o que torna a inscrição rápida sem precisar de
+  // um intervalo curto batendo no servidor a cada volta.
+  G.aoLabMudou.push(() => {
+    if (CFG.__off) return;
+    G.respirar(6000).then(() => { if (!CFG.__off) seguro(); });
+  });
+  // A estreia é espalhada: o boot é quando as contas mais coincidem.
+  G.quando(() => setTimeout(laco, 25000 + G.jitter('lab-inicio', 80000)));
+})();`));
+}
+
 // ---------------------------------------------------------------- catálogo
 const TOOLS = [
   {
@@ -496,14 +679,15 @@ const TOOLS = [
     id: 'hunt',
     name: 'Auto Melhor Hunt',
     icon: 'move',
-    desc: 'Confere a hunt recomendada do Mapa e troca se não estivermos nela. Também tira a conta do Hospital quando ela fica parada lá. Nunca troca durante o Labirinto da Guild.',
+    desc: 'Confere a hunt recomendada do Mapa e troca se não estivermos nela. Tira a conta do Hospital quando ela fica parada lá — voltando para a hunt em que estava, que é o caso de quem sai do Labirinto da Guild. Nunca troca durante o Labirinto.',
     defaults: () => ({
       intervaloMin: 5,
       soTranquilas: true,
       ganhoMin: 0,
+      voltarUltima: true,
     }),
     code: codeHunt,
-    summary: (c) => `confere a cada ${c.intervaloMin || 5} min${c.soTranquilas !== false ? ' · só áreas tranquilas' : ''}${c.ganhoMin > 0 ? ` · ganho mín. ${c.ganhoMin}%` : ''}`,
+    summary: (c) => `confere a cada ${c.intervaloMin || 5} min${c.soTranquilas !== false ? ' · só áreas tranquilas' : ''}${c.ganhoMin > 0 ? ` · ganho mín. ${c.ganhoMin}%` : ''}${c.voltarUltima !== false ? ' · volta para a última hunt' : ''}`,
   },
   {
     id: 'scan',
@@ -534,6 +718,17 @@ const TOOLS = [
     }),
     code: codeEggs,
     summary: (c) => `tiers ${(c.tiers || []).join('/') || '—'} · a cada ${c.intervaloMin || 10} min`,
+  },
+  {
+    id: 'lab',
+    name: 'Auto Labirinto',
+    icon: 'users',
+    desc: 'Mantém a conta inscrita no lobby do Labirinto da Guild, para não perder a corrida. Reage ao aviso do servidor, então entra logo depois de o lobby reabrir. Nunca começa a corrida nem mexe na dificuldade — isso fica com você.',
+    defaults: () => ({
+      intervaloMin: 2,
+    }),
+    code: codeLab,
+    summary: (c) => `confere o lobby a cada ${c.intervaloMin || 2} min · entra sozinha`,
   },
 ];
 
