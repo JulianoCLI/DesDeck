@@ -593,7 +593,7 @@ function createRuntime(acc) {
     lastHash: null, hashSince: Date.now(), frozenAlerted: false, wordActive: {}, wordAlertAt: {},
     dropAlerted: false, attention: false, thumb: null, thumbAt: 0, metrics: null,
     front: true, sleeping: false, goingToSleep: false, peeking: false, sleepOkAt: Infinity,
-    headlessStatus: 'disconnected', headlessState: null, headlessError: null,
+    headlessStatus: 'disconnected', headlessState: null, headlessError: null, headlessUltimoErro: null,
   };
 
   const wv = document.createElement('webview');
@@ -683,8 +683,15 @@ function createRuntime(acc) {
     rr.headlessError = message;
     const acc2 = accById(id);
     if (acc2) {
-      log('erro', acc2, `Headless: ${message}`);
-      raiseAlert(acc2, 'Headless', message);
+      // A MESMA falha repetida não vira linha nova: o backoff tenta de novo a
+      // cada poucos segundos, e um servidor fora do ar (502) enchia o log com
+      // dezenas de linhas identicas por conta, escondendo o resto.
+      if (message !== rr.headlessUltimoErro) {
+        rr.headlessUltimoErro = message;
+        // raiseAlert já escreve no log: chamar log() antes duplicava toda
+        // mensagem de erro do headless no histórico.
+        raiseAlert(acc2, 'Headless', message);
+      }
     }
     updateLive();
   });
@@ -695,7 +702,10 @@ function createRuntime(acc) {
     if (!rr) return;
     const antes = rr.headlessStatus;
     rr.headlessStatus = status;
-    if (status === 'connected') rr.headlessError = null; // conectou: erro velho não vale mais
+    // Conectou: o erro velho não vale mais. Zerar também o 'ultimo erro' faz
+    // com que uma queda futura volte a avisar, em vez de ficar muda por ser
+    // igual à anterior.
+    if (status === 'connected') { rr.headlessError = null; rr.headlessUltimoErro = null; }
     // As ferramentas só agem com o socket de pé, e o socket pode cair e voltar.
     // Ligar na transição para 'connected' cobre a conexão inicial e cada
     // reconexão — startTool é idempotente, então religar não duplica laço.

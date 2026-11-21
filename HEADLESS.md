@@ -45,6 +45,17 @@ diagnóstico desaparecia justamente quando a pessoa fosse ler o card.
 A causa mais comum é a conta nunca ter feito login; a mensagem diz o que fazer.
 Para ver isso de fora, sem abrir o app: `diag-sessoes.js` (abaixo).
 
+Os erros do socket são traduzidos antes de chegar ao card: `502/503/504` viram
+"servidor do jogo fora do ar", `401/403` viram "sessão recusada, entre na conta
+em modo normal", e os erros de rede viram "sem conexão". A mensagem crua
+(`Unexpected server response: 502`) não dizia de quem era a culpa nem que o
+DesDeck já estava tentando de novo.
+
+A **mesma** falha repetida não vira linha nova no histórico. Com o servidor
+fora do ar, o backoff tenta a cada poucos segundos e 8 contas enchiam o log com
+dezenas de linhas idênticas, escondendo todo o resto. A conta volta a avisar
+depois de reconectar.
+
 ## Como funciona
 
 ```
@@ -113,6 +124,14 @@ node test-modo-headless.js
 # 3 = a janela + as webviews das contas (o bug das duas conexões).
 node test-boot-headless.js
 
+# O servidor caiu (502): a conta volta sozinha? Sobe um servidor
+# local que devolve 502 e depois aceita. Não toca em conta real.
+.\node_modules\electron\dist\electron.exe test-502.js
+
+# O socket caiu DEPOIS de conectado: volta das quedas comuns e não
+# insiste nos códigos definitivos (4000, 4001). Não toca em conta real.
+.\node_modules\electron\dist\electron.exe test-queda.js
+
 # Qual modo e qual sessão cada conta real tem. Read-only.
 .\node_modules\electron\dist\electron.exe diag-sessoes.js
 
@@ -151,6 +170,10 @@ perde quando o processo sai logo depois de escrever. Os relatórios estão no
   (a janela) e nenhuma página de conta — nenhum `src` é setado no `<webview>`.
 - **A falha sem login:** o toggle manual numa conta sem sessão termina em
   `failed`, com o motivo preservado no `lastError` para o card exibir.
+- **A recuperação de queda:** com o servidor devolvendo 502, o erro é traduzido
+  e a conta reconecta sozinha quando ele volta (4 tentativas em 30 s — o backoff
+  segura em vez de martelar). Caindo já conectada, volta; nos códigos 4000 e
+  4001 para sem insistir.
 
 ## A economia de RAM, medida
 

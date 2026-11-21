@@ -10,6 +10,33 @@ const RECONNECT_MAX_MS = 30000;
 const AUTH_TIMEOUT_MS = 15000;
 
 /**
+ * Traduz o erro cru do socket para algo que diga o que esta acontecendo e de
+ * quem e a culpa. "Unexpected server response: 502" nao diz a ninguem que o
+ * problema e do servidor do jogo e que o DesDeck ja esta tentando de novo.
+ */
+function explicaErro(motivo) {
+  const m = /Unexpected server response: (\d+)/.exec(motivo);
+  if (m) {
+    const code = Number(m[1]);
+    // 5xx no handshake: o servidor do jogo respondeu, mas nao estava em
+    // condicoes de abrir o socket. Nada a fazer do lado de ca - o backoff
+    // tenta de novo sozinho.
+    if (code === 502 || code === 503 || code === 504) {
+      return `Servidor do jogo fora do ar (${code}). Tentando de novo…`;
+    }
+    if (code === 401 || code === 403) {
+      return 'Sessão recusada pelo servidor. Entre na conta em modo normal para renovar o login.';
+    }
+    if (code === 429) return 'Servidor pediu para esperar (429). Tentando de novo…';
+    return `Servidor respondeu ${code} ao conectar. Tentando de novo…`;
+  }
+  if (/ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ENETUNREACH/.test(motivo)) {
+    return 'Sem conexão com o servidor do jogo. Tentando de novo…';
+  }
+  return `Erro de conexão: ${motivo}`;
+}
+
+/**
  * Cliente headless para DigiIdle via WebSocket puro (JSON).
  *
  * Autenticação por cookies extraídos da partição persist:acc-<id>.
@@ -245,7 +272,7 @@ class DigiiIdleHeadlessClient extends EventEmitter {
     const motivo = err?.message || String(err);
     // Não sobrescreve um 'failed' anterior: o primeiro erro é o que explica a
     // falha; os seguintes são consequência dele.
-    if (this.status !== 'failed') this.falhar(`Erro de conexão: ${motivo}`);
+    if (this.status !== 'failed') this.falhar(explicaErro(motivo));
   }
 
   startPingTimer() {
@@ -271,10 +298,15 @@ class DigiiIdleHeadlessClient extends EventEmitter {
     if (this.reconnectTimer) return;
 
     this.setStatus('reconnecting');
+    // Sorteio de ate +50% na espera. Sem isso, as contas que caem juntas
+    // (servidor reiniciando, queda de internet) voltam todas no mesmo instante:
+    // batem num servidor que ainda esta de pe so pela metade, falham juntas de
+    // novo e repetem o ciclo em sincronia, do mesmo IP.
+    const espera = this.reconnectDelay + Math.round(Math.random() * this.reconnectDelay * 0.5);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
-    }, this.reconnectDelay);
+    }, espera);
 
     this.reconnectDelay = Math.min(RECONNECT_MAX_MS, Math.round(this.reconnectDelay * 1.5));
   }
