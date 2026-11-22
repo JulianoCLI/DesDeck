@@ -697,7 +697,8 @@ textarea.input { height: auto; min-height: 66px; padding: 9px 11px; resize: vert
   image-rendering: pixelated; /* sprite pequeno ampliado fica borrado sem isto */
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .5));
 }
-.hl-face.alvo img { transform: scaleX(-1); } /* encarando o nosso */
+/* Sem espelhar: os dois sao recortados da coluna "de frente" da folha, entao
+   ja olham para quem ve. Virar o alvo so o deixaria de frente ao contrario. */
 .hl-semfoto {
   width: 40px; height: 40px; border-radius: 50%;
   display: grid; place-items: center;

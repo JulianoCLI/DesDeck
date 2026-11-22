@@ -49,8 +49,19 @@ function baixar(url) {
   });
 }
 
+// A coluna em que o bicho aparece de frente. Vem do proprio jogo (app.js):
+//
+//   const SUL = 2; // coluna de frente nas folhas de 8 direcoes
+//   ...
+//   return { img, sx: SUL * tw, sy: linha * th, tw, th };
+//
+// Na folha, a DIRECAO e a coluna e a ANIMACAO e a linha - o contrario do que
+// este modulo assumia. Recortando em (0,0) saia a coluna 0, que e o bicho de
+// costas: os dois lados do card se olhavam de nuca.
+const COLUNA_FRENTE = 2;
+
 /**
- * O primeiro quadro da folha, quadrado e do tamanho do card.
+ * O primeiro quadro parado, visto de frente, do tamanho do card.
  *
  * O quadro costuma ser mais alto que largo (o bicho em pe). Encaixar num
  * quadrado deformaria: entao a imagem e reduzida mantendo a proporcao, pelo
@@ -65,7 +76,10 @@ function recortar(buf, colunas, frames) {
   const h = Math.floor(height / Math.max(1, frames));
   if (w < 2 || h < 2) throw new Error(`grade suspeita: ${colunas}x${frames} em ${width}x${height}`);
 
-  const quadro = folha.crop({ x: 0, y: 0, width: w, height: h });
+  // Linha 0 = 1o quadro da animacao parada; coluna 2 = de frente. Folhas com
+  // menos de 3 colunas (nenhuma hoje, mas o catalogo pode mudar) caem na 0.
+  const col = colunas > COLUNA_FRENTE ? COLUNA_FRENTE : 0;
+  const quadro = folha.crop({ x: col * w, y: 0, width: w, height: h });
   // resize com so uma dimensao preserva a proporcao.
   const menor = h >= w ? quadro.resize({ height: LADO, quality: 'good' }) : quadro.resize({ width: LADO, quality: 'good' });
   return menor.toPNG();

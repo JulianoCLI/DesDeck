@@ -51,6 +51,13 @@ em modo normal", e os erros de rede viram "sem conexão". A mensagem crua
 (`Unexpected server response: 502`) não dizia de quem era a culpa nem que o
 DesDeck já estava tentando de novo.
 
+Um 502 **não** prova que o servidor caiu. Ele diz só que o proxy na frente do
+jogo (Cloudflare) não conseguiu falar com a origem *naquela* conexão — o que
+também acontece quando a origem recusa só as suas, por IP ou por excesso de
+conexões simultâneas. Para separar os dois casos, use `diag-502.js`: ele sonda o
+mesmo handshake sem cookie nenhum e mostra se o servidor está de pé para quem
+não é você. Veja "Quando o card diz 502" abaixo.
+
 A **mesma** falha repetida não vira linha nova no histórico. Com o servidor
 fora do ar, o backoff tenta a cada poucos segundos e 8 contas enchiam o log com
 dezenas de linhas idênticas, escondendo todo o resto. A conta volta a avisar
@@ -103,12 +110,32 @@ nome do inimigo atual:
 
 **Os retratos** são recortados no processo principal (`src/headless/sprites.js`).
 O jogo não publica retratos: publica folhas de animação (`/img/digimon/<id>.png`,
-dezenas de quadros numa grade de `colunas` × `frames`). O primeiro quadro (0,0) é
-a pose parada. O recorte fica no processo principal porque a CSP da janela é
+dezenas de quadros numa grade de `colunas` × `frames`).
+
+Na folha, **a direção é a coluna e a animação é a linha** — não o contrário. O
+retrato saía do quadro (0,0) e os dois lados do card se olhavam de nuca: a
+coluna 0 é o bicho de costas. A regra está no `app.js` do próprio jogo:
+
+```js
+const SUL = 2; // coluna de frente nas folhas de 8 direções
+...
+return { img, sx: SUL * tw, sy: linha * th, tw, th };
+```
+
+Então o retrato é a **linha 0** (primeiro quadro parado) da **coluna 2** (de
+frente). Não dá para achar isso no catálogo: não existe campo de direção, e
+procurar olhando quadro a quadro engana, porque a pose muda de índice conforme a
+espécie.
+
+O recorte fica no processo principal porque a CSP da janela é
 `img-src 'self' data:`, e afrouxá-la para `https://digiidle.com` abriria a janela
 para qualquer imagem remota. A folha do Agumon tem 508 KB; o retrato recortado,
 ~10 KB. Ficam em cache em memória e em disco (`userData/sprites/`): 15 espécies
 custam 88 KB.
+
+> Ao mexer no recorte, **apague `%APPDATA%\DesDeck\sprites`**. O cache é por
+> espécie, não pela regra usada: sem limpar, os retratos antigos continuam
+> aparecendo e o teste passa enquanto a tela segue errada.
 
 O resumo é montado no máximo **1 vez a cada 2 s por conta** (`PAINEL_MIN_MS`): o
 pacote `estado` chega várias vezes por minuto, e ninguém lê um card que muda 20x
@@ -166,12 +193,18 @@ node test-boot-headless.js
 # local que devolve 502 e depois aceita. Não toca em conta real.
 .\node_modules\electron\dist\electron.exe test-502.js
 
+# De quem é a culpa do 502, no servidor REAL. Sonda o handshake sem
+# cookie por N minutos: 401 "sem sessão" = servidor de pé. Rode junto
+# com o DesDeck e cruze os horários. Não toca em conta real.
+node diag-502.js 60
+
 # O socket caiu DEPOIS de conectado: volta das quedas comuns e não
 # insiste nos códigos definitivos (4000, 4001). Não toca em conta real.
 .\node_modules\electron\dist\electron.exe test-queda.js
 
 # O resumo do card: com um 'estado' montado à mão, identifica os dois
-# lados? E o retrato sai recortado certo (96x94, não uma tira)?
+# lados? O retrato sai recortado certo (96x94, não uma tira de 123x960)
+# e DE FRENTE (coluna 2, não a 0 que é de costas)?
 # Não toca em conta real; baixa os catálogos e sprites públicos.
 .\node_modules\electron\dist\electron.exe test-painel.js
 
@@ -224,6 +257,36 @@ perde quando o processo sai logo depois de escrever. Os relatórios estão no
   e a conta reconecta sozinha quando ele volta (4 tentativas em 30 s — o backoff
   segura em vez de martelar). Caindo já conectada, volta; nos códigos 4000 e
   4001 para sem insistir.
+
+## Quando o card diz 502
+
+`Servidor do jogo fora do ar (502)` é o que o DesDeck mostra quando o handshake
+do socket volta 502. A mensagem culpa o servidor, mas o 502 é mais ambíguo que
+isso: ele vem do Cloudflare e significa apenas "não consegui falar com a origem
+nesta conexão". Se a origem recusou só as suas conexões — pelo IP, pela sessão
+ou por conexões demais ao mesmo tempo — a resposta é a mesma.
+
+Dois sinais apontam para o segundo caso:
+
+- **Só as suas contas caem,** e o global do jogo não comenta nada.
+- **As contas caem juntas, em blocos,** no mesmo minuto (`22:50`, `22:56`), e
+  voltam juntas. Uma queda de servidor costuma pegar todo mundo; um limite por
+  IP pega exatamente o seu bloco de contas.
+
+Para decidir sem adivinhar, rode `node diag-502.js 60` com o DesDeck ligado e
+cruze os horários do relatório com o histórico do app:
+
+| sonda, no mesmo minuto | o que é |
+|---|---|
+| também 502/503/504 | o servidor do jogo caiu mesmo; nada a fazer, o backoff resolve |
+| 401 "sem sessão" normal | o servidor está de pé **para quem não é você** — o corte é das suas conexões |
+| `REDE:`/`TIMEOUT` | a sua internet ou o seu DNS, não o jogo |
+
+No segundo caso, o caminho é reduzir a pressão do seu IP: menos contas
+simultâneas e entradas mais espaçadas (`ENTRADA_MIN_MS`/`ENTRADA_MAX_MS` no
+`manager.js`, hoje 3–11 s). O backoff do `client.js` já cresce 1,5× até 30 s com
+sorteio de até +50%, então as contas não voltam todas no mesmo instante — mas
+8 contas reentrando ainda é um pico visível do mesmo endereço.
 
 ## A economia de RAM, medida
 

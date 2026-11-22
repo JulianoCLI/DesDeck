@@ -91,13 +91,55 @@ app.whenReady().then(async () => {
   // 123x120 -> quase quadrado. Uma tira (123x960) daria 0.13.
   if (prop < 0.5 || prop > 2) falhas.push(`5: proporcao ${prop.toFixed(2)} - a grade do recorte esta errada`);
 
-  // 6) Cache: a segunda chamada nao pode baixar de novo.
-  log('\n--- 6. cache do retrato');
+  // 6) A POSE. O recorte saia em (0,0) e os dois lados do card se olhavam de
+  // nuca: na folha a DIRECAO e a coluna, nao a linha. O jogo usa a coluna 2
+  // ("const SUL = 2; // coluna de frente nas folhas de 8 direcoes", app.js).
+  // Sem esta checagem, voltar ao quadro errado passaria despercebido: o
+  // tamanho continua certo, so a pose muda.
+  log('\n--- 6. a pose: de frente, nao de costas');
+  const { net } = require('electron');
+  const folhaBuf = await new Promise((res, rej) => {
+    const rq = net.request('https://digiidle.com/img/digimon/agumon.png');
+    const ps = [];
+    rq.on('response', (r2) => { r2.on('data', (c) => ps.push(c)); r2.on('end', () => res(Buffer.concat(ps))); });
+    rq.on('error', rej); rq.end();
+  });
+  const folha = nativeImage.createFromBuffer(folhaBuf);
+  const fs2 = folha.getSize();
+  const cw = Math.floor(fs2.width / 8), ch = Math.floor(fs2.height / 16);
+  // Compara o retrato com a coluna 0 (costas) e com a coluna 2 (frente). O
+  // alfa de cada quadro e a assinatura: se bate com a coluna 0, voltou o bug.
+  // Silhueta do quadro numa grade grosseira: tolera o antialias do resize e a
+  // ida e volta por PNG, que fazem a contagem exata de pixels nunca bater.
+  const silhueta = (im) => {
+    const { width: W, height: H } = im.getSize();
+    const bm = im.toBitmap();
+    const N = 12, g = new Array(N * N).fill(0);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (bm[(y * W + x) * 4 + 3] > 8) g[Math.floor(y / H * N) * N + Math.floor(x / W * N)]++;
+      }
+    }
+    const tot = g.reduce((s, v) => s + v, 0) || 1;
+    return g.map((v) => v / tot);
+  };
+  const dist = (p, q) => p.reduce((s, v, i) => s + Math.abs(v - q[i]), 0);
+  const normal = (im) => silhueta(im.resize({ height: 96, quality: 'good' }));
+  const colZero = normal(folha.crop({ x: 0, y: 0, width: cw, height: ch }));
+  const colDois = normal(folha.crop({ x: 2 * cw, y: 0, width: cw, height: ch }));
+  const nosso = silhueta(nativeImage.createFromDataURL(a.digimon.img));
+  const dZero = dist(nosso, colZero), dDois = dist(nosso, colDois);
+  log(`  diferenca da silhueta -> coluna 0 (costas): ${dZero.toFixed(3)} | coluna 2 (frente): ${dDois.toFixed(3)}`);
+  if (dist(colZero, colDois) < 0.1) falhas.push('6: as colunas 0 e 2 mal diferem - a checagem nao prova nada');
+  if (dDois >= dZero) falhas.push(`6: o retrato parece mais a coluna 0 (costas) que a 2 (frente): ${dZero.toFixed(3)} vs ${dDois.toFixed(3)}`);
+
+  // 7) Cache: a segunda chamada nao pode baixar de novo.
+  log('\n--- 7. cache do retrato');
   const t0 = Date.now();
   await resumo(estadoFalso());
   const ms = Date.now() - t0;
   log(`  2a chamada: ${ms}ms (download custaria centenas de ms)`);
-  if (ms > 400) falhas.push(`6: ${ms}ms na 2a chamada - o cache nao esta pegando`);
+  if (ms > 400) falhas.push(`7: ${ms}ms na 2a chamada - o cache nao esta pegando`);
 
   log('');
   log(`=== ${falhas.length ? 'FAIL:\n  - ' + falhas.join('\n  - ') : 'PASS: o resumo identifica os dois lados, o retrato sai recortado certo e o cache pega'} ===`);
