@@ -75,6 +75,11 @@ As travas, porque aqui se gasta dinheiro de verdade:
 - Saldo curto é **dito no log**, não ignorado em silêncio — senão "nunca compra"
   fica idêntico a "não achou nada".
 
+Vale nos dois modos: na conta com janela (`src/renderer/tools.js`, injetada na
+página) e na conta sem janela (`ToolSniper` em `src/headless/tools.js`, falando
+direto no socket). São duas implementações da mesma decisão, então as duas têm
+teste próprio — um `>` virando `>=` num porte gasta dinheiro de verdade.
+
 Os filtros são os **do servidor**, não nossos: `tiers`, `potencias`, `maisMin`.
 Conferido em conta real — `tiers=S,SS,SSS` levou 1728 anúncios para 601;
 `potencias=4,5` para 716. O anúncio nem traz a letra do tier, então calculá-la
@@ -110,9 +115,12 @@ O Sniper foi levantado do mesmo jeito, e os scripts estão no repo:
 | `test-sniper-vivo.js` | A ferramenta real no mercado real, com a compra interceptada. Prova que o servidor aceita os filtros que ela monta. |
 | `test-sniper-real.js` | O protocolo de compra, com uma compra real e barata. |
 | `test-sniper-fila.js` | A ferramenta comprando de verdade: `--comprar` para valer, sem a flag é ensaio. |
+| `test-sniper-headless.js` | O `ToolSniper` do modo sem janela: 33 casos, com o relógio do servidor controlado — é onde a fila da retenção é exercitada de ponta a ponta. Sem rede. |
 
 Vale dizer o que **não** está provado: a compra pela fila foi exercitada contra
-um mercado de mentira (`test-sniper-tool.js`), com o relógio controlado. Nas
+um mercado de mentira (`test-sniper-tool.js` e `test-sniper-headless.js`), com o
+relógio controlado — inclusive o caso do relógio local fora de hora, que é o que
+faria o sniper chegar adiantado e levar recusa do servidor. Nas
 rodadas reais, todo anúncio barato já estava liberado há horas, então o caminho
 "esperar o `libera` e comprar no instante" ainda não aconteceu em produção. O
 código dele é o mesmo nos dois casos, mas a honestidade pede a distinção.

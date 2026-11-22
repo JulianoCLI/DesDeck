@@ -1,7 +1,7 @@
 'use strict';
 // Ferramentas no modo headless.
 //
-// São as mesmas 4 automações que o DesDeck injeta na página do jogo
+// São as mesmas automações que o DesDeck injeta na página do jogo
 // (src/renderer/tools.js), reescritas para operar sobre o socket do
 // DigiiIdleHeadlessClient em vez de sobre a página. A lógica é portada letra a
 // letra da versão do webview, que por sua vez foi conferida contra o cliente do
@@ -814,6 +814,207 @@ class ToolPasse extends HeadlessTool {
   }
 }
 
+// ---------------------------------------------------------------- sniper
+// Varre o Mercado e compra o que está abaixo do teto. Porte do codeSniper do
+// webview (src/renderer/tools.js), com as mesmas travas.
+//
+// O ponto da ferramenta é a RETENÇÃO: no DigiIdle todo anúncio nasce travado e
+// só fica comprável 2 min depois (medido em conta real: 119.993 ms). Quem varre
+// de minuto em minuto chega até 60 s atrasado; aqui o anúncio retido entra numa
+// fila e a compra acorda no milissegundo do 'libera'.
+//
+// Conferido no cliente do jogo e em conta real:
+//   - pedir é enviar('mercado.listar', filtro); a resposta é o pacote 'mercado';
+//   - comprar é enviar('mercado.comprar', { id, qtd, preco, moeda });
+//   - mandar o 'preco' é trava de graça: o servidor recusa se o vendedor mudou
+//     o valor, então é impossível pagar mais do que se viu;
+//   - tier, potência e energia são filtrados pelo SERVIDOR (tiers, potencias,
+//     maisMin), então nenhuma regra do jogo é reimplementada aqui.
+//
+// Potência NÃO é energia: 'potencias' é o P1–P5 e 'maisMin' é o +N do ovo. Um
+// pedido com maisMin=4 devolveu um ovo potencia:1/data:5 — trocar os dois faria
+// a ferramenta comprar justamente o que não foi pedido.
+class ToolSniper extends HeadlessTool {
+  constructor(client, config) {
+    super(client, 'sniper', config);
+    this.desvio = 0;            // nosso relógio menos o do servidor
+    this.fila = new Map();      // id do anúncio -> timer do libera
+    this.comprados = new Set(); // nunca tenta o mesmo anúncio duas vezes
+    this.compras = [];          // instantes das compras, para o limite por hora
+    this.listaPend = null;
+    this.avisouSaldo = {};      // o aviso de saldo curto sai uma vez por moeda
+
+    // A resposta de 'mercado.listar' e o aviso de que o mercado mexeu.
+    this.client.on('mercado', (m) => {
+      if (typeof m.agora === 'number') this.desvio = Date.now() - m.agora;
+      const r = this.listaPend;
+      this.listaPend = null;
+      if (r) r(m);
+    });
+    this.client.on('mercado-mudou', () => {
+      // É o momento mais provável de aparecer coisa nova, então varre já — com
+      // um respiro para as contas não pedirem todas no mesmo instante.
+      if (!this.running || this.desligada) return;
+      setTimeout(() => { this.step().catch(() => {}); }, 400 + Math.random() * 800);
+    });
+  }
+
+  /**
+   * Os alvos que valem busca. Alvo sem teto não compra nada, e nem vale pedir a
+   * lista por ele — é o padrão de fábrica, então ligar a ferramenta sem
+   * configurar não gasta um bit.
+   *
+   * É um getter, e não um valor guardado no constructor, porque startTool()
+   * troca this.config na ferramenta que já roda: uma cópia feita no constructor
+   * ficaria velha, e o sniper seguiria comprando pelos alvos antigos.
+   */
+  get alvos() { return (this.config.alvos || []).filter((a) => a && a.tetoPreco > 0); }
+
+  getInterval() { return Math.max(20000, (this.config.intervaloSec || 60) * 1000); }
+
+  stop() {
+    super.stop();
+    for (const t of this.fila.values()) clearTimeout(t);
+    this.fila.clear();
+  }
+
+  agoraServidor() { return Date.now() - this.desvio; }
+
+  /** Pede uma listagem e espera o pacote 'mercado'. null se não vier. */
+  listar(filtro) {
+    return new Promise((resolve) => {
+      this.listaPend = resolve;
+      if (!this.send('mercado.listar', filtro)) { this.listaPend = null; resolve(null); return; }
+      setTimeout(() => { if (this.listaPend === resolve) { this.listaPend = null; resolve(null); } }, 8000);
+    });
+  }
+
+  /**
+   * O filtro de um alvo, no formato que o SERVIDOR entende. Campos vazios são
+   * omitidos: mandar 'tiers: ""' é o mesmo que não filtrar, mas enviar o campo
+   * à toa só aumenta a chance de divergir do que o jogo manda.
+   */
+  filtroDe(a) {
+    const f = { tipo: a.tipo || 'ovo', moeda: a.moeda || 'bits', ordem: 'barato', pagina: 0 };
+    f.precoMax = a.tetoPreco;
+    if (a.especie) f.especie = a.especie;
+    if (a.busca) f.busca = a.busca;
+    if (a.tiers && a.tiers.length) f.tiers = a.tiers.join(',');
+    if (a.potencias && a.potencias.length) f.potencias = a.potencias.join(',');
+    if (a.energiaMin > 0) f.maisMin = a.energiaMin;
+    if (a.familia) f.familia = a.familia;
+    if (a.soShiny) f.soShiny = true;
+    return f;
+  }
+
+  saldoDe(moeda) {
+    const E = this.estado || {};
+    return moeda === 'gemas' ? (E.gemas || 0) : (E.bits || 0);
+  }
+
+  reservaDe(moeda) {
+    return Math.max(0, (moeda === 'gemas' ? this.config.reservaGemas : this.config.reservaBits) || 0);
+  }
+
+  /** Dá para pagar este anúncio sem furar a reserva? */
+  cabe(a) { return this.saldoDe(a.moeda) - this.reservaDe(a.moeda) >= a.preco; }
+
+  noLimite() {
+    const max = Math.max(0, this.config.maxPorHora || 0);
+    if (!max) return false;
+    const corte = Date.now() - 3600000;
+    this.compras = this.compras.filter((t) => t > corte);
+    return this.compras.length >= max;
+  }
+
+  /** Comprar. Só é chamada quando o anúncio já está liberado. */
+  async comprar(a, alvo) {
+    if (this.desligada || this.comprados.has(a.id)) return;
+    if (this.noLimite()) { this.log(`limite de ${this.config.maxPorHora} compra(s)/hora atingido; deixando passar #${a.id}`); return; }
+    if (!this.cabe(a)) { this.log(`#${a.id} custa ${a.preco} ${a.moeda}, mas a reserva não deixa`); return; }
+    // Marca ANTES de enviar: se o envio falhar, melhor perder uma pechincha do
+    // que arriscar comprar duas vezes.
+    this.comprados.add(a.id);
+    this.fila.delete(a.id);
+    if (!this.send('mercado.comprar', { id: a.id, qtd: 1, preco: a.preco, moeda: a.moeda })) return;
+    this.compras.push(Date.now());
+    this.avisouSaldo[a.moeda] = false; // o saldo mudou: vale avisar de novo se faltar
+    const nome = (a.resumo && a.resumo.especie) || a.item || a.tipo;
+    this.log(`comprei #${a.id} (${nome}) por ${a.preco} ${a.moeda === 'gemas' ? 'D-Dol' : 'bits'}${alvo.nome ? ` [${alvo.nome}]` : ''}`);
+  }
+
+  /**
+   * Agenda a compra para o instante do libera. É isto que ganha a corrida: em
+   * vez de reconferir de minuto em minuto, acordamos no milissegundo em que o
+   * anúncio fica comprável.
+   *
+   * A folga existe porque o servidor recusa quem chega adiantado: o desvio de
+   * relógio é medido, mas não é exato, e a rede ainda cobra o seu tempo.
+   */
+  agendar(a, alvo) {
+    if (this.fila.has(a.id) || this.comprados.has(a.id)) return;
+    const espera = a.libera - this.agoraServidor() + 250;
+    if (espera > 15 * 60000) return; // a retenção é de 2 min; isto não deveria acontecer
+    const timer = setTimeout(async () => {
+      this.fila.delete(a.id);
+      if (!this.running || this.desligada) return;
+      try {
+        // O mundo pode ter mudado nos 2 min de espera: outro comprador levou, o
+        // vendedor retirou ou mudou o preço. Então reconferimos o anúncio AGORA,
+        // em vez de confiar na foto antiga.
+        const m = await this.listar(this.filtroDe(alvo));
+        if (!m || this.desligada) return;
+        const vivo = (m.lista || []).find((x) => x.id === a.id);
+        if (!vivo) { this.log(`#${a.id} já não está à venda (alguém chegou antes)`); return; }
+        if (vivo.preco > alvo.tetoPreco) { this.log(`#${a.id} subiu para ${vivo.preco}; acima do teto`); return; }
+        if (vivo.libera > this.agoraServidor()) { this.agendar(vivo, alvo); return; } // preço mudou: retenção reiniciou
+        await this.comprar(vivo, alvo);
+      } catch (err) {
+        this.log('a compra agendada falhou:', err.message);
+      }
+    }, Math.max(0, espera));
+    if (timer.unref) timer.unref();
+    this.fila.set(a.id, timer);
+    this.log(`#${a.id} na fila por ${a.preco} ${a.moeda === 'gemas' ? 'D-Dol' : 'bits'} — libera em ${Math.ceil((a.libera - this.agoraServidor()) / 1000)}s`);
+  }
+
+  async step() {
+    if (this.desligada || !this.estado) return;
+    for (const alvo of this.alvos) {
+      if (this.desligada || this.noLimite()) break;
+      const m = await this.listar(this.filtroDe(alvo));
+      if (!m) continue;
+      for (const a of m.lista || []) {
+        if (this.comprados.has(a.id) || this.fila.has(a.id)) continue;
+        // As guardas: nunca o nosso anúncio, nunca fechado, nunca acima do teto.
+        // O precoMax já foi ao servidor, mas reconferimos aqui — um filtro que o
+        // servidor ignorasse viraria compra indevida, e esse é o erro que custa.
+        if (a.meu) continue;
+        if (a.estado && a.estado !== 'aberto') continue;
+        if (a.moeda !== (alvo.moeda || 'bits')) continue;
+        if (!(a.preco > 0) || a.preco > alvo.tetoPreco) continue;
+        // Saldo curto é o motivo mais chato de "o sniper nunca compra": do lado
+        // de fora é idêntico a "não achou nada". Então ele é dito em voz alta,
+        // uma vez por moeda, em vez de virar um 'continue' calado.
+        if (!this.cabe(a)) {
+          if (!this.avisouSaldo[a.moeda]) {
+            this.avisouSaldo[a.moeda] = true;
+            const moeda = a.moeda === 'gemas' ? 'D-Dol' : 'bits';
+            this.log(`achei #${a.id} por ${a.preco} ${moeda}, mas o saldo disponível é ${this.saldoDe(a.moeda) - this.reservaDe(a.moeda)} (saldo ${this.saldoDe(a.moeda)} menos a reserva ${this.reservaDe(a.moeda)}). Não vou comprar.`);
+          }
+          continue;
+        }
+        if (a.libera > this.agoraServidor()) {
+          if (!this.config.soLiberados) this.agendar(a, alvo);
+          continue;
+        }
+        await this.comprar(a, alvo);
+        if (this.noLimite()) break;
+      }
+    }
+  }
+}
+
 function createHeadlessTool(client, toolId, config) {
   if (!config) return null;
   switch (toolId) {
@@ -823,8 +1024,9 @@ function createHeadlessTool(client, toolId, config) {
     case 'eggs': return new ToolEggs(client, config);
     case 'lab': return new ToolLab(client, config);
     case 'passe': return new ToolPasse(client, config);
+    case 'sniper': return new ToolSniper(client, config);
     default: return null;
   }
 }
 
-module.exports = { HeadlessTool, ToolScan, ToolRefill, ToolHunt, ToolEggs, ToolLab, ToolPasse, createHeadlessTool };
+module.exports = { HeadlessTool, ToolScan, ToolRefill, ToolHunt, ToolEggs, ToolLab, ToolPasse, ToolSniper, createHeadlessTool };

@@ -258,6 +258,19 @@ class DigiiIdleHeadlessClient extends EventEmitter {
         this.emit('lab-fim', msg);
         break;
 
+      // A resposta de 'mercado.listar'. Conferido em conta real: traz
+      // { lista, total, agora }. O 'agora' é o relógio do SERVIDOR, e é por ele
+      // que o sniper decide a hora do libera — o relógio local pode estar fora.
+      case 'mercado':
+        this.emit('mercado', msg);
+        break;
+
+      // O mercado mexeu (alguém anunciou, comprou ou um anúncio expirou). Não
+      // vem conteúdo: quem quiser a lista nova pede 'mercado.listar' de novo.
+      case 'mercado.mudou':
+        this.emit('mercado-mudou', msg);
+        break;
+
       case 'batalha':
         // Chega mesmo com a cena desligada. Cada evento com morto:true traz em
         // 'para' o id do inimigo que caiu — é a via do scan sem a cena.

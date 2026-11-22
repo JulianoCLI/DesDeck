@@ -27,3 +27,13 @@ passe-dump.txt
 passe-estado.txt
 passe-grep.txt
 passe-vivo.txt
+# Idem: saídas da descoberta do Mercado e dos testes do Sniper, trazem nick,
+# saldo e as compras feitas na conta real.
+mercado-campos.txt
+mercado-filtros.txt
+mercado-grep.txt
+sniper-fila.txt
+sniper-headless.txt
+sniper-real.txt
+sniper-tool.txt
+sniper-vivo.txt
