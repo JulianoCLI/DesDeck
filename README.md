@@ -48,12 +48,47 @@ desligar numa conta, a escolha fica gravada e é respeitada.
 | **Auto Scan** | Lança o scan nos corpos caídos — útil em contas sem VIP. Funciona com a cena desligada (Modo Economia). |
 | **Auto Labirinto** | Inscreve a conta no lobby do Labirinto da Guild assim que ele reabre. Não começa a corrida nem muda a dificuldade. |
 | **Auto Passe** | Resgata o Passe de Batalha todo dia — perder um dia zera a trilha de 30 dias. Pega o Premium atrasado se a conta tiver Premium; **nunca** compra o Premium. **Já vem ligada**, inclusive em conta nova. |
+| **Sniper de Mercado** | Varre o Mercado e compra o que está abaixo do teto que você definir. Anúncio retido entra numa fila e é comprado **no instante em que libera** (todo anúncio espera 2 min). Filtra por tier, potência, energia, espécie e moeda. |
+
+### Sniper de Mercado
+
+Cada **alvo** é uma procura salva: o que comprar, em que moeda e até que preço.
+Dá para ter vários — "ovo S+ P4/P5 até 2M em bits" e "ovo até 30 D-Dol" são
+buscas diferentes e convivem.
+
+O detalhe que faz a ferramenta valer a pena é a **retenção**: no DigiIdle todo
+anúncio nasce travado e só pode ser comprado 2 min depois (medido em conta real:
+119.993 ms). Quem atualiza a página de minuto em minuto chega atrasado. O sniper
+enfileira o anúncio e acorda no milissegundo do `libera` — e, quando acorda,
+**reconfere o anúncio** antes de pagar: se alguém chegou antes, se o vendedor
+retirou ou subiu o preço, ele desiste.
+
+As travas, porque aqui se gasta dinheiro de verdade:
+
+- **Alvo com teto 0 não compra nada** — e nem pede a lista. É o padrão de fábrica,
+  então ligar a ferramenta antes de configurá-la não gasta um bit.
+- **Reserva** de bits e de D-Dol que ela nunca encosta.
+- **Máximo de compras por hora** (5 de fábrica): é o que segura um erro de
+  configuração antes de ele ficar caro.
+- O **preço vai junto** no comando `mercado.comprar`, então o servidor recusa a
+  compra se o vendedor mudar o valor. É impossível pagar mais do que você viu.
+- Saldo curto é **dito no log**, não ignorado em silêncio — senão "nunca compra"
+  fica idêntico a "não achou nada".
+
+Os filtros são os **do servidor**, não nossos: `tiers`, `potencias`, `maisMin`.
+Conferido em conta real — `tiers=S,SS,SSS` levou 1728 anúncios para 601;
+`potencias=4,5` para 716. O anúncio nem traz a letra do tier, então calculá-la
+aqui seria reimplementar regra do jogo. Vale registrar uma armadilha: **potência
+não é energia**. `potencias` é o P1–P5; `maisMin` é o +N do ovo. Um pedido com
+`maisMin=4` devolveu um ovo `potencia:1`, `data:5` — trocar os dois faria a
+ferramenta comprar justamente o que não foi pedido.
 
 ### Como foram feitas
 
 As ferramentas não "clicam" na tela: elas falam o mesmo protocolo WebSocket que o
 jogo usa, com os comandos que os próprios botões mandam (`market.comprar`,
-`ovo.vender`, `hunt.select`, `ball.throw`, `passe.resgatar`). Uma ponte
+`ovo.vender`, `hunt.select`, `ball.throw`, `passe.resgatar`, `mercado.listar` /
+`mercado.comprar`). Uma ponte
 (`window.__ddGame`) escuta o socket por um canal à parte, então o cliente do jogo
 segue intacto.
 
@@ -63,6 +98,24 @@ não tem pacote de leitura — o estado dele vem dentro do `estado`, em
 `estado.passe`, e a guarda do resgate (`pode && nivel >= passe.nivel`) é a mesma
 condição que liga o botão na tela. Os scripts dessa investigação ficaram no repo
 (`test-passe-*.js`), todos somente-leitura.
+
+O Sniper foi levantado do mesmo jeito, e os scripts estão no repo:
+
+| Script | O que prova |
+|---|---|
+| `test-mercado-grep.js` | Lê o cliente do jogo e extrai os comandos do Mercado. Só baixa arquivos públicos. |
+| `test-mercado-campos.js` | Em conta real, os campos de um anúncio e os 2 min de retenção. **Não compra.** |
+| `test-mercado-filtros.js` | Que `tiers`/`potencias`/`maisMin` filtram no servidor, e que potência ≠ energia. **Não compra.** |
+| `test-sniper-tool.js` | A lógica da ferramenta, contra um mercado de mentira: 21 casos, inclusive os que **não** devem comprar. Sem rede. |
+| `test-sniper-vivo.js` | A ferramenta real no mercado real, com a compra interceptada. Prova que o servidor aceita os filtros que ela monta. |
+| `test-sniper-real.js` | O protocolo de compra, com uma compra real e barata. |
+| `test-sniper-fila.js` | A ferramenta comprando de verdade: `--comprar` para valer, sem a flag é ensaio. |
+
+Vale dizer o que **não** está provado: a compra pela fila foi exercitada contra
+um mercado de mentira (`test-sniper-tool.js`), com o relógio controlado. Nas
+rodadas reais, todo anúncio barato já estava liberado há horas, então o caminho
+"esperar o `libera` e comprar no instante" ainda não aconteceu em produção. O
+código dele é o mesmo nos dois casos, mas a honestidade pede a distinção.
 
 Duas decisões que vale registrar:
 

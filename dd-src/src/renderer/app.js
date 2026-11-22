@@ -2734,7 +2734,7 @@ function openToolAccounts(tool) {
 function openToolConfig(tool, acc, onDone) {
   const conf = state.tools[tool.id][acc.id];
   const cfg = { ...tool.defaults(), ...(conf.cfg || {}) };
-  const forms = { refill: refillForm, eggs: eggsForm, hunt: huntForm, scan: scanForm, lab: labForm, passe: passeForm };
+  const forms = { refill: refillForm, eggs: eggsForm, hunt: huntForm, scan: scanForm, lab: labForm, passe: passeForm, sniper: sniperForm };
   const form = (forms[tool.id] || refillForm)(cfg);
 
   modal({
@@ -2954,6 +2954,139 @@ function eggsForm(cfg) {
       protegido: prot.checked,
       semTier: semTier.checked,
       intervaloMin: Math.max(1, +intervalo.value || 10),
+    }),
+  };
+}
+
+// ------------------------------------------- formulário do Sniper de Mercado
+// Um alvo é uma "procura salva": o que comprar, de que tipo, em que moeda e até
+// que preço. Vários alvos convivem, porque o caso real é justamente esse —
+// "ovo S+ até 2M em bits" e "ovo P5 até 30 D-Dol" são buscas diferentes.
+//
+// O teto é o único campo sem padrão útil: alvo com teto 0 não compra nada, de
+// propósito. É o que torna seguro ligar a ferramenta antes de configurá-la.
+function sniperForm(cfg) {
+  const TIERS = window.DDTools.TIERS;
+  const alvos = (cfg.alvos || []).map((a) => ({ ...a, tiers: [...(a.tiers || [])], potencias: [...(a.potencias || [])] }));
+  const rows = h('div', {});
+
+  const draw = () => {
+    rows.replaceChildren();
+    if (!alvos.length) {
+      rows.append(h('p', { class: 'about' }, 'Nenhum alvo ainda. Clique em "Adicionar alvo".'));
+      return;
+    }
+    alvos.forEach((a, i) => {
+      const nome = h('input', { class: 'input', value: a.nome || '', placeholder: 'nome do alvo (só para você)' });
+      nome.addEventListener('input', () => { a.nome = nome.value; });
+
+      const tipo = h('select', { class: 'input' },
+        ...[['ovo', 'Ovo'], ['digimon', 'Digimon'], ['item', 'Item'], ['tudo', 'Tudo']]
+          .map(([v, n]) => h('option', { value: v, selected: (a.tipo || 'ovo') === v }, n)));
+      tipo.addEventListener('change', () => { a.tipo = tipo.value; draw(); });
+
+      const moeda = h('select', { class: 'input' },
+        ...[['bits', 'Bits'], ['gemas', 'D-Dol']]
+          .map(([v, n]) => h('option', { value: v, selected: (a.moeda || 'bits') === v }, n)));
+      moeda.addEventListener('change', () => { a.moeda = moeda.value; });
+
+      const teto = h('input', { class: 'input', type: 'number', min: '0', value: String(a.tetoPreco || 0) });
+      teto.addEventListener('input', () => { a.tetoPreco = Math.max(0, +teto.value || 0); });
+
+      const esp = h('input', { class: 'input', value: a.especie || '', placeholder: 'ex.: agumon (vazio = qualquer)' });
+      esp.addEventListener('input', () => { a.especie = esp.value.trim(); });
+
+      // Tier e potência só existem para ovo e Digimon; em item não há o que filtrar.
+      const filtrosDigi = (a.tipo || 'ovo') === 'ovo' || a.tipo === 'digimon';
+      const tierSet = new Set(a.tiers || []);
+      const tierBox = h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '10px' } });
+      for (const t of TIERS) {
+        const cb = h('input', { type: 'checkbox', checked: tierSet.has(t) });
+        cb.addEventListener('change', () => { cb.checked ? tierSet.add(t) : tierSet.delete(t); a.tiers = [...tierSet]; });
+        tierBox.append(h('label', { class: 'check', style: { margin: 0 } }, cb, h('span', {}, t)));
+      }
+
+      const potSet = new Set(a.potencias || []);
+      const potBox = h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '10px' } });
+      for (const p of [1, 2, 3, 4, 5]) {
+        const cb = h('input', { type: 'checkbox', checked: potSet.has(p) });
+        cb.addEventListener('change', () => { cb.checked ? potSet.add(p) : potSet.delete(p); a.potencias = [...potSet]; });
+        potBox.append(h('label', { class: 'check', style: { margin: 0 } }, cb, h('span', {}, `P${p}`)));
+      }
+
+      const energia = h('select', { class: 'input' },
+        ...[0, 1, 2, 3, 4, 5].map((n) => h('option', { value: String(n), selected: (a.energiaMin || 0) === n }, n ? `+${n} ou mais` : 'qualquer')));
+      energia.addEventListener('change', () => { a.energiaMin = +energia.value; });
+
+      const shiny = h('input', { type: 'checkbox', checked: !!a.soShiny });
+      shiny.addEventListener('change', () => { a.soShiny = shiny.checked; });
+
+      const del = h('button', { class: 'btn danger', onclick: () => { alvos.splice(i, 1); draw(); } }, 'Remover');
+
+      rows.append(h('div', { class: 'card', style: { padding: '12px', marginBottom: '10px' } },
+        h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' } }, nome, del),
+        h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+          h('label', { style: { flex: '1 1 110px' } }, h('span', { class: 'help' }, 'Tipo'), tipo),
+          h('label', { style: { flex: '1 1 110px' } }, h('span', { class: 'help' }, 'Moeda'), moeda),
+          h('label', { style: { flex: '1 1 150px' } }, h('span', { class: 'help' }, 'Teto de preço'), teto)),
+        filtrosDigi ? h('div', { style: { marginTop: '8px' } },
+          h('span', { class: 'help' }, 'Tier (vazio = qualquer)'), tierBox,
+          h('span', { class: 'help' }, 'Potência (vazio = qualquer)'), potBox,
+          h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' } },
+            h('label', { style: { flex: '1 1 150px' } }, h('span', { class: 'help' }, 'Energia do ovo (+N)'), energia),
+            h('label', { style: { flex: '1 1 200px' } }, h('span', { class: 'help' }, 'Espécie'), esp)),
+          h('label', { class: 'check', style: { marginTop: '8px' } }, shiny, h('span', {}, 'Só Shiny / UX'))) : h('div', { style: { marginTop: '8px' } },
+          h('span', { class: 'help' }, 'Item (id ou nome)'), esp)));
+    });
+  };
+  draw();
+
+  const addBt = h('button', {
+    class: 'btn',
+    onclick: () => {
+      alvos.push({ nome: '', tipo: 'ovo', moeda: 'bits', tetoPreco: 0, tiers: [], potencias: [], energiaMin: 0, especie: '', soShiny: false });
+      draw();
+    },
+  }, 'Adicionar alvo');
+
+  const intervalo = h('input', { class: 'input', type: 'number', min: '20', value: String(cfg.intervaloSec || 60) });
+  const resBits = h('input', { class: 'input', type: 'number', min: '0', value: String(cfg.reservaBits || 0) });
+  const resGemas = h('input', { class: 'input', type: 'number', min: '0', value: String(cfg.reservaGemas || 0) });
+  const maxHora = h('input', { class: 'input', type: 'number', min: '0', value: String(cfg.maxPorHora ?? 5) });
+  const soLib = h('input', { type: 'checkbox', checked: !!cfg.soLiberados });
+
+  const el = h('div', {},
+    h('p', { class: 'about' }, 'Cada alvo é uma procura: o que comprar e até que preço. Alvo com teto 0 nunca compra — é assim que a ferramenta fica segura antes de você configurá-la.'),
+    rows, addBt,
+    h('div', { class: 'field', style: { marginTop: '14px' } }, h('label', {}, 'Varrer a cada (segundos)'), intervalo,
+      h('span', { class: 'help' }, 'Mínimo de 20 s. A ferramenta também varre na hora em que o servidor avisa que o mercado mudou.')),
+    field('Reserva de bits (nunca gastar)', resBits),
+    field('Reserva de D-Dol (nunca gastar)', resGemas),
+    h('div', { class: 'field' }, h('label', {}, 'Máximo de compras por hora'), maxHora,
+      h('span', { class: 'help' }, '0 = sem limite. É a trava que segura um erro de configuração.')),
+    checkRow(soLib, 'Só comprar o que já está liberado',
+      'Desligado (recomendado): anúncio retido entra na fila e é comprado no instante em que libera — os 2 min de espera são onde as pechinchas são disputadas.'),
+    h('div', { class: 'warnbox' }, 'A compra é definitiva e gasta moeda de verdade. Comece com um teto baixo e o limite por hora ligado. O preço vai junto no comando, então o jogo recusa a compra se o vendedor mudar o valor — você nunca paga mais do que o teto.'));
+
+  return {
+    el,
+    read: () => ({
+      alvos: alvos.map((a) => ({
+        nome: a.nome || '',
+        tipo: a.tipo || 'ovo',
+        moeda: a.moeda || 'bits',
+        tetoPreco: Math.max(0, +a.tetoPreco || 0),
+        tiers: a.tiers || [],
+        potencias: a.potencias || [],
+        energiaMin: Math.max(0, +a.energiaMin || 0),
+        especie: a.especie || '',
+        soShiny: !!a.soShiny,
+      })),
+      intervaloSec: Math.max(20, +intervalo.value || 60),
+      reservaBits: Math.max(0, +resBits.value || 0),
+      reservaGemas: Math.max(0, +resGemas.value || 0),
+      maxPorHora: Math.max(0, +maxHora.value || 0),
+      soLiberados: soLib.checked,
     }),
   };
 }

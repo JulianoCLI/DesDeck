@@ -741,6 +741,231 @@ function codePasse(cfg) {
 })();`));
 }
 
+// ---------------------------------------------------------------- auto sniper
+// Varre o Mercado procurando o que está abaixo do teto que a pessoa definiu e
+// compra. O nome "sniper" é literal: a graça não é comprar, é comprar PRIMEIRO.
+//
+// O protocolo foi levantado do cliente (test-mercado-grep.js) e conferido em
+// conta real (test-mercado-campos.js, test-mercado-filtros.js, test-sniper-real.js):
+//
+//   - pedir:    enviar('mercado.listar', { tipo, moeda, precoMax, tiers,
+//               potencias, maisMin, especie, ordem, pagina })  (menus2.js:403-409)
+//   - RESPOSTA: pacote 't: "mercado"' (menus2.js:941), com { lista, total, agora }
+//   - comprar:  enviar('mercado.comprar', { id, qtd, preco, moeda }) (menus2.js:474)
+//   - push:     't: "mercado.mudou"' quando alguém vende/compra/expira (menus2.js:952)
+//
+// A RETENÇÃO é o coração desta ferramenta. Todo anúncio nasce retido e só pode ser
+// comprado depois de `libera` — "todo anúncio espera 2 min antes de poder ser
+// comprado" (menus2.js:677). Medido em conta real: libera - criado = 119.993 ms.
+// Então a pechincha não é perdida por estar retida: ela é uma CORRIDA marcada para
+// um instante conhecido. É por isso que existe uma fila — achar o anúncio é fácil,
+// chegar primeiro no segundo do libera é o que importa.
+//
+// Três decisões que vale registrar:
+//
+//   1. NADA DE REGRA REIMPLEMENTADA. Tier, potência e energia são filtrados pelo
+//      SERVIDOR, não por nós. Conferido em conta real: tiers='S,SS,SSS' levou
+//      1728 anúncios para 601; potencias='4,5' para 716; maisMin=5 para 190. O
+//      anúncio NÃO traz a letra do tier (só especie/ivs/u), e calculá-la exigiria
+//      o catálogo do jogo — então confiamos em quem tem a regra. Mesma escolha do
+//      resto do projeto.
+//
+//   2. POTÊNCIA NÃO É ENERGIA. 'potencias' é o P1..P5 (o "p4+" do pedido);
+//      'maisMin' é o +N do ovo, que é outra coisa. Isto quase entrou trocado: um
+//      pedido com maisMin=4 devolveu um ovo com potencia:1 e data:5. Trocar os
+//      dois faria a ferramenta comprar justamente o que não foi pedido.
+//
+//   3. O RELÓGIO É O DO SERVIDOR. A resposta traz 'agora', e comparar 'libera'
+//      com o Date.now() local erraria pelo desvio entre as máquinas (medido:
+//      ~250-400 ms, o bastante para perder a corrida ou, pior, chegar adiantado e
+//      ser recusado). Guardamos o desvio e decidimos sempre no tempo do servidor.
+//
+// A trava final é do próprio jogo, e é de graça: 'mercado.comprar' manda o PREÇO
+// junto. Se o vendedor tiver mudado o valor, o servidor recusa em vez de cobrar o
+// preço novo. Ou seja: é impossível esta ferramenta pagar mais do que viu.
+function codeSniper(cfg) {
+  const alvos = (cfg.alvos || []).filter((a) => a && a.tetoPreco > 0);
+  return isolar(comCfg('sniper', {
+    alvos,
+    intervaloSec: Math.max(20, cfg.intervaloSec || 60),
+    reservaBits: Math.max(0, cfg.reservaBits || 0),
+    reservaGemas: Math.max(0, cfg.reservaGemas || 0),
+    maxPorHora: Math.max(0, cfg.maxPorHora || 0),
+    soLiberados: !!cfg.soLiberados,
+  }, `
+(async () => {
+  // O desvio entre o nosso relógio e o do servidor, medido a cada resposta
+  // ('agora' vem no pacote). Toda decisão de tempo passa por aqui.
+  let desvio = 0;
+  const agoraServidor = () => Date.now() - desvio;
+
+  // A fila: anúncios retidos que já passaram pelos filtros e estão esperando o
+  // libera. Chave é o id do anúncio, para não enfileirar o mesmo duas vezes.
+  const fila = new Map();
+  const comprados = new Set();   // nunca tenta o mesmo anúncio duas vezes
+  let compras = [];              // instantes das compras, para o limite por hora
+  let listaPend = null;
+  const avisouSaldo = {};        // o aviso de saldo curto sai uma vez por moeda
+
+  // A ponte guarda a última resposta de cada pacote, mas 'mercado' não estava
+  // entre os que ela escuta (ela nasceu para ovos/campo/lab). Em vez de mexer na
+  // ponte, escutamos aqui: é um ouvinte a mais no mesmo socket.
+  const aoMercado = [];
+  if (!G.__sniperOuvindo) {
+    G.__sniperOuvindo = true;
+    G.aoPacote = G.aoPacote || [];
+  }
+
+  // Pede uma listagem e espera a resposta. O pacote de resposta é 'mercado'.
+  const listar = (filtro) => new Promise((resolve) => {
+    listaPend = resolve;
+    if (!G.enviar('mercado.listar', filtro)) { listaPend = null; resolve(null); return; }
+    setTimeout(() => { if (listaPend === resolve) { listaPend = null; resolve(null); } }, 8000);
+  });
+
+  // Enganchamos no socket uma vez, por fora do jogo (addEventListener, como a ponte).
+  const engancha = () => {
+    if (!G.sock || G.sock.__sniper) return;
+    G.sock.__sniper = true;
+    G.sock.addEventListener('message', (ev) => {
+      if (typeof ev.data !== 'string') return;
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (!m) return;
+      if (m.t === 'mercado') {
+        if (typeof m.agora === 'number') desvio = Date.now() - m.agora;
+        const r = listaPend; listaPend = null;
+        if (r) r(m);
+      } else if (m.t === 'mercado.mudou') {
+        // O mercado mexeu: alguém vendeu, comprou ou um anúncio expirou. É o
+        // momento mais provável de aparecer coisa nova, então varremos já.
+        if (!CFG.__off) setTimeout(varrer, 400 + Math.random() * 800);
+      }
+    });
+  };
+
+  // O filtro de um alvo, no formato que o SERVIDOR entende. Campos vazios são
+  // omitidos: mandar 'tiers: ""' é o mesmo que não filtrar, mas enviar o campo à
+  // toa só aumenta a chance de divergir do que o jogo manda.
+  const filtroDe = (a) => {
+    const f = { tipo: a.tipo || 'ovo', moeda: a.moeda || 'bits', ordem: 'barato', pagina: 0 };
+    f.precoMax = a.tetoPreco;
+    if (a.especie) f.especie = a.especie;
+    if (a.busca) f.busca = a.busca;
+    if (a.tiers && a.tiers.length) f.tiers = a.tiers.join(',');
+    if (a.potencias && a.potencias.length) f.potencias = a.potencias.join(',');
+    if (a.energiaMin > 0) f.maisMin = a.energiaMin;
+    if (a.familia) f.familia = a.familia;
+    if (a.soShiny) f.soShiny = true;
+    return f;
+  };
+
+  const saldoDe = (moeda) => {
+    const E = G.estado || {};
+    return moeda === 'gemas' ? (E.gemas || 0) : (E.bits || 0);
+  };
+  const reservaDe = (moeda) => (moeda === 'gemas' ? CFG.reservaGemas : CFG.reservaBits);
+
+  // Dá para pagar este anúncio sem furar a reserva?
+  const cabe = (a) => saldoDe(a.moeda) - reservaDe(a.moeda) >= a.preco;
+
+  const noLimite = () => {
+    if (!CFG.maxPorHora) return false;
+    const corte = Date.now() - 3600000;
+    compras = compras.filter((t) => t > corte);
+    return compras.length >= CFG.maxPorHora;
+  };
+
+  // Comprar. Só é chamada quando o anúncio já está liberado.
+  const comprar = async (a, alvo) => {
+    if (CFG.__off || comprados.has(a.id)) return;
+    if (noLimite()) { G.log('sniper: limite de ' + CFG.maxPorHora + ' compra(s)/hora atingido; deixando passar #' + a.id); return; }
+    if (!cabe(a)) { G.log('sniper: #' + a.id + ' custa ' + a.preco + ' ' + a.moeda + ', mas a reserva não deixa'); return; }
+    // Marca ANTES de enviar: se o envio falhar, melhor perder uma pechincha do
+    // que arriscar comprar duas vezes.
+    comprados.add(a.id);
+    fila.delete(a.id);
+    if (!G.enviar('mercado.comprar', { id: a.id, qtd: 1, preco: a.preco, moeda: a.moeda })) return;
+    compras.push(Date.now());
+    avisouSaldo[a.moeda] = false; // o saldo mudou: vale avisar de novo se faltar
+    G.log('sniper: comprei #' + a.id + ' (' + (a.resumo && a.resumo.especie || a.item || a.tipo) + ') por ' + a.preco + ' ' + (a.moeda === 'gemas' ? 'D-Dol' : 'bits') + (alvo.nome ? ' [' + alvo.nome + ']' : ''));
+  };
+
+  // Agenda a compra para o instante do libera. É isto que ganha a corrida: em vez
+  // de reconferir de minuto em minuto (e chegar até 60 s atrasado), acordamos no
+  // milissegundo em que o anúncio fica comprável.
+  //
+  // A folga existe porque o servidor recusa quem chega adiantado: o desvio de
+  // relógio é medido, mas não é exato, e a rede ainda cobra o seu tempo.
+  const FOLGA_MS = 250;
+  const agendar = (a, alvo) => {
+    if (fila.has(a.id) || comprados.has(a.id)) return;
+    const espera = a.libera - agoraServidor() + FOLGA_MS;
+    if (espera > 15 * 60000) return; // retenção é de 2 min; isto não deveria acontecer
+    const timer = setTimeout(async () => {
+      fila.delete(a.id);
+      if (CFG.__off) return;
+      // O mundo pode ter mudado nos 2 min de espera: outro comprador levou, o
+      // vendedor retirou ou mudou o preço. Então reconferimos o anúncio AGORA,
+      // em vez de confiar na foto antiga.
+      const m = await listar(filtroDe(alvo));
+      if (!m || CFG.__off) return;
+      const vivo = (m.lista || []).find((x) => x.id === a.id);
+      if (!vivo) { G.log('sniper: #' + a.id + ' já não está à venda (alguém chegou antes)'); return; }
+      if (vivo.preco > alvo.tetoPreco) { G.log('sniper: #' + a.id + ' subiu para ' + vivo.preco + '; acima do teto'); return; }
+      if (vivo.libera > agoraServidor()) { agendar(vivo, alvo); return; } // preço mudou: retenção reiniciou
+      await comprar(vivo, alvo);
+    }, Math.max(0, espera));
+    fila.set(a.id, timer);
+    G.log('sniper: #' + a.id + ' na fila por ' + a.preco + ' ' + (a.moeda === 'gemas' ? 'D-Dol' : 'bits') + ' — libera em ' + Math.ceil((a.libera - agoraServidor()) / 1000) + 's');
+  };
+
+  // Uma passada por todos os alvos configurados.
+  const varrer = async () => {
+    if (CFG.__off || !G.estado) return;
+    engancha();
+    for (const alvo of CFG.alvos) {
+      if (CFG.__off) break;
+      if (noLimite()) break;
+      const m = await listar(filtroDe(alvo));
+      if (!m) continue;
+      for (const a of m.lista || []) {
+        if (comprados.has(a.id) || fila.has(a.id)) continue;
+        // As guardas: nunca o nosso anúncio, nunca fechado, nunca acima do teto.
+        // O precoMax já foi ao servidor, mas reconferimos aqui — um filtro que o
+        // servidor ignorasse viraria compra indevida, e esse é o erro que custa.
+        if (a.meu) continue;
+        if (a.estado && a.estado !== 'aberto') continue;
+        if (a.moeda !== (alvo.moeda || 'bits')) continue;
+        if (!(a.preco > 0) || a.preco > alvo.tetoPreco) continue;
+        // Saldo curto é o motivo mais chato de "o sniper nunca compra": do lado
+        // de fora é idêntico a "não achou nada". Então ele é dito em voz alta,
+        // uma vez por moeda, em vez de virar um 'continue' calado.
+        if (!cabe(a)) {
+          const moeda = a.moeda === 'gemas' ? 'D-Dol' : 'bits';
+          if (!avisouSaldo[a.moeda]) {
+            avisouSaldo[a.moeda] = true;
+            G.log('sniper: achei #' + a.id + ' por ' + a.preco + ' ' + moeda + ', mas o saldo disponível é ' + (saldoDe(a.moeda) - reservaDe(a.moeda)) + ' (saldo ' + saldoDe(a.moeda) + ' menos a reserva ' + reservaDe(a.moeda) + '). Não vou comprar.');
+          }
+          continue;
+        }
+        const retido = a.libera > agoraServidor();
+        if (retido) { if (!CFG.soLiberados) agendar(a, alvo); continue; }
+        await comprar(a, alvo);
+        if (noLimite()) break;
+      }
+    }
+  };
+
+  const seguro = async () => { try { await varrer(); } catch (e) { G.log('sniper: varredura falhou', e); } };
+  const laco = async () => {
+    await seguro();
+    const base = CFG.intervaloSec * 1000;
+    setTimeout(laco, base + G.jitter('sniper', base));
+  };
+  G.quando(() => { engancha(); setTimeout(laco, 15000 + G.jitter('sniper-inicio', 45000)); });
+})();`));
+}
+
 // ---------------------------------------------------------------- catálogo
 const TOOLS = [
   {
@@ -831,6 +1056,40 @@ const TOOLS = [
     }),
     code: codePasse,
     summary: (c) => `confere a cada ${c.intervaloMin || 10} min${c.premiumAtrasado !== false ? ' · pega o Premium atrasado' : ' · só o grátis'}`,
+  },
+  {
+    id: 'sniper',
+    name: 'Sniper de Mercado',
+    icon: 'search',
+    desc: 'Varre o Mercado procurando o que está abaixo do teto que você definir e compra. Anúncio retido entra na fila e é comprado no instante em que libera (todo anúncio espera 2 min). Filtra por tier, potência, energia e espécie — usando os filtros do próprio servidor.',
+    defaults: () => ({
+      // Nasce com um alvo de exemplo DESLIGADO na prática: teto 0 não compra
+      // nada, então ligar a ferramenta sem configurar não gasta um bit.
+      alvos: [{
+        nome: 'Ovo S+ barato',
+        tipo: 'ovo',
+        moeda: 'bits',
+        tetoPreco: 0,
+        tiers: ['S', 'SS', 'SSS'],
+        potencias: [4, 5],
+        energiaMin: 0,
+        especie: '',
+        familia: '',
+        soShiny: false,
+      }],
+      intervaloSec: 60,
+      reservaBits: 0,
+      reservaGemas: 0,
+      maxPorHora: 5,
+      soLiberados: false,
+    }),
+    code: codeSniper,
+    summary: (c) => {
+      const alvos = (c.alvos || []).filter((a) => a && a.tetoPreco > 0);
+      if (!alvos.length) return 'sem alvo com teto definido · não compra nada';
+      const n = alvos.length;
+      return `${n} alvo${n > 1 ? 's' : ''} · varre a cada ${c.intervaloSec || 60}s${c.maxPorHora > 0 ? ` · até ${c.maxPorHora}/h` : ''}${c.soLiberados ? ' · só liberados' : ' · pega na fila'}`;
+    },
   },
 ];
 
