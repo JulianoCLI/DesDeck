@@ -84,6 +84,13 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       // 'lab.info') e é o que a ferramenta de labirinto lê para decidir.
       lab: null,
 
+      // O Passe de Batalha. NÃO tem pacote próprio: vem dentro do 'estado',
+      // conferido em 4 contas reais (test-passe-estado.js). Forma:
+      //   { dia, feitos, nivel, pode, premium, premiumAte, premiumPend, ultimo }
+      // 'pode' é a palavra final do servidor sobre o resgate de hoje — é o
+      // mesmo campo que liga o botão na tela do jogo.
+      passe: null,
+
       // ---- O que o card mostra. Sem webview não há nada para olhar, então
       // estes campos são a única noção do que a conta está fazendo.
       nick: null,
@@ -194,6 +201,8 @@ class DigiiIdleHeadlessClient extends EventEmitter {
         this.state.evp = msg.evp || 0;
         this.state.evpMax = msg.evpMax || 0;
         this.state.eventoXP = msg.eventoXP || null;
+        // O Passe chega aqui dentro, não num pacote próprio.
+        this.state.passe = msg.passe || null;
         this.emit('update');
         break;
 

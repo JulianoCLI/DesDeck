@@ -656,6 +656,91 @@ function codeLab(cfg) {
 })();`));
 }
 
+// ----------------------------------------------------------------- auto passe
+// Espelho de ToolPasse (src/headless/tools.js) para o modo normal (webview).
+// Resgata o Passe de Batalha todo dia, porque perder UM dia zera a trilha de
+// 30 dias e leva embora os baús (dias 7/14/21/28) e o Lendário (dia 30).
+//
+// Conferido no cliente do jogo (js/menus.js, abrirPasse) e em 4 contas reais:
+//   - o passe NÃO tem pacote próprio: vem em estado.passe;
+//   - resgatar é enviar('passe.resgatar') sem argumentos;
+//   - 'pode' é o que liga o botão; abaixo de passe.nivel ele fica desabilitado;
+//   - 'premiumPend' são os dias de Premium atrasado -> enviar('passe.premium').
+//
+// O reset é à meia-noite de Brasília, mas não calculamos nada: 'pode' já é a
+// palavra do servidor. Nunca compra o Premium (50 DCoin é decisão do jogador).
+function codePasse(cfg) {
+  return isolar(comCfg('passe', {
+    intervaloMs: Math.max(1, cfg.intervaloMin || 10) * 60000,
+    premiumAtrasado: cfg.premiumAtrasado !== false,
+  }, `
+(async () => {
+  let ultimoResgate = 0;
+  let ultimoMotivo = null;
+
+  // Por que não resgataríamos agora. null = pode.
+  const motivoParaNaoResgatar = (P, E) => {
+    if (!P) return 'o estado ainda não trouxe o passe';
+    if (!P.pode) return 'o dia de hoje já foi resgatado';
+    const min = P.nivel || 0;
+    if (E && min && E.nivel < min) return 'o passe libera no nível ' + min + ' (a conta está no ' + E.nivel + ')';
+    return null;
+  };
+
+  // Dias de Premium atrasado, só se a conta TEM Premium.
+  const premiumPendente = (P) => {
+    if (!CFG.premiumAtrasado) return [];
+    if (!P || !P.premium) return [];
+    return Array.isArray(P.premiumPend) ? P.premiumPend : [];
+  };
+
+  const resgatarPremium = async (P) => {
+    const pend = premiumPendente(P);
+    if (!pend.length) return;
+    await G.respirar(5000);
+    if (CFG.__off) return;
+    if (!G.enviar('passe.premium', {})) return;
+    G.log('passe: resgatei o Premium atrasado de ' + pend.length + ' dia(s): ' + pend.join(', '));
+  };
+
+  const passo = async () => {
+    if (CFG.__off) return;
+    const E = G.estado;
+    if (!E) return;
+    const P = E.passe;
+
+    // Respiro depois de resgatar: o 'estado' pode não ter trazido o 'pode' novo.
+    if (Date.now() - ultimoResgate < 60000) return;
+
+    const motivo = motivoParaNaoResgatar(P, E);
+    if (motivo) {
+      if (ultimoMotivo !== motivo) { ultimoMotivo = motivo; G.log('passe: ' + motivo); }
+      await resgatarPremium(P);   // pode haver Premium atrasado mesmo sem resgate do dia
+      return;
+    }
+    ultimoMotivo = null;
+
+    // Todas as contas viram o dia no mesmo instante: sem respiro elas mandariam
+    // o comando no mesmo segundo.
+    await G.respirar(8000);
+    if (CFG.__off) return;
+    const P2 = (G.estado && G.estado.passe) || P;
+    if (motivoParaNaoResgatar(P2, G.estado)) return;
+
+    if (!G.enviar('passe.resgatar', {})) return;
+    ultimoResgate = Date.now();
+    G.log('passe: resgatei o Dia ' + P2.dia + ' (' + (P2.feitos + 1) + '/30 na trilha)');
+
+    // Com Premium, o resgate do dia já traz os dois; isto é só para o atrasado.
+    await resgatarPremium(G.estado && G.estado.passe);
+  };
+
+  const seguro = async () => { try { await passo(); } catch (e) { G.log('passe: passo falhou', e); } };
+  const laco = async () => { await seguro(); setTimeout(laco, CFG.intervaloMs + G.jitter('passe', CFG.intervaloMs)); };
+  G.quando(() => setTimeout(laco, 40000 + G.jitter('passe-inicio', 80000)));
+})();`));
+}
+
 // ---------------------------------------------------------------- catálogo
 const TOOLS = [
   {
@@ -723,20 +808,48 @@ const TOOLS = [
     id: 'lab',
     name: 'Auto Labirinto',
     icon: 'users',
-    desc: 'Mantém a conta inscrita no lobby do Labirinto da Guild, para não perder a corrida. Reage ao aviso do servidor, então entra logo depois de o lobby reabrir. Nunca começa a corrida nem mexe na dificuldade — isso fica com você.',
+    desc: 'Inscreve a conta no lobby do Labirinto da Guild assim que ele reabre, para não perder a corrida. Começar a corrida e escolher a dificuldade continua com você.',
     defaults: () => ({
       intervaloMin: 2,
     }),
     code: codeLab,
     summary: (c) => `confere o lobby a cada ${c.intervaloMin || 2} min · entra sozinha`,
   },
+  {
+    id: 'passe',
+    name: 'Auto Passe',
+    icon: 'calendar',
+    desc: 'Resgata o Passe de Batalha todo dia. Perder um dia zera a trilha de 30 dias, junto com os baús e o Lendário. Se a conta tiver Premium atrasado, resgata esse também. Nunca compra o Premium.',
+    // Vem ligada de fábrica, inclusive em conta nova. É a única ferramenta
+    // assim: ela não gasta nada, não muda onde a conta está nem o que ela faz,
+    // e esquecer de ligá-la custa a trilha inteira de 30 dias. Desligar fica
+    // gravado por conta (enabled: false), então a escolha é respeitada.
+    padraoLigado: true,
+    defaults: () => ({
+      intervaloMin: 10,
+      premiumAtrasado: true,
+    }),
+    code: codePasse,
+    summary: (c) => `confere a cada ${c.intervaloMin || 10} min${c.premiumAtrasado !== false ? ' · pega o Premium atrasado' : ' · só o grátis'}`,
+  },
 ];
 
 const toolById = (id) => TOOLS.find((t) => t.id === id);
+
+// Esta ferramenta está ligada nesta conta?
+//
+// Sem registro, a resposta é o padrão da ferramenta: quase todas vêm desligadas,
+// mas as que têm padraoLigado valem para contas que nunca passaram pela tela de
+// ferramentas — inclusive as criadas depois. Só assim o "já vem ligado" alcança
+// conta nova sem precisar escrever estado para cada conta no momento do cadastro.
+//
+// Um registro explícito sempre ganha: desligar na UI grava enabled:false, e isso
+// é respeitado (não é "nunca configurado").
+const toolLigada = (conf, tool) => (conf && typeof conf.enabled === 'boolean' ? conf.enabled : !!(tool && tool.padraoLigado));
 
 // Desligar uma ferramenta numa conta que já está aberta, sem recarregar. O laço dela
 // continua existindo (não há como cancelar um setTimeout de fora), mas desiste a cada
 // passo. Religar depois é só aplicar a config de novo, que limpa o __off.
 const offCode = (id) => `(() => { window.__ddGame && window.__ddGame.desligar(${JSON.stringify(id)}); })();`;
 
-window.DDTools = { TOOLS, toolById, REFILL_ITENS, TIERS, offCode };
+window.DDTools = { TOOLS, toolById, toolLigada, REFILL_ITENS, TIERS, offCode };

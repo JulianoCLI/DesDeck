@@ -36,19 +36,33 @@ npm run build
 Botão **Ferramentas** na barra lateral. Cada uma liga/desliga **por conta** e tem
 ajustes próprios. Alterar a configuração vale na hora, **sem recarregar a página**.
 
+Todas vêm desligadas, menos o **Auto Passe**: ele não gasta nada nem muda o que a
+conta está fazendo, e esquecer de ligá-lo custa a trilha inteira de 30 dias. Se você
+desligar numa conta, a escolha fica gravada e é respeitada.
+
 | Ferramenta | O que faz |
 |---|---|
 | **Auto Refill** | Compra na Loja quando um item chega ao mínimo e repõe até o máximo (scanners, poções, revives). |
 | **Vender ovos** | Vende ovos dos tiers escolhidos de tempos em tempos. Por padrão **não** vende S, SS nem SSS. |
 | **Auto Melhor Hunt** | Confere a hunt recomendada do Mapa e troca se não estivermos nela. Também tira a conta do Hospital quando ela fica parada lá. **Nunca** troca durante o Labirinto da Guild. |
 | **Auto Scan** | Lança o scan nos corpos caídos — útil em contas sem VIP. Funciona com a cena desligada (Modo Economia). |
+| **Auto Labirinto** | Inscreve a conta no lobby do Labirinto da Guild assim que ele reabre. Não começa a corrida nem muda a dificuldade. |
+| **Auto Passe** | Resgata o Passe de Batalha todo dia — perder um dia zera a trilha de 30 dias. Pega o Premium atrasado se a conta tiver Premium; **nunca** compra o Premium. **Já vem ligada**, inclusive em conta nova. |
 
 ### Como foram feitas
 
 As ferramentas não "clicam" na tela: elas falam o mesmo protocolo WebSocket que o
 jogo usa, com os comandos que os próprios botões mandam (`market.comprar`,
-`ovo.vender`, `hunt.select`, `ball.throw`). Uma ponte (`window.__ddGame`) escuta o
-socket por um canal à parte, então o cliente do jogo segue intacto.
+`ovo.vender`, `hunt.select`, `ball.throw`, `passe.resgatar`). Uma ponte
+(`window.__ddGame`) escuta o socket por um canal à parte, então o cliente do jogo
+segue intacto.
+
+Os nomes dos comandos não são chutados: cada um foi conferido no cliente do jogo
+e, quando possível, numa conta real antes de virar código. O Passe, por exemplo,
+não tem pacote de leitura — o estado dele vem dentro do `estado`, em
+`estado.passe`, e a guarda do resgate (`pode && nivel >= passe.nivel`) é a mesma
+condição que liga o botão na tela. Os scripts dessa investigação ficaram no repo
+(`test-passe-*.js`), todos somente-leitura.
 
 Duas decisões que vale registrar:
 

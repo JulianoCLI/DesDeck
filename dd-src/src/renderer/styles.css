@@ -593,8 +593,38 @@ body.dragging .wv-wrap::after { content: ""; position: absolute; inset: 0; z-ind
 textarea.input { height: auto; min-height: 66px; padding: 9px 11px; resize: vertical; }
 .input:focus { border-color: #2a7fa3; box-shadow: 0 0 0 3px rgba(34, 211, 238, .12); }
 .check { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 11px; cursor: pointer; }
-.check input { margin: 2px 0 0; accent-color: var(--accent); width: 15px; height: 15px; flex: none; }
 .check small { display: block; color: var(--faint); font-size: 11.5px; }
+
+/* Interruptores das ferramentas.
+   Continuam sendo <input type="checkbox">: só a aparência muda, então todo o
+   código que lê .checked e escuta 'change' segue valendo (foi o que permitiu
+   trocar as caixinhas sem mexer em nenhum formulário).
+   As cores e o tamanho acompanham o .switch que já existia na barra de telas,
+   para não haver dois desenhos de interruptor no app. appearance:none tira o
+   quadradinho do sistema; o trilho é o próprio input e a bolinha é o ::after. */
+.toggle,
+.check input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  position: relative; flex: none; margin: 0;
+  width: 30px; height: 17px; border-radius: 99px;
+  background: var(--line-3); border: 0;
+  cursor: pointer; transition: background .15s;
+}
+.check input[type="checkbox"] { margin-top: 2px; }
+.toggle::after,
+.check input[type="checkbox"]::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 13px; height: 13px; border-radius: 50%;
+  background: var(--muted); transition: transform .15s, background .15s;
+}
+.toggle:checked,
+.check input[type="checkbox"]:checked { background: linear-gradient(180deg, #67e8f9, #22d3ee); }
+.toggle:checked::after,
+.check input[type="checkbox"]:checked::after { transform: translateX(13px); background: #fff; }
+.toggle:focus-visible,
+.check input[type="checkbox"]:focus-visible { outline: 1.5px solid var(--focus); outline-offset: 2px; }
+.toggle:disabled,
+.check input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .swatches { display: flex; gap: 7px; flex-wrap: wrap; }
 .swatch { width: 26px; height: 26px; border-radius: 7px; border: 2px solid var(--bg); box-shadow: 0 0 0 1px var(--line-3); cursor: pointer; padding: 0; }
 .swatch.active { box-shadow: 0 0 0 1.5px var(--bright); }

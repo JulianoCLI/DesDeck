@@ -21,3 +21,9 @@ scripts/
 *-report.txt
 # Idem: saída do test-lab-campos, traz o nick da conta.
 lab-campos.txt
+# Idem: saídas da descoberta do Passe, trazem nick, nível e progresso da conta.
+passe-campos.txt
+passe-dump.txt
+passe-estado.txt
+passe-grep.txt
+passe-vivo.txt

@@ -46,7 +46,23 @@ ok(code.includes("G.enviar('lab.entrar'"), 'manda lab.entrar');
 for (const f of ['lab.iniciar', 'lab.dificuldade', 'lab.sair', 'lab.voltar', 'lab.chamar'])
   ok(!code.includes("G.enviar('" + f), `NAO manda ${f}`);
 
+console.log('\nferramenta de passe:');
+const P = T.toolById('passe');
+ok(!!P, 'esta no catalogo');
+console.log(`  defaults: ${JSON.stringify(P.defaults())}`);
+console.log(`  resumo  : ${P.summary(P.defaults())}`);
+const codeP = P.code(P.defaults());
+ok(codeP.includes("G.enviar('passe.resgatar'"), 'manda passe.resgatar');
+ok(codeP.includes("G.enviar('passe.premium'"), 'manda passe.premium (quando ha atrasado)');
+ok(codeP.includes('motivoParaNaoResgatar'), 'tem a guarda motivoParaNaoResgatar');
+ok(codeP.includes('P.premium'), 'confere se a conta TEM Premium antes do atrasado');
+ok(codeP.includes('E.nivel < min'), 'respeita o nivel minimo do passe');
+// Comprar o Premium custa 50 DCoin: nunca pode sair daqui.
+for (const f of ['shop.comprar', 'passe.comprar'])
+  ok(!codeP.includes(f), `NAO manda ${f}`);
+
 console.log('\nponte:');
+ok(src.includes('passe'), 'a ponte/ferramenta conhece o passe (vem no estado)');
 for (const f of ['lab: null, aoLabMudou: []', "m.t === 'lab'", "m.t === 'lab.mudou'"])
   ok(src.includes(f), `a ponte trata ${f}`);
 

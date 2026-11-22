@@ -692,6 +692,128 @@ class ToolLab extends HeadlessTool {
   }
 }
 
+// ----------------------------------------------------------------- auto passe
+// Resgata o Passe de Batalha todo dia. Perder UM dia zera a trilha de 30 dias
+// ("Faltou um dia, a trilha volta ao Dia 1", regra escrita na própria tela),
+// levando embora os baús dos dias 7/14/21/28 e o Lendário do 30 — é por isso
+// que esta ferramenta existe.
+//
+// Conferido no cliente do jogo (js/menus.js, abrirPasse) e em 4 contas reais
+// (test-passe-estado.js):
+//   - NÃO existe pacote de leitura do passe: o estado vem dentro do 'estado',
+//     em estado.passe = { dia, feitos, nivel, pode, premium, premiumAte,
+//     premiumPend, ultimo };
+//   - resgatar é enviar('passe.resgatar'), SEM argumentos — o servidor sabe
+//     qual é o dia; é exatamente o que o botão #passe-resgatar manda;
+//   - o botão liga com `hoje = p.pode ? p.dia : 0`, e fica desabilitado abaixo
+//     do nível mínimo, então a guarda é `pode && nivel >= passe.nivel`;
+//   - 'premiumPend' são os dias cujo Premium ainda não foi pego (o jogo chama
+//     de "Premium atrasado"); resgatá-los é enviar('passe.premium').
+//
+// Sobre o reset: a trilha vira à meia-noite de BRASÍLIA (UTC-3 o ano todo,
+// novoDiaPasse() no jogo). Mas não calculamos isso — 'pode' já é a palavra do
+// servidor, então basta conferir de tempo em tempo e agir quando ele virar
+// true. Isso é imune a fuso errado, PC dormindo e relógio fora de hora.
+//
+// O que NÃO faz, de propósito: nunca manda shop.comprar {id:'passe-premium'} —
+// o Premium custa 50 DCoin e comprar é decisão do jogador, não de automação.
+class ToolPasse extends HeadlessTool {
+  constructor(client, config) {
+    super(client, 'passe', config);
+    this.ultimoResgate = 0;
+    this.ultimoMotivo = null;
+    this.ultimoDiaVisto = null;
+  }
+
+  getInterval() {
+    return Math.max(60000, (this.config.intervaloMin || 10) * 60000);
+  }
+
+  // O passe não corre: o dia inteiro serve. Estreia tarde para não disputar o
+  // boot com as outras ferramentas.
+  primeiroAtrasoMs() { return 40000; }
+
+  /**
+   * Por que não resgataríamos agora. null = pode resgatar.
+   * Espelha a decisão do botão do jogo; separado do step() porque é isto que
+   * os testes verificam.
+   */
+  motivoParaNaoResgatar(P, E) {
+    if (!P) return 'o estado ainda não trouxe o passe';
+    if (!P.pode) return 'o dia de hoje já foi resgatado';
+    const min = P.nivel || 0;
+    if (E && min && E.nivel < min) return `o passe libera no nível ${min} (a conta está no ${E.nivel})`;
+    return null;
+  }
+
+  /**
+   * Dias de Premium atrasado. Vazio quando não há o que pegar.
+   * A conta precisa TER o Premium: sem ele não existe atrasado, e mandar o
+   * comando seria recusado. A opção da UI também desliga isto.
+   */
+  premiumPendente(P) {
+    if (this.config.premiumAtrasado === false) return [];
+    if (!P || !P.premium) return [];
+    return Array.isArray(P.premiumPend) ? P.premiumPend : [];
+  }
+
+  async step() {
+    if (this.desligada) return;
+    const E = this.estado;
+    if (!E) return;
+
+    const P = E.passe;
+
+    // Respiro depois de resgatar: o 'estado' pode ainda não ter trazido o
+    // 'pode' novo, e remandar o comando não teria efeito nenhum.
+    if (Date.now() - this.ultimoResgate < 60000) return;
+
+    const motivo = this.motivoParaNaoResgatar(P, E);
+    if (motivo) {
+      // Só loga quando muda, senão o log enche (isto roda o dia todo).
+      if (this.ultimoMotivo !== motivo) {
+        this.ultimoMotivo = motivo;
+        this.log(motivo);
+      }
+      // Mesmo sem resgate do dia, pode haver Premium atrasado a pegar.
+      await this.resgatarPremium(P);
+      return;
+    }
+    this.ultimoMotivo = null;
+
+    // Várias contas viram o dia no mesmo instante (meia-noite é igual para
+    // todas): sem este respiro elas mandariam o comando no mesmo segundo.
+    if (!(await this.respirar(8000))) return;
+
+    // Relê: na espera o 'estado' pode ter trazido um 'pode' já false.
+    const P2 = (this.estado && this.estado.passe) || P;
+    if (this.motivoParaNaoResgatar(P2, this.estado)) return;
+
+    if (!this.send('passe.resgatar', {})) return;
+    this.ultimoResgate = Date.now();
+    this.ultimoDiaVisto = P2.dia;
+    this.log(`resgatei o Dia ${P2.dia} do Passe (${P2.feitos + 1}/30 na trilha)`);
+
+    // Com Premium, o resgate do dia já entrega os dois (grátis + Premium). O
+    // 'passe.premium' é só para os dias cujo Premium ficou atrasado — por
+    // exemplo quando o Premium foi comprado depois de o ciclo começar.
+    await this.resgatarPremium(this.estado && this.estado.passe);
+  }
+
+  /**
+   * Resgata o Premium atrasado, se houver.
+   * Sem Premium na conta a lista vem vazia e nada é enviado — era o pedido:
+   * confere se tem, e só então resgata.
+   */
+  async resgatarPremium(P) {
+    const pend = this.premiumPendente(P);
+    if (!pend.length) return;
+    if (!(await this.respirar(5000))) return;
+    if (!this.send('passe.premium', {})) return;
+    this.log(`resgatei o Premium atrasado de ${pend.length} dia(s): ${pend.join(', ')}`);
+  }
+}
+
 function createHeadlessTool(client, toolId, config) {
   if (!config) return null;
   switch (toolId) {
@@ -700,8 +822,9 @@ function createHeadlessTool(client, toolId, config) {
     case 'hunt': return new ToolHunt(client, config);
     case 'eggs': return new ToolEggs(client, config);
     case 'lab': return new ToolLab(client, config);
+    case 'passe': return new ToolPasse(client, config);
     default: return null;
   }
 }
 
-module.exports = { HeadlessTool, ToolScan, ToolRefill, ToolHunt, ToolEggs, ToolLab, createHeadlessTool };
+module.exports = { HeadlessTool, ToolScan, ToolRefill, ToolHunt, ToolEggs, ToolLab, ToolPasse, createHeadlessTool };

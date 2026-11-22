@@ -65,6 +65,8 @@ const ICONS = {
   panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
   move: '<path d="M12 3v18M3 12h18"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 5.2a3.5 3.5 0 0 1 0 5.6"/><path d="M17.5 14.2a6.5 6.5 0 0 1 4 5.8"/>',
+  // O Passe: um calendário com o dia marcado, que é o que a ferramenta faz.
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8.5 14.5l2 2 4-4"/>',
 };
 function icon(name, size = 16) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -230,8 +232,8 @@ function isHeadless(accId) {
 // do webview (defaults + ajustes da pessoa); quem executa é src/headless/tools.js.
 async function applyToolHeadless(toolId, accId, tool, conf) {
   try {
-    if (conf && conf.enabled) {
-      const cfg = { ...tool.defaults(), ...(conf.cfg || {}) };
+    if (window.DDTools.toolLigada(conf, tool)) {
+      const cfg = { ...tool.defaults(), ...((conf && conf.cfg) || {}) };
       await deck.headlessToolStart(accId, toolId, cfg);
     } else {
       await deck.headlessToolStop(accId, toolId);
@@ -248,7 +250,7 @@ async function applyToolHeadless(toolId, accId, tool, conf) {
 function applyToolsHeadless(accId) {
   for (const t of (window.DDTools?.TOOLS || [])) {
     const conf = state.tools?.[t.id]?.[accId];
-    if (!conf || !conf.enabled) continue;
+    if (!window.DDTools.toolLigada(conf, t)) continue;
     applyToolHeadless(t.id, accId, t, conf);
   }
 }
@@ -260,8 +262,8 @@ function toolScriptsFor(url, accId) {
   const out = [];
   for (const t of (window.DDTools?.TOOLS || [])) {
     const conf = state.tools?.[t.id]?.[accId];
-    if (!conf || !conf.enabled) continue;
-    out.push({ id: `tool-${t.id}`, name: t.name, code: t.code({ ...t.defaults(), ...(conf.cfg || {}) }) });
+    if (!window.DDTools.toolLigada(conf, t)) continue;
+    out.push({ id: `tool-${t.id}`, name: t.name, code: t.code({ ...t.defaults(), ...((conf && conf.cfg) || {}) }) });
   }
   return out;
 }
@@ -294,8 +296,8 @@ async function applyToolLive(toolId, accId) {
   if (!isDigi(url)) return false;
 
   try {
-    if (conf && conf.enabled) {
-      await r.wv.executeJavaScript(tool.code({ ...tool.defaults(), ...(conf.cfg || {}) }));
+    if (window.DDTools.toolLigada(conf, tool)) {
+      await r.wv.executeJavaScript(tool.code({ ...tool.defaults(), ...((conf && conf.cfg) || {}) }));
     } else {
       await r.wv.executeJavaScript(window.DDTools.offCode(toolId));
     }
@@ -2660,7 +2662,7 @@ function openTools() {
 
     for (const t of (window.DDTools?.TOOLS || [])) {
       const porConta = state.tools[t.id] || {};
-      const ligadas = state.accounts.filter((a) => porConta[a.id]?.enabled);
+      const ligadas = state.accounts.filter((a) => window.DDTools.toolLigada(porConta[a.id], t));
       body.append(h('div', { class: 'row-line', style: { display: 'flex', gap: '10px', alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--line-2)' } },
         icon(t.icon, 18),
         h('div', { style: { flex: 1, minWidth: 0 } },
@@ -2694,12 +2696,15 @@ function openToolAccounts(tool) {
       return;
     }
     for (const acc of state.accounts) {
-      if (!porConta[acc.id]) porConta[acc.id] = { enabled: false, cfg: tool.defaults() };
+      // O padrão da ferramenta decide o estado inicial: quase todas desligadas,
+      // o Auto Passe ligado. A partir daqui o registro passa a ser explícito.
+      if (!porConta[acc.id]) porConta[acc.id] = { enabled: !!tool.padraoLigado, cfg: tool.defaults() };
       const conf = porConta[acc.id];
       const cfg = { ...tool.defaults(), ...(conf.cfg || {}) };
       list.append(h('div', { class: 'row-line', style: { display: 'flex', gap: '10px', alignItems: 'center', padding: '8px 0' } },
         h('input', {
           type: 'checkbox',
+          class: 'toggle',
           checked: !!conf.enabled,
           title: `Ligar esta ferramenta em ${acc.name}`,
           onchange: (e) => {
@@ -2729,7 +2734,7 @@ function openToolAccounts(tool) {
 function openToolConfig(tool, acc, onDone) {
   const conf = state.tools[tool.id][acc.id];
   const cfg = { ...tool.defaults(), ...(conf.cfg || {}) };
-  const forms = { refill: refillForm, eggs: eggsForm, hunt: huntForm, scan: scanForm, lab: labForm };
+  const forms = { refill: refillForm, eggs: eggsForm, hunt: huntForm, scan: scanForm, lab: labForm, passe: passeForm };
   const form = (forms[tool.id] || refillForm)(cfg);
 
   modal({
@@ -2840,12 +2845,31 @@ function labForm(cfg) {
   const intervalo = h('input', { class: 'input', type: 'number', min: '1', value: String(cfg.intervaloMin || 2) });
 
   const el = h('div', {},
-    field('Conferir o lobby a cada (minutos)', intervalo, 'Além disso, a ferramenta reage ao aviso do servidor de que o lobby mudou — então ela entra logo depois de a corrida acabar, sem esperar este intervalo.'),
-    h('div', { class: 'warnbox' }, 'A ferramenta só se INSCREVE no lobby. Ela nunca começa a corrida (isso exige ser dono ou sub-dono da guild) nem mexe na dificuldade, que vale para a guild inteira. Se a conta não tem guild, não tem Digimon que possa lutar, ou o lobby está cheio ou com corrida rodando, ela não faz nada e diz o motivo no log.'));
+    field('Conferir o lobby a cada (minutos)', intervalo, 'Ela também entra assim que o lobby reabre, sem esperar este intervalo.'),
+    h('div', { class: 'warnbox' }, 'Só se inscreve no lobby: nunca começa a corrida nem muda a dificuldade. Sem guild, sem Digimon ou com o lobby cheio, ela espera e anota o motivo no log.'));
 
   return {
     el,
     read: () => ({ intervaloMin: Math.max(1, +intervalo.value || 2) }),
+  };
+}
+
+// ------------------------------------------------- formulário do Auto Passe
+function passeForm(cfg) {
+  const intervalo = h('input', { class: 'input', type: 'number', min: '1', value: String(cfg.intervaloMin || 10) });
+  const premium = h('input', { type: 'checkbox', checked: cfg.premiumAtrasado !== false });
+
+  const el = h('div', {},
+    field('Conferir a cada (minutos)', intervalo, 'O dia vira à meia-noite de Brasília. A ferramenta não depende do relógio do PC: ela pergunta ao servidor se o resgate está liberado.'),
+    checkRow(premium, 'Resgatar também o Premium atrasado', 'Só age se a conta tiver o Passe Premium. Sem Premium, não há nada atrasado e ela nem tenta.'),
+    h('div', { class: 'warnbox' }, 'Perder um dia volta a trilha para o Dia 1, levando os baús (dias 7, 14, 21 e 28) e o Lendário (dia 30). O Premium nunca é comprado: isso custa DCoin e fica com você.'));
+
+  return {
+    el,
+    read: () => ({
+      intervaloMin: Math.max(1, +intervalo.value || 10),
+      premiumAtrasado: premium.checked,
+    }),
   };
 }
 
