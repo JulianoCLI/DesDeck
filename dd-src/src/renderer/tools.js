@@ -868,22 +868,54 @@ function acharItem(texto) {
 }
 
 /**
+ * Um alvo guarda DOIS tetos, um por moeda: tetoBits e tetoGemas. Teto 0 (ou
+ * ausente) significa "não compre nesta moeda" — então um alvo com só tetoBits
+ * nunca gasta D-Dol, e é assim que se diz "isto eu quero, mas só em bits".
+ *
+ * Aqui esse alvo é aberto numa busca POR MOEDA. Cada busca é o formato antigo
+ * ({ moeda, tetoPreco }), então todo o resto da ferramenta — filtro, fila,
+ * compra, reserva — segue igual, sem saber que a tela mudou.
+ *
+ * Também aceita o formato velho (moeda + tetoPreco) para não zerar a
+ * configuração de quem já tinha alvos salvos: a config é gravada em disco por
+ * conta, e uma migração mal feita aqui apagaria o teto que a pessoa escolheu.
+ */
+const buscasDoAlvo = (a) => {
+  if (!a) return [];
+  const base = { ...a };
+  delete base.tetoBits;
+  delete base.tetoGemas;
+
+  // Formato antigo: uma moeda só, teto único.
+  if (a.tetoPreco > 0 && a.tetoBits == null && a.tetoGemas == null) {
+    return [{ ...base, moeda: a.moeda || 'bits', tetoPreco: a.tetoPreco }];
+  }
+
+  const out = [];
+  if (a.tetoBits > 0) out.push({ ...base, moeda: 'bits', tetoPreco: a.tetoBits });
+  if (a.tetoGemas > 0) out.push({ ...base, moeda: 'gemas', tetoPreco: a.tetoGemas });
+  return out;
+};
+
+/**
  * Este alvo pode ir para o ar?
  *
- * Teto 0 não compra nada, e é o padrão de fábrica. Mas há um segundo caso, e ele
- * é pior porque parece configurado: alvo de ITEM sem item escolhido. O pedido
- * sairia sem 'especie', o servidor listaria TODO item do Mercado e o sniper
- * compraria qualquer coisa abaixo do teto — Boss Token, fragmento, o que fosse.
- * Um alvo pela metade não deve virar um alvo largo.
+ * Sem nenhum teto não compra nada, e é o padrão de fábrica. Mas há um segundo
+ * caso, e ele é pior porque parece configurado: alvo de ITEM sem item escolhido.
+ * O pedido sairia sem 'especie', o servidor listaria TODO item do Mercado e o
+ * sniper compraria qualquer coisa abaixo do teto — Boss Token, fragmento, o que
+ * fosse. Um alvo pela metade não deve virar um alvo largo.
  */
 const alvoValido = (a) => {
-  if (!a || !(a.tetoPreco > 0)) return false;
+  if (!a || !buscasDoAlvo(a).length) return false;
   if ((a.tipo || 'ovo') === 'item' && !a.especie) return false;
   return true;
 };
 
 function codeSniper(cfg) {
-  const alvos = (cfg.alvos || []).filter(alvoValido);
+  // O que vai para a ferramenta já são as buscas abertas por moeda: ela recebe a
+  // lista no formato que sempre soube tratar.
+  const alvos = (cfg.alvos || []).filter(alvoValido).flatMap(buscasDoAlvo);
   return isolar(comCfg('sniper', {
     alvos,
     intervaloSec: Math.max(20, cfg.intervaloSec || 60),
@@ -1165,13 +1197,14 @@ const TOOLS = [
     // dos 2 min, os filtros do servidor) está na tela de configuração.
     desc: 'Compra no Mercado o que estiver abaixo do seu teto. Pega até anúncio retido, na hora em que libera.',
     defaults: () => ({
-      // Nasce com um alvo de exemplo DESLIGADO na prática: teto 0 não compra
-      // nada, então ligar a ferramenta sem configurar não gasta um bit.
+      // Nasce com um alvo de exemplo DESLIGADO na prática: os dois tetos em 0
+      // não compram nada, então ligar a ferramenta sem configurar não gasta nem
+      // um bit nem um D-Dol.
       alvos: [{
         nome: 'Ovo S+ barato',
         tipo: 'ovo',
-        moeda: 'bits',
-        tetoPreco: 0,
+        tetoBits: 0,
+        tetoGemas: 0,
         tiers: ['S', 'SS', 'SSS'],
         potencias: [4, 5],
         energiaMin: 0,
@@ -1190,7 +1223,11 @@ const TOOLS = [
       const alvos = (c.alvos || []).filter(alvoValido);
       if (!alvos.length) return 'sem alvo com teto definido · não compra nada';
       const n = alvos.length;
-      return `${n} alvo${n > 1 ? 's' : ''} · varre a cada ${c.intervaloSec || 60}s${c.maxPorHora > 0 ? ` · até ${c.maxPorHora}/h` : ''}${c.soLiberados ? ' · só liberados' : ' · pega na fila'}`;
+      // Quantas moedas estão de fato armadas, somando todos os alvos: é a
+      // resposta para "ele vai mexer no meu D-Dol?".
+      const buscas = alvos.flatMap(buscasDoAlvo);
+      const moedas = [...new Set(buscas.map((b) => (b.moeda === 'gemas' ? 'D-Dol' : 'bits')))];
+      return `${n} alvo${n > 1 ? 's' : ''} em ${moedas.join(' e ')} · varre a cada ${c.intervaloSec || 60}s${c.maxPorHora > 0 ? ` · até ${c.maxPorHora}/h` : ''}${c.soLiberados ? ' · só liberados' : ' · pega na fila'}`;
     },
   },
 ];
@@ -1213,4 +1250,4 @@ const toolLigada = (conf, tool) => (conf && typeof conf.enabled === 'boolean' ? 
 // passo. Religar depois é só aplicar a config de novo, que limpa o __off.
 const offCode = (id) => `(() => { window.__ddGame && window.__ddGame.desligar(${JSON.stringify(id)}); })();`;
 
-window.DDTools = { TOOLS, toolById, toolLigada, REFILL_ITENS, MERCADO_ITENS, acharItem, alvoValido, TIERS, offCode };
+window.DDTools = { TOOLS, toolById, toolLigada, REFILL_ITENS, MERCADO_ITENS, acharItem, alvoValido, buscasDoAlvo, TIERS, offCode };

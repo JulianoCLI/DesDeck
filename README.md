@@ -48,13 +48,22 @@ desligar numa conta, a escolha fica gravada e é respeitada.
 | **Auto Scan** | Lança o scan nos corpos caídos — útil em contas sem VIP. Funciona com a cena desligada (Modo Economia). |
 | **Auto Labirinto** | Inscreve a conta no lobby do Labirinto da Guild assim que ele reabre. Para de entrar quando os baús do dia acabam (o servidor manda `bauHoje` e `cfg.bauPorDia`), já que a corrida não daria recompensa. Não começa a corrida nem muda a dificuldade. |
 | **Auto Passe** | Resgata o Passe de Batalha todo dia — perder um dia zera a trilha de 30 dias. Pega o Premium atrasado se a conta tiver Premium; **nunca** compra o Premium. **Já vem ligada**, inclusive em conta nova. |
-| **Sniper de Mercado** | Varre o Mercado e compra o que está abaixo do teto que você definir. Anúncio retido entra numa fila e é comprado **no instante em que libera** (todo anúncio espera 2 min). Filtra por tier, potência, energia, espécie e moeda. |
+| **Sniper de Mercado** | Varre o Mercado e compra o que está abaixo do teto que você definir (um por moeda: bits e D-Dol). Anúncio retido entra numa fila e é comprado **no instante em que libera** (todo anúncio espera 2 min). Filtra por tier, potência, energia, espécie e moeda. |
 
 ### Sniper de Mercado
 
-Cada **alvo** é uma procura salva: o que comprar, em que moeda e até que preço.
-Dá para ter vários — "ovo S+ P4/P5 até 2M em bits" e "ovo até 30 D-Dol" são
-buscas diferentes e convivem.
+Cada **alvo** é uma procura salva: o que comprar e até que preço **em cada
+moeda**. O alvo tem dois tetos, um em bits e um em D-Dol, e **0 quer dizer "não
+compre nesta moeda"** — deixar o D-Dol em 0 é como se diz "isto eu quero, mas só
+em bits". Por dentro, um alvo de dois tetos vira duas buscas, uma por moeda: um
+teto só não poderia servir às duas, porque 5.000 é troco em bits e uma fortuna em
+D-Dol. Dá para ter vários alvos, e eles convivem.
+
+Para criar um, clique em **"Adicionar alvo"**: os campos abrem logo abaixo do
+botão, e o alvo só entra na lista quando você clica **"Adicionar"**. Enquanto
+isso, ele é um rascunho — não é salvo, e o botão fica travado até haver um teto
+(e, se for item, até o item estar escolhido). Antes os campos apareciam no fim da
+pilha de alvos, longe do botão que você acabou de clicar.
 
 O detalhe que faz a ferramenta valer a pena é a **retenção**: no DigiIdle todo
 anúncio nasce travado e só pode ser comprado 2 min depois (medido em conta real:
@@ -74,8 +83,9 @@ cravar o primeiro compraria Chip de Trevas para quem queria o de Fogo.
 
 As travas, porque aqui se gasta dinheiro de verdade:
 
-- **Alvo com teto 0 não compra nada** — e nem pede a lista. É o padrão de fábrica,
-  então ligar a ferramenta antes de configurá-la não gasta um bit.
+- **Alvo com os dois tetos em 0 não compra nada** — e nem pede a lista. É o padrão
+  de fábrica, então ligar a ferramenta antes de configurá-la não gasta nem um bit
+  nem um D-Dol.
 - **Alvo de item sem item escolhido também não vale.** Esse é mais perigoso que o
   teto 0, porque *parece* configurado: o pedido sairia sem `especie`, o servidor
   listaria todo item do Mercado e o sniper compraria qualquer coisa abaixo do
@@ -128,8 +138,8 @@ O Sniper foi levantado do mesmo jeito, e os scripts estão no repo:
 | `test-sniper-vivo.js` | A ferramenta real no mercado real, com a compra interceptada. Prova que o servidor aceita os filtros que ela monta. |
 | `test-sniper-real.js` | O protocolo de compra, com uma compra real e barata. |
 | `test-sniper-fila.js` | A ferramenta comprando de verdade: `--comprar` para valer, sem a flag é ensaio. |
-| `test-sniper-headless.js` | O `ToolSniper` do modo sem janela: 45 casos, com o relógio do servidor controlado — é onde a fila da retenção é exercitada de ponta a ponta. Sem rede. |
-| `test-sniper-form.js` | A tela de configuração num `BrowserWindow` de verdade: o filtro de itens filtrando, a ordem dos blocos e o alvo de item pela metade sendo recusado. Sem rede. |
+| `test-sniper-headless.js` | O `ToolSniper` do modo sem janela: 60 casos, com o relógio do servidor controlado — é onde a fila da retenção é exercitada de ponta a ponta. Sem rede. |
+| `test-sniper-form.js` | A tela de configuração num `BrowserWindow` de verdade: 43 checagens — o rascunho abrindo abaixo do botão, os dois tetos, o filtro de itens filtrando e o alvo pela metade sendo recusado. Sem rede. |
 
 Vale dizer o que **não** está provado: a compra pela fila foi exercitada contra
 um mercado de mentira (`test-sniper-tool.js` e `test-sniper-headless.js`), com o

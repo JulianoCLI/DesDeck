@@ -874,10 +874,16 @@ class ToolSniper extends HeadlessTool {
   }
 
   /**
-   * Os alvos que valem busca. Alvo sem teto não compra nada, e nem vale pedir a
-   * lista por ele — é o padrão de fábrica, então ligar a ferramenta sem
-   * configurar não gasta um bit.
+   * As buscas que valem fazer — uma por moeda armada.
    *
+   * Um alvo guarda dois tetos (tetoBits e tetoGemas); teto 0 ou ausente quer
+   * dizer "não compre nesta moeda". Aqui o alvo é aberto numa busca por moeda,
+   * cada uma no formato { moeda, tetoPreco } que o resto da ferramenta já trata.
+   * O formato antigo (moeda + tetoPreco) continua aceito, para não zerar a
+   * configuração de quem já tinha alvos salvos em disco.
+   *
+   * Alvo sem teto nenhum não compra nada e nem vale pedir a lista por ele — é o
+   * padrão de fábrica, então ligar a ferramenta sem configurar não gasta nada.
    * O segundo caso é mais perigoso porque parece configurado: alvo de ITEM sem
    * item escolhido. O pedido sairia sem 'especie', o servidor listaria TODO item
    * do Mercado e o sniper compraria qualquer coisa abaixo do teto. Um alvo pela
@@ -888,11 +894,21 @@ class ToolSniper extends HeadlessTool {
    * ficaria velha, e o sniper seguiria comprando pelos alvos antigos.
    */
   get alvos() {
-    return (this.config.alvos || []).filter((a) => {
-      if (!a || !(a.tetoPreco > 0)) return false;
-      if ((a.tipo || 'ovo') === 'item' && !a.especie) return false;
-      return true;
-    });
+    const out = [];
+    for (const a of this.config.alvos || []) {
+      if (!a) continue;
+      if ((a.tipo || 'ovo') === 'item' && !a.especie) continue;
+      const base = { ...a };
+      delete base.tetoBits;
+      delete base.tetoGemas;
+      if (a.tetoPreco > 0 && a.tetoBits == null && a.tetoGemas == null) {
+        out.push({ ...base, moeda: a.moeda || 'bits', tetoPreco: a.tetoPreco });
+        continue;
+      }
+      if (a.tetoBits > 0) out.push({ ...base, moeda: 'bits', tetoPreco: a.tetoBits });
+      if (a.tetoGemas > 0) out.push({ ...base, moeda: 'gemas', tetoPreco: a.tetoGemas });
+    }
+    return out;
   }
 
   /**

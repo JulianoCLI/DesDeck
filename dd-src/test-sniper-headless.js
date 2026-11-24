@@ -317,6 +317,65 @@ async function main() {
     ok(ruins.length === 0, `todo item e achavel pelo seu nome exato (falhas: ${ruins.map((x) => x.id).join(', ') || 'nenhuma'})`);
   }
 
+  log('\n=== 15. UM ALVO, DOIS TETOS (um por moeda) ===');
+  {
+    // Um alvo guarda tetoBits e tetoGemas. Ele tem de virar DUAS buscas, cada
+    // uma com o seu teto -- senao o teto de bits acabaria valendo para D-Dol,
+    // onde 5.000 e uma fortuna.
+    const { c, tool } = montar(CFG({
+      alvos: [{ nome: 'dois tetos', tipo: 'ovo', tetoBits: 5000, tetoGemas: 40 }],
+    }), []);
+    await tool.step();
+    const fs2 = pedidos(c).map((p) => p.d);
+    ok(fs2.length === 2, `dois tetos = dois pedidos (${fs2.length})`);
+    const emBits = fs2.find((f) => f.moeda === 'bits');
+    const emGemas = fs2.find((f) => f.moeda === 'gemas');
+    ok(emBits && emBits.precoMax === 5000, `o pedido em bits leva 5000 (${emBits && emBits.precoMax})`);
+    ok(emGemas && emGemas.precoMax === 40, `o pedido em D-Dol leva 40 (${emGemas && emGemas.precoMax})`);
+  }
+  {
+    // Teto 0 numa moeda quer dizer "nao compre nesta moeda". Nao e so nao
+    // comprar: nem pedir a lista, senao um anuncio barato em D-Dol apareceria e
+    // o resto da logica teria de se lembrar de recusar.
+    const { c, tool } = montar(CFG({
+      alvos: [{ nome: 'so bits', tipo: 'ovo', tetoBits: 5000, tetoGemas: 0 }],
+    }), [anuncio({ id: 150, preco: 10, moeda: 'gemas' })], { estado: { bits: 9e9, gemas: 9e9 } });
+    await tool.step();
+    ok(pedidos(c).length === 1 && pedidos(c)[0].d.moeda === 'bits', 'teto 0 em D-Dol: so pede a lista de bits');
+    ok(compras(c).length === 0, 'teto 0 em D-Dol: nao compra o anuncio barato em D-Dol');
+  }
+  {
+    // Compra de verdade pelo teto de D-Dol, para nao passar os dois casos
+    // acima so porque nada comprou nunca.
+    const { c, tool } = montar(CFG({
+      alvos: [{ nome: 'so ddol', tipo: 'ovo', tetoBits: 0, tetoGemas: 40 }],
+    }), [anuncio({ id: 151, preco: 30, moeda: 'gemas' })], { estado: { bits: 9e9, gemas: 9e9 } });
+    await tool.step();
+    ok(pedidos(c).length === 1 && pedidos(c)[0].d.moeda === 'gemas', 'teto 0 em bits: so pede a lista de D-Dol');
+    const cp = compras(c)[0];
+    ok(cp && cp.d.moeda === 'gemas' && cp.d.preco === 30, `comprou em D-Dol por 30 (${cp && cp.d.preco})`);
+  }
+  {
+    // Alvo salvo no formato antigo (moeda + tetoPreco) continua funcionando: a
+    // config fica em disco por conta, e uma migracao mal feita apagaria o teto
+    // que a pessoa escolheu.
+    const { c, tool } = montar(CFG({
+      alvos: [{ nome: 'velho', tipo: 'ovo', moeda: 'gemas', tetoPreco: 25 }],
+    }), [anuncio({ id: 152, preco: 20, moeda: 'gemas' })], { estado: { bits: 9e9, gemas: 9e9 } });
+    await tool.step();
+    const f = pedidos(c)[0] && pedidos(c)[0].d;
+    ok(pedidos(c).length === 1 && f.moeda === 'gemas' && f.precoMax === 25, 'formato antigo virou uma busca na moeda dele');
+    ok(compras(c).length === 1, 'e comprou');
+  }
+  {
+    // Sem teto nenhum nos dois campos: o padrao de fabrica do formato novo.
+    const { c, tool } = montar(CFG({
+      alvos: [{ nome: 'cru', tipo: 'ovo', tetoBits: 0, tetoGemas: 0 }],
+    }), [anuncio({ preco: 1 })]);
+    await tool.step();
+    ok(pedidos(c).length === 0 && compras(c).length === 0, 'os dois tetos em 0: nem pede nem compra');
+  }
+
   log('\n' + '='.repeat(60));
   log(falhas ? `${falhas} FALHA(S)` : 'TODOS OS TESTES PASSARAM');
   fs.writeFileSync(SAIDA, out.join('\n') + '\n');
