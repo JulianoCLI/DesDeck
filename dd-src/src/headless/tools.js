@@ -881,6 +881,20 @@ class ToolSniper extends HeadlessTool {
     });
   }
 
+  /**
+   * É o mesmo alvo, depois de a config ser trocada?
+   *
+   * Os alvos não têm id: o que os identifica é o que eles procuram. Comparar o
+   * filtro resolvido (já com os defaults aplicados) é mais confiável do que
+   * comparar campo a campo, porque é exatamente o que vai ao servidor — dois
+   * alvos com o mesmo filtro são indistinguíveis na prática.
+   */
+  mesmoAlvo(x, y) {
+    const fx = this.filtroDe(x), fy = this.filtroDe(y);
+    if (!fx || !fy) return false;
+    return JSON.stringify(fx) === JSON.stringify(fy);
+  }
+
   getInterval() { return Math.max(20000, (this.config.intervaloSec || 60) * 1000); }
 
   stop() {
@@ -894,6 +908,8 @@ class ToolSniper extends HeadlessTool {
   /** Pede uma listagem e espera o pacote 'mercado'. null se não vier. */
   listar(filtro) {
     return new Promise((resolve) => {
+      // filtroDe() devolve null quando o alvo sumiu: não há o que pedir.
+      if (!filtro) { resolve(null); return; }
       this.listaPend = resolve;
       if (!this.send('mercado.listar', filtro)) { this.listaPend = null; resolve(null); return; }
       setTimeout(() => { if (this.listaPend === resolve) { this.listaPend = null; resolve(null); } }, 8000);
@@ -906,6 +922,10 @@ class ToolSniper extends HeadlessTool {
    * à toa só aumenta a chance de divergir do que o jogo manda.
    */
   filtroDe(a) {
+    // Sem alvo não há filtro possível. Um pedido montado sobre undefined iria
+    // ao servidor sem 'precoMax' e listaria o Mercado inteiro — exatamente o
+    // caso que o getter 'alvos' existe para impedir. Melhor não pedir nada.
+    if (!a) return null;
     const f = { tipo: a.tipo || 'ovo', moeda: a.moeda || 'bits', ordem: 'barato', pagina: 0 };
     f.precoMax = a.tetoPreco;
     if (a.especie) f.especie = a.especie;
@@ -963,6 +983,7 @@ class ToolSniper extends HeadlessTool {
    * relógio é medido, mas não é exato, e a rede ainda cobra o seu tempo.
    */
   agendar(a, alvo) {
+    if (!alvo) return;
     if (this.fila.has(a.id) || this.comprados.has(a.id)) return;
     const espera = a.libera - this.agoraServidor() + 250;
     if (espera > 15 * 60000) return; // a retenção é de 2 min; isto não deveria acontecer
@@ -970,16 +991,23 @@ class ToolSniper extends HeadlessTool {
       this.fila.delete(a.id);
       if (!this.running || this.desligada) return;
       try {
+        // O alvo também pode ter mudado na espera: startTool() troca this.config
+        // na ferramenta que já roda, e os 2 min de retenção são tempo de sobra
+        // para alguém editar ou apagar o alvo na UI. Comprar por um alvo que não
+        // existe mais é gastar contra a vontade de quem acabou de mudá-lo, então
+        // revalidamos contra a config de AGORA.
+        const atual = this.alvos.find((x) => this.mesmoAlvo(x, alvo));
+        if (!atual) { this.log(`#${a.id} saiu da fila: o alvo mudou ou foi removido`); return; }
         // O mundo pode ter mudado nos 2 min de espera: outro comprador levou, o
         // vendedor retirou ou mudou o preço. Então reconferimos o anúncio AGORA,
         // em vez de confiar na foto antiga.
-        const m = await this.listar(this.filtroDe(alvo));
+        const m = await this.listar(this.filtroDe(atual));
         if (!m || this.desligada) return;
         const vivo = (m.lista || []).find((x) => x.id === a.id);
         if (!vivo) { this.log(`#${a.id} já não está à venda (alguém chegou antes)`); return; }
-        if (vivo.preco > alvo.tetoPreco) { this.log(`#${a.id} subiu para ${vivo.preco}; acima do teto`); return; }
-        if (vivo.libera > this.agoraServidor()) { this.agendar(vivo, alvo); return; } // preço mudou: retenção reiniciou
-        await this.comprar(vivo, alvo);
+        if (vivo.preco > atual.tetoPreco) { this.log(`#${a.id} subiu para ${vivo.preco}; acima do teto`); return; }
+        if (vivo.libera > this.agoraServidor()) { this.agendar(vivo, atual); return; } // preço mudou: retenção reiniciou
+        await this.comprar(vivo, atual);
       } catch (err) {
         this.log('a compra agendada falhou:', err.message);
       }

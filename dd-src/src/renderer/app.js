@@ -722,6 +722,12 @@ function createRuntime(acc) {
     // com que uma queda futura volte a avisar, em vez de ficar muda por ser
     // igual à anterior.
     if (status === 'connected') { rr.headlessError = null; rr.headlessUltimoErro = null; }
+    // O relógio do card e do painel. Em headless não há markOnline() para
+    // escrever isto, e sem a marca o "Farmando" contava a partir de um
+    // onlineSince velho (ou de nada). Só na transição: um 'connected' repetido
+    // não pode reiniciar a contagem de uma conta que nunca saiu do ar.
+    if (status === 'connected' && antes !== 'connected') rr.onlineSince = Date.now();
+    else if (status !== 'connected') rr.onlineSince = null;
     // As ferramentas só agem com o socket de pé, e o socket pode cair e voltar.
     // Ligar na transição para 'connected' cobre a conexão inicial e cada
     // reconexão — startTool é idempotente, então religar não duplica laço.
@@ -1217,10 +1223,18 @@ function tick() {
   for (const [id, r] of rt) {
     const acc = accById(id);
     if (!acc) continue;
-    if (r.status === 'online') {
+    // O tempo no ar conta nos DOIS modos. Antes só olhava r.status, que em
+    // headless nunca vira 'online' (markOnline depende do webview): o "Tempo
+    // online hoje" ficava congelado no valor da última vez que a conta rodou
+    // com janela, mesmo com as contas caçando a noite toda.
+    if (contaOnline(r)) {
       acc.stats.onlineMs += dt;
       today().onlineMs += dt;
       markDirty();
+    }
+    // Daqui para baixo é vigilância de PÁGINA (travou, não responde, recarga
+    // automática). Nada disso existe sem webview, então segue olhando r.status.
+    if (r.status === 'online') {
       if (r.unresponsiveSince && now - r.unresponsiveSince > 30000) {
         r.hung = true;
         drop(id, 'a página travou (sem resposta há 30s)');
@@ -1292,6 +1306,31 @@ async function metricsLoop() {
   } catch { /* ignora */ }
 }
 
+// Esta conta está no ar?
+//
+// Existem dois caminhos para uma conta ficar online, e só um deles escrevia
+// r.status: markOnline() depende do webview (lê r.wv.getURL()), então em
+// headless ele NUNCA roda e r.status fica para sempre no 'disconnected' do
+// começo. O socket marca o seu estado em r.headlessStatus, à parte.
+//
+// Sem olhar os dois, todo contador de "online" dava zero no modo headless: o
+// rodapé mostrava 0/16 com as contas caçando, os pontinhos dos cards ficavam
+// cinzas e o relógio de "Farmando" congelava. Quem tirava e repunha a conta no
+// headless via tudo voltar ao normal — não porque algo tivesse sido religado,
+// mas porque a passagem pelo webview finalmente escrevia r.status.
+function contaOnline(r) {
+  if (!r) return false;
+  return r.status === 'online' || r.headlessStatus === 'connected';
+}
+
+// Desde quando a conta está no ar, ou null. Mesma história do contaOnline:
+// onlineSince só era escrito por markOnline(), então em headless ele ficava
+// parado no valor de uma sessão antiga de webview — era esse o relógio travado.
+function onlineDesde(r) {
+  if (!contaOnline(r)) return null;
+  return r.onlineSince || null;
+}
+
 // =============================================================== textos ao vivo
 function statusText(id) {
   const acc = accById(id);
@@ -1315,6 +1354,11 @@ function dotClass(id) {
   const r = rt.get(id);
   if (!r) return 'off';
   if (r.attention) return 'alert';
+  // Headless: o estado vem do socket, não do webview. 'connecting' e
+  // 'reconnecting' acendem o mesmo amarelo de uma conta se reconectando.
+  if (isHeadless(id) && r.headlessStatus) {
+    return { connected: 'ok', connecting: 'load', reconnecting: 'warn', failed: 'alert' }[r.headlessStatus] || 'off';
+  }
   return { online: 'ok', loading: 'load', reconnecting: 'warn' }[r.status] || 'off';
 }
 function liveValue(key) {
@@ -1329,7 +1373,11 @@ function liveValue(key) {
       // Em headless o status vem do socket. Traduzido: 'disconnected' e
       // 'failed' no card não diziam nada a quem não leu o código.
       if (isHeadless(id) && r.headlessStatus) {
-        return '⚡ ' + (HEADLESS_ROTULO[r.headlessStatus] || r.headlessStatus);
+        const rotulo = HEADLESS_ROTULO[r.headlessStatus] || r.headlessStatus;
+        // Conectado mostra há quanto tempo, como o card do webview faz. Sem
+        // isso o headless era o único modo sem noção de tempo no ar.
+        const d = onlineDesde(r);
+        return '⚡ ' + rotulo + (d ? ' há ' + fmtDur(now - d) : '');
       }
       return statusText(id);
     }
@@ -1346,7 +1394,7 @@ function liveValue(key) {
       const when = now - r.attemptAt < 4000 || !r.retryAt ? 'tentando agora…' : `próxima tentativa em ${Math.max(1, Math.ceil((r.retryAt - now) / 1000))}s`;
       return `Caiu: ${r.reason}. ${when}${r.retries ? ` (tentativa ${r.retries + 1})` : ''}`;
     }
-    case 'up': return r && r.status === 'online' ? fmtDur(now - r.onlineSince) : '—';
+    case 'up': { const d = onlineDesde(r); return d ? fmtDur(now - d) : '—'; }
     case 'total': return acc ? fmtDur(acc.stats.onlineMs) : '';
     case 'drops': return acc ? String(acc.stats.drops) : '';
     case 'recov': return acc ? String(acc.stats.recoveries) : '';
@@ -1354,16 +1402,22 @@ function liveValue(key) {
     case 'cpu': return r && r.metrics ? fmtCpu(r.metrics.cpu) : '—';
     case 'scr': {
       const accs = state.accounts.filter((a) => screenOf(a) === id);
-      const on = accs.filter((a) => rt.get(a.id)?.status === 'online').length;
+      const on = accs.filter((a) => contaOnline(rt.get(a.id))).length;
       return `${on}/${accs.length}`;
     }
     case 'kpi': {
       const enabled = state.accounts.filter((a) => a.enabled).length;
-      const online = [...rt.values()].filter((x) => x.status === 'online');
+      const online = [...rt.values()].filter(contaOnline);
       const t = today();
       switch (id) {
         case 'online': return `${online.length}/${enabled}`;
-        case 'farm': return online.length ? fmtClock(now - Math.min(...online.map((x) => x.onlineSince))) : '—';
+        case 'farm': {
+          // Só conta quem tem marca de início: uma conta sem onlineSince
+          // (headless que conectou antes desta correção) puxaria o Math.min
+          // para 0 e mostraria um relógio absurdo desde 1970.
+          const desde = online.map(onlineDesde).filter(Boolean);
+          return desde.length ? fmtClock(now - Math.min(...desde)) : '—';
+        }
         case 'drops': return String(t.drops);
         case 'recov': return String(t.recoveries);
         case 'alerts': return String(t.alerts);
@@ -1392,7 +1446,7 @@ function updateLive() {
 }
 function updateTitle() {
   const enabled = state.accounts.filter((a) => a.enabled).length;
-  const online = [...rt.values()].filter((x) => x.status === 'online').length;
+  const online = [...rt.values()].filter(contaOnline).length;
   const t = `${unseen ? `(${unseen}) ` : ''}DigiDeck · ${online}/${enabled} online`;
   if (document.title !== t) document.title = t;
   const tb = `${online}/${enabled} online`;

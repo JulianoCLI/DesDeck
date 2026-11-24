@@ -1,6 +1,14 @@
 'use strict';
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Cada card de conta registra os seus próprios ouvintes de headless, então o
+// número deles cresce com o número de contas. O limite padrão do Node é 10, e
+// a partir da 11ª conta o ipcRenderer passou a despejar MaxListenersExceeded
+// no console — um alarme falso, porque os ouvintes são removidos no _cleanup
+// de cada card. O ruído é pior do que inútil: ele esconderia um vazamento de
+// verdade. 0 = sem limite.
+ipcRenderer.setMaxListeners(0);
+
 const on = (channel) => (cb) => {
   const fn = (_e, ...args) => cb(...args);
   ipcRenderer.on(channel, fn);
