@@ -268,6 +268,55 @@ async function main() {
     tool.stop();
   }
 
+  log('\n=== 13. ALVO DE ITEM PELA METADE NAO VIRA ALVO LARGO ===');
+  {
+    // Alvo 'item' com teto mas SEM item escolhido: se passar, o pedido vai sem
+    // 'especie', o servidor lista TODO item do Mercado e o sniper compra
+    // qualquer coisa abaixo do teto. Parece configurado, e e o pior caso.
+    const { c, tool } = montar(CFG({
+      alvos: [{ nome: 'item sem item', tipo: 'item', moeda: 'bits', tetoPreco: 999999, especie: '' }],
+    }), [anuncio({ id: 130, preco: 1000, tipo: 'item', item: 'token-boss' })]);
+    await tool.step();
+    ok(pedidos(c).length === 0, 'alvo de item sem item escolhido: nem pede a lista');
+    ok(compras(c).length === 0, 'alvo de item sem item escolhido: nao compra nada');
+  }
+  {
+    // Com o item escolhido, ele vira um alvo normal — e o id vai em 'especie',
+    // que e o campo que o cliente do jogo usa para item (menus2.js L408).
+    const { c, tool } = montar(CFG({
+      alvos: [{ nome: 'chip de fogo', tipo: 'item', moeda: 'bits', tetoPreco: 999999, especie: 'chip-fire' }],
+    }), [anuncio({ id: 131, preco: 200000, tipo: 'item', item: 'chip-fire' })]);
+    await tool.step();
+    const f = pedidos(c)[0] && pedidos(c)[0].d;
+    ok(f && f.tipo === 'item' && f.especie === 'chip-fire', `o id do item foi em 'especie': ${f && f.especie}`);
+    ok(compras(c).length === 1, `comprou o item (${compras(c).length})`);
+  }
+
+  log('\n=== 14. A BUSCA DE ITEM POR NOME ===');
+  {
+    // A lista de itens e os nomes vem do jogo; a busca e o que a tela usa.
+    const w = {};
+    new Function('window', fs.readFileSync(path.join(__dirname, 'src/renderer/tools.js'), 'utf8'))(w);
+    const { acharItem, MERCADO_ITENS } = w.DDTools;
+    ok(MERCADO_ITENS.length === 45, `45 itens negociados pelo Mercado (${MERCADO_ITENS.length})`);
+    ok(acharItem('fogo') && acharItem('fogo').id === 'chip-fire', 'acha "fogo" -> chip-fire');
+    ok(acharItem('fisico') && acharItem('fisico').id === 'chip-physical', 'acha "fisico" sem acento -> chip-physical');
+    ok(acharItem('dragon pura') && acharItem('dragon pura').id === 'data-dragon-pura', 'acha "dragon pura" -> data-dragon-pura');
+    ok(acharItem('Evoluter') && acharItem('Evoluter').id === 'evoluter', 'acha pelo nome exato, sem ligar para maiuscula');
+    ok(acharItem('token-boss') && acharItem('token-boss').id === 'token-boss', 'acha pelo id cru');
+    // O caso que importa: ambiguo NAO escolhe sozinho.
+    ok(acharItem('chip') === null, '"chip" casa com 11 e devolve null (nao crava o primeiro)');
+    ok(acharItem('nao existe') === null, 'texto sem par nenhum devolve null');
+    ok(acharItem('') === null, 'texto vazio devolve null');
+    // Todo id do catalogo tem de ser encontravel pelo proprio nome, senao o
+    // seletor oferece um rotulo que a busca nao acha.
+    const ruins = MERCADO_ITENS.filter((it) => {
+      const r = acharItem(it.nome);
+      return !r || r.id !== it.id;
+    });
+    ok(ruins.length === 0, `todo item e achavel pelo seu nome exato (falhas: ${ruins.map((x) => x.id).join(', ') || 'nenhuma'})`);
+  }
+
   log('\n' + '='.repeat(60));
   log(falhas ? `${falhas} FALHA(S)` : 'TODOS OS TESTES PASSARAM');
   fs.writeFileSync(SAIDA, out.join('\n') + '\n');

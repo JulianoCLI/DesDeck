@@ -2976,6 +2976,12 @@ function sniperForm(cfg) {
       rows.append(h('p', { class: 'about' }, 'Nenhum alvo ainda. Clique em "Adicionar alvo".'));
       return;
     }
+    // Um título com a contagem: com 4 ou 5 alvos abertos, a tela vira uma pilha
+    // de campos e dá para perder de vista quantos existem e quantos compram.
+    const armados = alvos.filter((a) => (+a.tetoPreco || 0) > 0 && ((a.tipo || 'ovo') === 'item' ? !!a.especie : true)).length;
+    rows.append(h('div', { style: { display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '8px' } },
+      h('strong', {}, `Alvos configurados (${alvos.length})`),
+      h('span', { class: 'help', style: { margin: 0 } }, armados ? `${armados} armado(s)` : 'nenhum armado — nada será comprado')));
     alvos.forEach((a, i) => {
       const nome = h('input', { class: 'input', value: a.nome || '', placeholder: 'nome do alvo (só para você)' });
       nome.addEventListener('input', () => { a.nome = nome.value; });
@@ -2998,6 +3004,61 @@ function sniperForm(cfg) {
 
       // Tier e potência só existem para ovo e Digimon; em item não há o que filtrar.
       const filtrosDigi = (a.tipo || 'ovo') === 'ovo' || a.tipo === 'digimon';
+
+      // --- item: escolher pelo NOME, não pelo id ---
+      // O id ('data-dragon-pura') é o que vai no comando, mas ninguém decora id.
+      // Então a escolha é pelo nome do jogo, e o id fica como escape para um item
+      // que o Mercado passe a negociar antes de a lista aqui ser atualizada.
+      const itemBusca = h('input', { class: 'input', value: '', placeholder: 'digite para filtrar: fogo, dragon, fragmento…' });
+      // Lista de verdade (size > 1), não um menu que fecha: o que se quer aqui é
+      // digitar e VER as opções sobrarem.
+      const itemSel = h('select', { class: 'input', size: '8', style: { width: '100%' } });
+      const itemAviso = h('span', { class: 'help' });
+
+      const semAcento = (s) => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+      const desenhaItens = () => {
+        const q = itemBusca.value.trim();
+        const casam = !q
+          ? window.DDTools.MERCADO_ITENS
+          : window.DDTools.MERCADO_ITENS.filter((it) => semAcento(it.nome).includes(semAcento(q)) || it.id.includes(q.toLowerCase()));
+
+        itemSel.replaceChildren(...casam.map((it) => h('option', { value: it.id, selected: it.id === a.especie }, it.nome)));
+
+        const escolhido = window.DDTools.MERCADO_ITENS.find((it) => it.id === a.especie);
+        if (!casam.length) {
+          itemAviso.style.color = 'var(--warn, #f59e0b)';
+          itemAviso.textContent = `Nenhum item do Mercado bate com "${q}".`;
+          return;
+        }
+        // Sobrou um só: já escolhe, que é o que a pessoa quis ao digitar até ali.
+        // Com vários, NÃO escolhe nada sozinho — "chip" casa com onze, e cravar o
+        // primeiro compraria o Chip de Trevas para quem queria o de Fogo.
+        if (casam.length === 1 && q) {
+          a.especie = casam[0].id;
+          itemSel.value = casam[0].id;
+        }
+        const atual = window.DDTools.MERCADO_ITENS.find((it) => it.id === a.especie);
+        if (atual) {
+          itemAviso.style.color = '';
+          itemAviso.textContent = `Vai comprar: ${atual.nome} (${atual.id})`;
+        } else if (a.especie) {
+          itemAviso.style.color = 'var(--warn, #f59e0b)';
+          itemAviso.textContent = `Id avulso: "${a.especie}" — não está na lista do Mercado.`;
+        } else {
+          itemAviso.style.color = 'var(--warn, #f59e0b)';
+          itemAviso.textContent = `${casam.length} item(ns) na lista. Clique em um: sem item escolhido este alvo não compra nada.`;
+        }
+        if (escolhido && !casam.some((it) => it.id === escolhido.id)) {
+          // O escolhido saiu do filtro, mas continua valendo — o filtro é da
+          // vista, não do alvo. Dizer isso evita achar que a escolha se perdeu.
+          itemAviso.textContent += ' (fora do filtro atual, mas ainda escolhido)';
+        }
+      };
+
+      itemSel.addEventListener('change', () => { a.especie = itemSel.value; desenhaItens(); });
+      itemBusca.addEventListener('input', desenhaItens);
+      desenhaItens();
       const tierSet = new Set(a.tiers || []);
       const tierBox = h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '10px' } });
       for (const t of TIERS) {
@@ -3023,9 +3084,21 @@ function sniperForm(cfg) {
 
       const del = h('button', { class: 'btn danger', onclick: () => { alvos.splice(i, 1); draw(); } }, 'Remover');
 
-      rows.append(h('div', { class: 'card', style: { padding: '12px', marginBottom: '10px' } },
-        h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' } }, nome, del),
-        h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+      // Alvo "pronto" é o que tem teto > 0 — e, se for item, item escolhido. Só
+      // esse compra algo, então é o que ganha cor: com vários alvos na tela, o
+      // que importa saber de relance é qual deles está de fato armado.
+      const temAlvo = (a.tipo || 'ovo') === 'item' ? !!a.especie : true;
+      const pronto = (+a.tetoPreco || 0) > 0 && temAlvo;
+      const marca = pronto
+        ? { borderLeft: '3px solid var(--ok, #22c55e)', background: 'color-mix(in srgb, var(--ok, #22c55e) 7%, transparent)' }
+        : { borderLeft: '3px solid var(--line-2)' };
+
+      rows.append(h('div', { class: 'card', style: { padding: '12px', marginBottom: '10px', ...marca } },
+        h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' } },
+          nome, del),
+        h('span', { class: 'help', style: { color: pronto ? 'var(--ok, #22c55e)' : '' } },
+          pronto ? 'Armado: este alvo compra.' : 'Sem teto de preço: este alvo não compra nada.'),
+        h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' } },
           h('label', { style: { flex: '1 1 110px' } }, h('span', { class: 'help' }, 'Tipo'), tipo),
           h('label', { style: { flex: '1 1 110px' } }, h('span', { class: 'help' }, 'Moeda'), moeda),
           h('label', { style: { flex: '1 1 150px' } }, h('span', { class: 'help' }, 'Teto de preço'), teto)),
@@ -3035,11 +3108,15 @@ function sniperForm(cfg) {
           h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' } },
             h('label', { style: { flex: '1 1 150px' } }, h('span', { class: 'help' }, 'Energia do ovo (+N)'), energia),
             h('label', { style: { flex: '1 1 200px' } }, h('span', { class: 'help' }, 'Espécie'), esp)),
-          h('label', { class: 'check', style: { marginTop: '8px' } }, shiny, h('span', {}, 'Só Shiny / UX'))) : h('div', { style: { marginTop: '8px' } },
-          h('span', { class: 'help' }, 'Item (id ou nome)'), esp)));
+          h('label', { class: 'check', style: { marginTop: '8px' } }, shiny, h('span', {}, 'Só Shiny / UX')))
+          : (a.tipo === 'item' ? h('div', { style: { marginTop: '8px' } },
+            h('span', { class: 'help' }, 'Qual item (digite para filtrar a lista)'), itemBusca,
+            h('div', { style: { marginTop: '6px' } }, itemSel),
+            h('div', { style: { marginTop: '6px' } }, itemAviso))
+            : h('div', { style: { marginTop: '8px' } },
+              h('span', { class: 'help' }, 'Espécie ou id (vazio = qualquer)'), esp))));
     });
   };
-  draw();
 
   const addBt = h('button', {
     class: 'btn',
@@ -3048,6 +3125,7 @@ function sniperForm(cfg) {
       draw();
     },
   }, 'Adicionar alvo');
+  draw(); // depois do addBt: o draw() usa a contagem, e a ordem na tela é botão → lista
 
   const intervalo = h('input', { class: 'input', type: 'number', min: '20', value: String(cfg.intervaloSec || 60) });
   const resBits = h('input', { class: 'input', type: 'number', min: '0', value: String(cfg.reservaBits || 0) });
@@ -3057,7 +3135,10 @@ function sniperForm(cfg) {
 
   const el = h('div', {},
     h('p', { class: 'about' }, 'Cada alvo é uma procura: o que comprar e até que preço. Alvo com teto 0 nunca compra — é assim que a ferramenta fica segura antes de você configurá-la.'),
-    rows, addBt,
+    // O botão vem ANTES da lista: com vários alvos abertos, um "Adicionar" no fim
+    // da pilha fica longe e some da vista.
+    addBt,
+    h('div', { style: { marginTop: '12px' } }, rows),
     h('div', { class: 'field', style: { marginTop: '14px' } }, h('label', {}, 'Varrer a cada (segundos)'), intervalo,
       h('span', { class: 'help' }, 'Mínimo de 20 s. A ferramenta também varre na hora em que o servidor avisa que o mercado mudou.')),
     field('Reserva de bits (nunca gastar)', resBits),

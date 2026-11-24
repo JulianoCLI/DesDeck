@@ -864,11 +864,22 @@ class ToolSniper extends HeadlessTool {
    * lista por ele — é o padrão de fábrica, então ligar a ferramenta sem
    * configurar não gasta um bit.
    *
+   * O segundo caso é mais perigoso porque parece configurado: alvo de ITEM sem
+   * item escolhido. O pedido sairia sem 'especie', o servidor listaria TODO item
+   * do Mercado e o sniper compraria qualquer coisa abaixo do teto. Um alvo pela
+   * metade não deve virar um alvo largo.
+   *
    * É um getter, e não um valor guardado no constructor, porque startTool()
    * troca this.config na ferramenta que já roda: uma cópia feita no constructor
    * ficaria velha, e o sniper seguiria comprando pelos alvos antigos.
    */
-  get alvos() { return (this.config.alvos || []).filter((a) => a && a.tetoPreco > 0); }
+  get alvos() {
+    return (this.config.alvos || []).filter((a) => {
+      if (!a || !(a.tetoPreco > 0)) return false;
+      if ((a.tipo || 'ovo') === 'item' && !a.especie) return false;
+      return true;
+    });
+  }
 
   getInterval() { return Math.max(20000, (this.config.intervaloSec || 60) * 1000); }
 

@@ -63,10 +63,23 @@ enfileira o anúncio e acorda no milissegundo do `libera` — e, quando acorda,
 **reconfere o anúncio** antes de pagar: se alguém chegou antes, se o vendedor
 retirou ou subiu o preço, ele desiste.
 
+Para **item**, o alvo se escolhe pelo nome: digite "fogo" e a lista filtra até
+sobrar o Chip de Fogo. Os nomes são os do jogo (`itens.json`), e a lista são os
+**45 itens que o Mercado realmente negocia** — medido pelo comando
+`mercado.itens` numa conta real. Isso não é o mesmo que o catálogo inteiro
+(~110): Poção, Revive e comida não têm anúncio nenhum, e oferecê-los aqui daria
+um alvo que nunca acha nada — do lado de fora, idêntico a ferramenta quebrada.
+Quando a busca é ambígua, ela **não escolhe sozinha**: "chip" casa com doze, e
+cravar o primeiro compraria Chip de Trevas para quem queria o de Fogo.
+
 As travas, porque aqui se gasta dinheiro de verdade:
 
 - **Alvo com teto 0 não compra nada** — e nem pede a lista. É o padrão de fábrica,
   então ligar a ferramenta antes de configurá-la não gasta um bit.
+- **Alvo de item sem item escolhido também não vale.** Esse é mais perigoso que o
+  teto 0, porque *parece* configurado: o pedido sairia sem `especie`, o servidor
+  listaria todo item do Mercado e o sniper compraria qualquer coisa abaixo do
+  teto. Um alvo pela metade não vira um alvo largo.
 - **Reserva** de bits e de D-Dol que ela nunca encosta.
 - **Máximo de compras por hora** (5 de fábrica): é o que segura um erro de
   configuração antes de ele ficar caro.
@@ -115,7 +128,8 @@ O Sniper foi levantado do mesmo jeito, e os scripts estão no repo:
 | `test-sniper-vivo.js` | A ferramenta real no mercado real, com a compra interceptada. Prova que o servidor aceita os filtros que ela monta. |
 | `test-sniper-real.js` | O protocolo de compra, com uma compra real e barata. |
 | `test-sniper-fila.js` | A ferramenta comprando de verdade: `--comprar` para valer, sem a flag é ensaio. |
-| `test-sniper-headless.js` | O `ToolSniper` do modo sem janela: 33 casos, com o relógio do servidor controlado — é onde a fila da retenção é exercitada de ponta a ponta. Sem rede. |
+| `test-sniper-headless.js` | O `ToolSniper` do modo sem janela: 45 casos, com o relógio do servidor controlado — é onde a fila da retenção é exercitada de ponta a ponta. Sem rede. |
+| `test-sniper-form.js` | A tela de configuração num `BrowserWindow` de verdade: o filtro de itens filtrando, a ordem dos blocos e o alvo de item pela metade sendo recusado. Sem rede. |
 
 Vale dizer o que **não** está provado: a compra pela fila foi exercitada contra
 um mercado de mentira (`test-sniper-tool.js` e `test-sniper-headless.js`), com o

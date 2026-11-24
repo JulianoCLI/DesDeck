@@ -783,8 +783,98 @@ function codePasse(cfg) {
 // A trava final é do próprio jogo, e é de graça: 'mercado.comprar' manda o PREÇO
 // junto. Se o vendedor tiver mudado o valor, o servidor recusa em vez de cobrar o
 // preço novo. Ou seja: é impossível esta ferramenta pagar mais do que viu.
+// Os itens que o Mercado realmente negocia, com o nome que o jogo usa.
+//
+// Por que uma tabela colada aqui, e não o itens.json: a tela de ajustes roda sob
+// `connect-src 'none'` (index.html), então ela não busca nada da rede. E não daria
+// no mesmo: o itens.json tem ~110 itens, e o Mercado negocia 45. Poção, Revive e
+// comida não têm anúncio nenhum — oferecer "Small Potion" aqui seria um alvo que
+// nunca acha nada, e isso é indistinguível de ferramenta quebrada.
+//
+// A lista veio do comando 'mercado.itens' numa conta real (os 45 com estoque) e os
+// nomes do itens.json do jogo, casados id a id — nenhum rótulo foi inventado.
+// Se o jogo passar a negociar outro item, ele aparece no 'mercado.itens' e entra
+// aqui; o campo de id avulso abaixo cobre o caso enquanto isso.
+const MERCADO_ITENS = [
+  { id: 'chip-darkness', nome: 'Chip de Trevas' },
+  { id: 'chip-earth', nome: 'Chip de Terra' },
+  { id: 'chip-fire', nome: 'Chip de Fogo' },
+  { id: 'chip-ice', nome: 'Chip de Gelo' },
+  { id: 'chip-light', nome: 'Chip de Luz' },
+  { id: 'chip-physical', nome: 'Chip de Físico' },
+  { id: 'chip-steel', nome: 'Chip de Aço' },
+  { id: 'chip-thunder', nome: 'Chip de Trovão' },
+  { id: 'chip-water', nome: 'Chip de Água' },
+  { id: 'chip-wind', nome: 'Chip de Vento' },
+  { id: 'chip-wood', nome: 'Chip de Planta' },
+  { id: 'data-aquatic-instavel', nome: 'Energia de Ovo Aquatic Instável' },
+  { id: 'data-aquatic-pura', nome: 'Energia de Ovo Aquatic Pura' },
+  { id: 'data-aquatic-refinada', nome: 'Energia de Ovo Aquatic Refinada' },
+  { id: 'data-beast-instavel', nome: 'Energia de Ovo Beast Instável' },
+  { id: 'data-beast-pura', nome: 'Energia de Ovo Beast Pura' },
+  { id: 'data-beast-refinada', nome: 'Energia de Ovo Beast Refinada' },
+  { id: 'data-bird-instavel', nome: 'Energia de Ovo Bird Instável' },
+  { id: 'data-bird-pura', nome: 'Energia de Ovo Bird Pura' },
+  { id: 'data-bird-refinada', nome: 'Energia de Ovo Bird Refinada' },
+  { id: 'data-devil-instavel', nome: 'Energia de Ovo Devil Instável' },
+  { id: 'data-devil-pura', nome: 'Energia de Ovo Devil Pura' },
+  { id: 'data-devil-refinada', nome: 'Energia de Ovo Devil Refinada' },
+  { id: 'data-dragon-instavel', nome: 'Energia de Ovo Dragon Instável' },
+  { id: 'data-dragon-pura', nome: 'Energia de Ovo Dragon Pura' },
+  { id: 'data-dragon-refinada', nome: 'Energia de Ovo Dragon Refinada' },
+  { id: 'data-insectoid-instavel', nome: 'Energia de Ovo Insectoid Instável' },
+  { id: 'data-insectoid-pura', nome: 'Energia de Ovo Insectoid Pura' },
+  { id: 'data-insectoid-refinada', nome: 'Energia de Ovo Insectoid Refinada' },
+  { id: 'data-plant-instavel', nome: 'Energia de Ovo Plant Instável' },
+  { id: 'data-plant-pura', nome: 'Energia de Ovo Plant Pura' },
+  { id: 'data-plant-refinada', nome: 'Energia de Ovo Plant Refinada' },
+  { id: 'data-rock-instavel', nome: 'Energia de Ovo Rock Instável' },
+  { id: 'data-rock-pura', nome: 'Energia de Ovo Rock Pura' },
+  { id: 'data-rock-refinada', nome: 'Energia de Ovo Rock Refinada' },
+  { id: 'evoluter', nome: 'Evoluter' },
+  { id: 'fragmento-bike', nome: 'Fragmento de Speed' },
+  { id: 'fragmento-chave', nome: 'Fragmento de Chave' },
+  { id: 'fragmento-nucleo', nome: 'Fragmento de Núcleo' },
+  { id: 'fragmento-ovo-shiny', nome: 'Fragmento de Ovo UX' },
+  { id: 'fragmento-shiny', nome: 'Fragmento UX' },
+  { id: 'fragmento-zmove', nome: 'Fragmento de D-Skill' },
+  { id: 'peca-aoe', nome: 'Peça de Chip AoE' },
+  { id: 'safari-ticket', nome: 'Ticket Digital World' },
+  { id: 'token-boss', nome: 'Boss Token' },
+];
+
+/**
+ * Acha o item pelo que a pessoa escreveu: id exato, nome exato ou pedaço do nome.
+ * Devolve o item, ou null se não houver UM só candidato — "chip" casa com onze, e
+ * escolher o primeiro compraria o Chip de Trevas para quem queria o de Fogo.
+ */
+function acharItem(texto) {
+  const q = String(texto || '').trim().toLowerCase();
+  if (!q) return null;
+  const semAcento = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const exato = MERCADO_ITENS.find((i) => i.id === q || i.nome.toLowerCase() === q || semAcento(i.nome) === semAcento(q));
+  if (exato) return exato;
+  const parciais = MERCADO_ITENS.filter((i) => semAcento(i.nome).includes(semAcento(q)) || i.id.includes(q));
+  return parciais.length === 1 ? parciais[0] : null;
+}
+
+/**
+ * Este alvo pode ir para o ar?
+ *
+ * Teto 0 não compra nada, e é o padrão de fábrica. Mas há um segundo caso, e ele
+ * é pior porque parece configurado: alvo de ITEM sem item escolhido. O pedido
+ * sairia sem 'especie', o servidor listaria TODO item do Mercado e o sniper
+ * compraria qualquer coisa abaixo do teto — Boss Token, fragmento, o que fosse.
+ * Um alvo pela metade não deve virar um alvo largo.
+ */
+const alvoValido = (a) => {
+  if (!a || !(a.tetoPreco > 0)) return false;
+  if ((a.tipo || 'ovo') === 'item' && !a.especie) return false;
+  return true;
+};
+
 function codeSniper(cfg) {
-  const alvos = (cfg.alvos || []).filter((a) => a && a.tetoPreco > 0);
+  const alvos = (cfg.alvos || []).filter(alvoValido);
   return isolar(comCfg('sniper', {
     alvos,
     intervaloSec: Math.max(20, cfg.intervaloSec || 60),
@@ -1061,7 +1151,10 @@ const TOOLS = [
     id: 'sniper',
     name: 'Sniper de Mercado',
     icon: 'search',
-    desc: 'Varre o Mercado procurando o que está abaixo do teto que você definir e compra. Anúncio retido entra na fila e é comprado no instante em que libera (todo anúncio espera 2 min). Filtra por tier, potência, energia e espécie — usando os filtros do próprio servidor.',
+    // Curta de propósito: na lista de ferramentas esta linha fica ao lado das
+    // outras, e um parágrafo aqui desalinhava a lista toda. O detalhe (a fila
+    // dos 2 min, os filtros do servidor) está na tela de configuração.
+    desc: 'Compra no Mercado o que estiver abaixo do seu teto. Pega até anúncio retido, na hora em que libera.',
     defaults: () => ({
       // Nasce com um alvo de exemplo DESLIGADO na prática: teto 0 não compra
       // nada, então ligar a ferramenta sem configurar não gasta um bit.
@@ -1085,7 +1178,7 @@ const TOOLS = [
     }),
     code: codeSniper,
     summary: (c) => {
-      const alvos = (c.alvos || []).filter((a) => a && a.tetoPreco > 0);
+      const alvos = (c.alvos || []).filter(alvoValido);
       if (!alvos.length) return 'sem alvo com teto definido · não compra nada';
       const n = alvos.length;
       return `${n} alvo${n > 1 ? 's' : ''} · varre a cada ${c.intervaloSec || 60}s${c.maxPorHora > 0 ? ` · até ${c.maxPorHora}/h` : ''}${c.soLiberados ? ' · só liberados' : ' · pega na fila'}`;
@@ -1111,4 +1204,4 @@ const toolLigada = (conf, tool) => (conf && typeof conf.enabled === 'boolean' ? 
 // passo. Religar depois é só aplicar a config de novo, que limpa o __off.
 const offCode = (id) => `(() => { window.__ddGame && window.__ddGame.desligar(${JSON.stringify(id)}); })();`;
 
-window.DDTools = { TOOLS, toolById, toolLigada, REFILL_ITENS, TIERS, offCode };
+window.DDTools = { TOOLS, toolById, toolLigada, REFILL_ITENS, MERCADO_ITENS, acharItem, alvoValido, TIERS, offCode };
