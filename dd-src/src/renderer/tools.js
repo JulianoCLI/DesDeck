@@ -573,6 +573,11 @@ function codeEggs(cfg) {
 //   - campos de decisão: noLobby, pronto, eu, guild, run, fila, cfg.max;
 //   - entrar é 'lab.entrar'.
 //
+// Baús do dia (lab-report.txt, lab.info cru da ms1): 'cfg.bauPorDia' é o teto
+// por dia (3 na conta observada) e 'bauHoje' quantos já foram pegos. Atingido o
+// teto, a corrida não dá mais baú — não vale ocupar vaga nem gastar os 25 min.
+// Sem 'bauPorDia' no pacote não chutamos teto nenhum: não barramos.
+//
 // O que NÃO faz, de propósito: não manda 'lab.iniciar' (começar exige ser
 // dono/sub-dono e a hora é decisão do jogador), não mexe em 'lab.dificuldade'
 // (afeta a guild inteira) e não entra em corrida já rodando.
@@ -600,6 +605,10 @@ function codeLab(cfg) {
     if (L.guild === false) return 'a conta não está numa guild';
     if (!L.pronto) return 'o mapa do Labirinto não está instalado no servidor';
     if (L.noLobby) return null;                 // já estamos: nada a fazer
+    const bauMax = Number(L.cfg && L.cfg.bauPorDia) || 0;
+    const bauFeitos = Number(L.bauHoje) || 0;
+    // Só barra com o teto vindo do servidor; sem ele não dá para saber.
+    if (bauMax > 0 && bauFeitos >= bauMax) return 'os baús de hoje já acabaram (' + bauFeitos + '/' + bauMax + ') — a corrida não daria recompensa';
     if (!L.eu) return 'sem Digimon na equipe que possa lutar';
     if (L.run && !L.run.acabou) return 'uma corrida está em andamento (o lobby reabre quando ela acabar)';
     const max = (L.cfg && L.cfg.max) || 0;
@@ -1123,7 +1132,7 @@ const TOOLS = [
     id: 'lab',
     name: 'Auto Labirinto',
     icon: 'users',
-    desc: 'Inscreve a conta no lobby do Labirinto da Guild assim que ele reabre, para não perder a corrida. Começar a corrida e escolher a dificuldade continua com você.',
+    desc: 'Inscreve a conta no lobby do Labirinto da Guild assim que ele reabre, para não perder a corrida. Para de entrar quando os baús do dia acabam, já que a corrida não daria recompensa. Começar a corrida e escolher a dificuldade continua com você.',
     defaults: () => ({
       intervaloMin: 2,
     }),

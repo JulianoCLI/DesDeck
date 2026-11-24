@@ -46,7 +46,7 @@ desligar numa conta, a escolha fica gravada e é respeitada.
 | **Vender ovos** | Vende ovos dos tiers escolhidos de tempos em tempos. Por padrão **não** vende S, SS nem SSS. |
 | **Auto Melhor Hunt** | Confere a hunt recomendada do Mapa e troca se não estivermos nela. Também tira a conta do Hospital quando ela fica parada lá. **Nunca** troca durante o Labirinto da Guild. |
 | **Auto Scan** | Lança o scan nos corpos caídos — útil em contas sem VIP. Funciona com a cena desligada (Modo Economia). |
-| **Auto Labirinto** | Inscreve a conta no lobby do Labirinto da Guild assim que ele reabre. Não começa a corrida nem muda a dificuldade. |
+| **Auto Labirinto** | Inscreve a conta no lobby do Labirinto da Guild assim que ele reabre. Para de entrar quando os baús do dia acabam (o servidor manda `bauHoje` e `cfg.bauPorDia`), já que a corrida não daria recompensa. Não começa a corrida nem muda a dificuldade. |
 | **Auto Passe** | Resgata o Passe de Batalha todo dia — perder um dia zera a trilha de 30 dias. Pega o Premium atrasado se a conta tiver Premium; **nunca** compra o Premium. **Já vem ligada**, inclusive em conta nova. |
 | **Sniper de Mercado** | Varre o Mercado e compra o que está abaixo do teto que você definir. Anúncio retido entra numa fila e é comprado **no instante em que libera** (todo anúncio espera 2 min). Filtra por tier, potência, energia, espécie e moeda. |
 

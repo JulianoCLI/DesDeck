@@ -570,6 +570,13 @@ class ToolEggs extends HeadlessTool {
 //   - 'run' presente e sem 'acabou' = corrida rodando: o lobby está fechado;
 //   - 'cfg.max' é o teto do lobby (30 na conta observada).
 //
+// Baús do dia (lab-report.txt, lab.info cru da conta ms1):
+//   - 'cfg.bauPorDia' é o teto de baús por dia (3 na conta observada);
+//   - 'bauHoje' é quantos a conta já pegou hoje (0 na captura).
+// Com bauHoje >= bauPorDia a corrida não dá mais baú, então não vale ocupar
+// vaga no lobby nem gastar 25 min (cfg.duracaoMin) de hunt. Se o servidor não
+// mandar 'bauPorDia' nós NÃO chutamos um teto: sem o dado, não barramos.
+//
 // O que esta ferramenta NÃO faz, de propósito:
 //   - não manda 'lab.iniciar': começar exige ser dono ou sub-dono ('gerente'),
 //     e decidir a hora de começar é do jogador, não nossa;
@@ -639,6 +646,13 @@ class ToolLab extends HeadlessTool {
     if (L.guild === false) return 'a conta não está numa guild';
     if (!L.pronto) return 'o mapa do Labirinto não está instalado no servidor';
     if (L.noLobby) return null; // já estamos: o step trata como "nada a fazer"
+    const bauMax = Number(L.cfg && L.cfg.bauPorDia) || 0;
+    const bauFeitos = Number(L.bauHoje) || 0;
+    // Só barra quando o servidor realmente mandou o teto: sem 'bauPorDia' não
+    // há como saber e seria errado deixar a conta de fora.
+    if (bauMax > 0 && bauFeitos >= bauMax) {
+      return `os baús de hoje já acabaram (${bauFeitos}/${bauMax}) — a corrida não daria recompensa`;
+    }
     if (!L.eu) return 'sem Digimon na equipe que possa lutar';
     if (L.run && !L.run.acabou) return 'uma corrida está em andamento (o lobby reabre quando ela acabar)';
     const max = (L.cfg && L.cfg.max) || 0;

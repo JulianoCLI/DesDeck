@@ -35,7 +35,7 @@ const LAB_REAL = () => ({
   bauHoje: 0,
   eu: { conta: 'e14af562', nick: 'MS1', nivel: 136, esp: 'gottsumon' },
   fila: Array.from({ length: 14 }, (_, i) => ({ nick: 'x' + i })),
-  cfg: { min: 3, max: 30 },
+  cfg: { min: 3, max: 30, bauPorDia: 3, duracaoMin: 25 },
 });
 
 function clientFake({ local = 'hunt', lab = LAB_REAL(), responde = true } = {}) {
@@ -221,6 +221,77 @@ async function main() {
     const proibidos = ['lab.iniciar', 'lab.dificuldade', 'lab.sair', 'lab.voltar', 'lab.chamar'];
     const achou = c.enviados.filter((e) => proibidos.includes(e.type));
     ok(achou.length === 0, `nenhum comando de grupo enviado (${c.enviados.map((e) => e.type).join(', ')})`);
+  }
+
+  console.log('\n13. baus do dia esgotados -> nao ocupa vaga no lobby');
+  {
+    // cfg.bauPorDia=3 e bauHoje=3 (campos reais de lab.info, ver lab-report.txt):
+    // a corrida nao daria recompensa nenhuma.
+    const c = clientFake({ lab: { ...LAB_REAL(), bauHoje: 3 } });
+    const t = new ToolLab(c, cfg);
+    t.running = true;
+    await t.step();
+    ok(entrou(c) === 0, 'com 3/3 baus nao entrou no lobby');
+
+    // Passou do teto (o servidor pode contar a mais): tambem barra.
+    const c2 = clientFake({ lab: { ...LAB_REAL(), bauHoje: 5 } });
+    const t2 = new ToolLab(c2, cfg);
+    t2.running = true;
+    await t2.step();
+    ok(entrou(c2) === 0, 'acima do teto (5/3) tambem barra');
+
+    // Ainda sobra chance: tem de entrar normalmente.
+    for (const n of [0, 1, 2]) {
+      const c3 = clientFake({ lab: { ...LAB_REAL(), bauHoje: n } });
+      const t3 = new ToolLab(c3, cfg);
+      t3.running = true;
+      await t3.step();
+      ok(entrou(c3) === 1, `com ${n}/3 baus ainda entra`);
+    }
+  }
+
+  console.log('\n14. sem o teto no pacote nao chutamos nada');
+  {
+    // Servidor que nao manda cfg.bauPorDia: barrar seria inventar regra.
+    const semTeto = LAB_REAL();
+    delete semTeto.cfg.bauPorDia;
+    const c = clientFake({ lab: { ...semTeto, bauHoje: 99 } });
+    const t = new ToolLab(c, cfg);
+    t.running = true;
+    await t.step();
+    ok(entrou(c) === 1, 'sem bauPorDia entra como antes');
+
+    // bauHoje ausente conta como 0.
+    const semHoje = LAB_REAL();
+    delete semHoje.bauHoje;
+    const c2 = clientFake({ lab: semHoje });
+    const t2 = new ToolLab(c2, cfg);
+    t2.running = true;
+    await t2.step();
+    ok(entrou(c2) === 1, 'sem bauHoje entra como antes');
+  }
+
+  console.log('\n15. os baus acabam durante o respiro -> desiste');
+  {
+    const c = clientFake();
+    const t = new ToolLab(c, cfg);
+    t.running = true;
+    const real = t.respirar.bind(t);
+    t.respirar = async (ms) => { c.state.lab = { ...LAB_REAL(), bauHoje: 3 }; return real(ms); };
+    await t.step();
+    ok(entrou(c) === 0, 'releu o lobby e viu que nao ha mais bau');
+  }
+
+  console.log('\n16. ja inscrito com os baus no fim -> nao e expulso');
+  {
+    // So decidimos NAO ENTRAR. Sair do lobby seria outra decisao, e a conta
+    // pode estar la para ajudar a guild.
+    const c = clientFake({ lab: { ...LAB_REAL(), noLobby: true, bauHoje: 3 } });
+    const t = new ToolLab(c, cfg);
+    t.running = true;
+    await t.step();
+    const saiu = c.enviados.filter((e) => e.type === 'lab.sair').length;
+    ok(saiu === 0 && entrou(c) === 0, 'nao manda lab.sair nem lab.entrar');
   }
 
   console.log(falhas ? `\n=== FALHOU: ${falhas} caso(s) ===` : '\n=== PASS: a ferramenta de labirinto se comporta ===');
