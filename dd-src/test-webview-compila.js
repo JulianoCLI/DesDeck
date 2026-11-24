@@ -65,6 +65,15 @@ ok(codeS.includes('"dificuldade":"pesadelo"'), 'a dificuldade escolhida chega no
 const codeX = L.code({ ...d, dificuldade: 'impossivel' });
 ok(codeX.includes('"dificuldade":null'), 'dificuldade desconhecida vira null');
 
+console.log('\nlabirinto sem bau (3/3):');
+ok(d.entrarSemBau === false, 'entrarSemBau vem DESLIGADO de fabrica');
+ok(d.startSemBau === false, 'startSemBau vem DESLIGADO de fabrica');
+ok(code.includes('CFG.entrarSemBau'), 'a guarda de entrada consulta CFG.entrarSemBau');
+ok(code.includes('CFG.startSemBau'), 'a guarda de start consulta CFG.startSemBau');
+const codeB = L.code({ ...d, entrarSemBau: true, startSemBau: true });
+ok(codeB.includes('"entrarSemBau":true'), 'entrarSemBau chega no CFG injetado');
+ok(codeB.includes('"startSemBau":true'), 'startSemBau chega no CFG injetado');
+
 console.log('\nferramenta de passe:');
 const P = T.toolById('passe');
 ok(!!P, 'esta no catalogo');

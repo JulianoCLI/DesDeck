@@ -544,6 +544,90 @@ async function main() {
     ok(comecou(c) === 0, 'com 3/3 baus nao comeca a corrida');
   }
 
+  console.log('\n34. "entrar mesmo sem bau" ligado: entra com 3/3');
+  {
+    const c = clientFake({ lab: { ...LAB_REAL(), bauHoje: 3 } });
+    const t = new ToolLab(c, { ...cfg, entrarSemBau: true });
+    t.running = true;
+    await t.step();
+    ok(entrou(c) === 1, 'com 3/3 e a opcao ligada, entra');
+
+    // Acima do teto tambem.
+    const c2 = clientFake({ lab: { ...LAB_REAL(), bauHoje: 9 } });
+    const t2 = new ToolLab(c2, { ...cfg, entrarSemBau: true });
+    t2.running = true;
+    await t2.step();
+    ok(entrou(c2) === 1, 'acima do teto tambem entra');
+  }
+
+  console.log('\n35. a opcao de entrar NAO libera o start sozinha');
+  {
+    // So 'entrarSemBau': a conta entra, mas comecar continua barrado. Sao
+    // duas decisoes diferentes -- entrar custa uma vaga, comecar custa 25 min
+    // da guild inteira.
+    const c = clientFake({ lab: LIDER({ bauHoje: 3, fila: Array.from({ length: 30 }, () => ({})) }) });
+    const t = new ToolLab(c, { ...START, startLotado: true, entrarSemBau: true });
+    t.running = true;
+    await t.step();
+    ok(comecou(c) === 0, 'entrar sem bau nao implica comecar sem bau');
+  }
+
+  console.log('\n36. "comecar mesmo sem bau" ligado: comeca com 3/3');
+  {
+    const c = clientFake({ lab: LIDER({ bauHoje: 3, fila: Array.from({ length: 30 }, () => ({})) }) });
+    const t = new ToolLab(c, { ...START, startLotado: true, entrarSemBau: true, startSemBau: true });
+    t.running = true;
+    await t.step();
+    ok(comecou(c) === 1, 'com as duas opcoes ligadas, comeca');
+  }
+
+  console.log('\n37. as duas opcoes nao afrouxam nenhuma outra guarda');
+  {
+    const tudo = { ...START, startLotado: true, entrarSemBau: true, startSemBau: true };
+    // Sem permissao continua sem comecar.
+    const c = clientFake({ lab: LIDER({ bauHoje: 3, gerente: false, fila: Array.from({ length: 30 }, () => ({})) }) });
+    const t = new ToolLab(c, tudo);
+    t.running = true;
+    await t.step();
+    ok(comecou(c) === 0, 'sem ser gerente continua sem comecar');
+
+    // Falta gente continua barrando.
+    const c2 = clientFake({ lab: LIDER({ bauHoje: 3, fila: [{}, {}] }) });
+    const t2 = new ToolLab(c2, tudo);
+    t2.running = true;
+    await t2.step();
+    ok(comecou(c2) === 0, 'abaixo do minimo continua sem comecar');
+
+    // Corrida rodando continua barrando a entrada.
+    const c3 = clientFake({ lab: { ...LAB_REAL(), bauHoje: 3, run: { id: 2 } } });
+    const t3 = new ToolLab(c3, { ...cfg, entrarSemBau: true });
+    t3.running = true;
+    await t3.step();
+    ok(entrou(c3) === 0, 'corrida em andamento continua barrando a entrada');
+
+    // Sem guild continua barrando.
+    const c4 = clientFake({ lab: { ...LAB_REAL(), bauHoje: 3, guild: false } });
+    const t4 = new ToolLab(c4, { ...cfg, entrarSemBau: true });
+    t4.running = true;
+    await t4.step();
+    ok(entrou(c4) === 0, 'sem guild continua barrando');
+  }
+
+  console.log('\n38. desligadas, o comportamento de ontem continua igual');
+  {
+    const c = clientFake({ lab: { ...LAB_REAL(), bauHoje: 3 } });
+    const t = new ToolLab(c, cfg);
+    t.running = true;
+    await t.step();
+    ok(entrou(c) === 0, 'sem as opcoes, 3/3 ainda barra a entrada');
+
+    const c2 = clientFake({ lab: LIDER({ bauHoje: 3, fila: Array.from({ length: 30 }, () => ({})) }) });
+    const t2 = new ToolLab(c2, { ...START, startLotado: true });
+    t2.running = true;
+    await t2.step();
+    ok(comecou(c2) === 0, 'sem as opcoes, 3/3 ainda barra o start');
+  }
+
   console.log(falhas ? `\n=== FALHOU: ${falhas} caso(s) ===` : '\n=== PASS: a ferramenta de labirinto se comporta ===');
   process.exit(falhas ? 1 : 0);
 }

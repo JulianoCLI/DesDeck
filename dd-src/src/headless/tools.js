@@ -622,6 +622,8 @@ class ToolLab extends HeadlessTool {
       usaSemEntrar: c.startSemEntrar === true,
       minutosSemEntrar: num(c.startSemEntrarMin),
       dif: typeof c.dificuldade === 'string' && c.dificuldade ? c.dificuldade : null,
+      // Começar mesmo sem baú (ajudar a guild, XP, farm do mapa).
+      semBau: c.startSemBau === true,
     };
   }
 
@@ -661,10 +663,12 @@ class ToolLab extends HeadlessTool {
     if (L.run && !L.run.acabou) return 'uma corrida já está em andamento';
     if (!L.noLobby) return 'a conta ainda não está no lobby';
     // Sem baú a corrida não rende nada para esta conta: não vale puxar a guild
-    // inteira para 25 min de labirinto.
+    // inteira para 25 min de labirinto, a não ser que seja pedido.
     const bauMax = Number(L.cfg && L.cfg.bauPorDia) || 0;
     const bauFeitos = Number(L.bauHoje) || 0;
-    if (bauMax > 0 && bauFeitos >= bauMax) return `os baús de hoje já acabaram (${bauFeitos}/${bauMax})`;
+    if (bauMax > 0 && bauFeitos >= bauMax && !S.semBau) {
+      return `os baús de hoje já acabaram (${bauFeitos}/${bauMax})`;
+    }
 
     const fila = Array.isArray(L.fila) ? L.fila.length : 0;
     const min = Number(L.cfg && L.cfg.min) || 0;
@@ -780,7 +784,9 @@ class ToolLab extends HeadlessTool {
     const bauFeitos = Number(L.bauHoje) || 0;
     // Só barra quando o servidor realmente mandou o teto: sem 'bauPorDia' não
     // há como saber e seria errado deixar a conta de fora.
-    if (bauMax > 0 && bauFeitos >= bauMax) {
+    // 'entrarSemBau' é a escolha explícita de ir mesmo sem recompensa (ajudar
+    // a guild a fechar o mínimo, XP da corrida).
+    if (bauMax > 0 && bauFeitos >= bauMax && this.config.entrarSemBau !== true) {
       return `os baús de hoje já acabaram (${bauFeitos}/${bauMax}) — a corrida não daria recompensa`;
     }
     if (!L.eu) return 'sem Digimon na equipe que possa lutar';

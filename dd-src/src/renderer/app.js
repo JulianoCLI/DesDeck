@@ -2905,6 +2905,8 @@ function labForm(cfg) {
     h('option', { value: 'dificil', selected: cfg.dificuldade === 'dificil' }, 'Difícil — prêmio ×1,6'),
     h('option', { value: 'pesadelo', selected: cfg.dificuldade === 'pesadelo' }, 'Pesadelo — prêmio ×2,4'));
 
+  const entrarSemBau = h('input', { type: 'checkbox', checked: cfg.entrarSemBau === true });
+  const startSemBau = h('input', { type: 'checkbox', checked: cfg.startSemBau === true });
   const autoStart = h('input', { type: 'checkbox', checked: cfg.autoStart === true });
   const gLotado = h('input', { type: 'checkbox', checked: cfg.startLotado === true });
   const gAposMin = h('input', { type: 'checkbox', checked: cfg.startAposMinimo === true });
@@ -2920,8 +2922,13 @@ function labForm(cfg) {
     for (const e of [gLotado, gAposMin, gAposMinN, gSemEntrar, gSemEntrarN]) e.disabled = !on;
     gAposMinN.disabled = !on || !gAposMin.checked;
     gSemEntrarN.disabled = !on || !gSemEntrar.checked;
+    // Começar sem baú só faz sentido com o início automático ligado E com a
+    // conta entrando sem baú: o start exige estar no lobby.
+    startSemBau.disabled = !on || !entrarSemBau.checked;
+    if (startSemBau.disabled) startSemBau.checked = false;
   };
   autoStart.onchange = sync; gAposMin.onchange = sync; gSemEntrar.onchange = sync;
+  entrarSemBau.onchange = sync;
 
   const linhaNum = (chk, texto, input, sufixo) => h('div', { class: 'row', style: { alignItems: 'center', gap: '8px', margin: '6px 0' } },
     chk, h('span', { style: { flex: 1 } }, texto), input, h('span', { class: 'help' }, sufixo));
@@ -2934,9 +2941,11 @@ function labForm(cfg) {
   const el = h('div', {},
     field('Conferir o lobby a cada (minutos)', intervalo, 'Ela também entra assim que o lobby reabre, sem esperar este intervalo.'),
     field('Dificuldade do grupo', dificuldade, 'Afeta a guild inteira e só o dono/sub-dono pode trocar. A ferramenta mantém a escolhida enquanto não houver corrida.'),
+    checkRow(entrarSemBau, 'Entrar mesmo sem baú (3/3 hoje)', 'Por padrão ela para de entrar quando os 3 baús do dia acabam. Marque para entrar assim mesmo: ajuda a guild a fechar o mínimo e a corrida ainda dá XP.'),
     checkRow(autoStart, 'Começar a corrida sozinha', 'Só funciona se a conta for dona ou sub-dona da guild. O jogo exige 3 Tamers no lobby para começar.'),
     bloco,
     h('span', { class: 'help' }, 'Com mais de um gatilho marcado, vale o primeiro que acontecer.'),
+    checkRow(startSemBau, 'Começar mesmo sem baú (3/3 hoje)', 'Puxa a guild inteira para 25 minutos de corrida que não dá baú para esta conta. Precisa de "Entrar mesmo sem baú" marcado, porque começar exige estar no lobby.'),
     h('div', { class: 'warnbox' }, 'Começar manda todos do lobby para a corrida de uma vez e afeta a guild inteira. Em conta que não é dona nem sub-dona, esta parte fica inerte e só a inscrição no lobby funciona. A ferramenta nunca chama a guild nem sai do lobby.'));
 
   sync();
@@ -2952,6 +2961,10 @@ function labForm(cfg) {
       startAposMinimoMin: Math.max(1, +gAposMinN.value || 10),
       startSemEntrar: gSemEntrar.checked,
       startSemEntrarMin: Math.max(1, +gSemEntrarN.value || 5),
+      entrarSemBau: entrarSemBau.checked,
+      // Sem o "entrar sem baú" a conta nem chega ao lobby: guardar true aqui
+      // seria uma opção ligada que nunca age.
+      startSemBau: startSemBau.checked && entrarSemBau.checked && autoStart.checked,
     }),
   };
 }

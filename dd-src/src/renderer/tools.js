@@ -596,6 +596,8 @@ function codeLab(cfg) {
     startSemEntrar: cfg.startSemEntrar === true,
     startSemEntrarMin: Math.max(0, +cfg.startSemEntrarMin || 0),
     dificuldade: difOk,
+    entrarSemBau: cfg.entrarSemBau === true,
+    startSemBau: cfg.startSemBau === true,
   }, `
 (async () => {
   let ultimaEntrada = 0;
@@ -628,7 +630,8 @@ function codeLab(cfg) {
     const bauMax = Number(L.cfg && L.cfg.bauPorDia) || 0;
     const bauFeitos = Number(L.bauHoje) || 0;
     // Só barra com o teto vindo do servidor; sem ele não dá para saber.
-    if (bauMax > 0 && bauFeitos >= bauMax) return 'os baús de hoje já acabaram (' + bauFeitos + '/' + bauMax + ') — a corrida não daria recompensa';
+    // 'entrarSemBau' = ir mesmo sem recompensa, por escolha do usuário.
+    if (bauMax > 0 && bauFeitos >= bauMax && !CFG.entrarSemBau) return 'os baús de hoje já acabaram (' + bauFeitos + '/' + bauMax + ') — a corrida não daria recompensa';
     if (!L.eu) return 'sem Digimon na equipe que possa lutar';
     if (L.run && !L.run.acabou) return 'uma corrida está em andamento (o lobby reabre quando ela acabar)';
     const max = (L.cfg && L.cfg.max) || 0;
@@ -658,10 +661,11 @@ function codeLab(cfg) {
     if (!L.pronto) return 'o mapa do Labirinto não está instalado no servidor';
     if (L.run && !L.run.acabou) return 'uma corrida já está em andamento';
     if (!L.noLobby) return 'a conta ainda não está no lobby';
-    // Sem baú a corrida não rende nada: não puxa a guild para 25 min a troco de nada.
+    // Sem baú a corrida não rende nada: não puxa a guild para 25 min a troco
+    // de nada, a não ser que seja pedido.
     const bauMax = Number(L.cfg && L.cfg.bauPorDia) || 0;
     const bauFeitos = Number(L.bauHoje) || 0;
-    if (bauMax > 0 && bauFeitos >= bauMax) return 'os baús de hoje já acabaram (' + bauFeitos + '/' + bauMax + ')';
+    if (bauMax > 0 && bauFeitos >= bauMax && !CFG.startSemBau) return 'os baús de hoje já acabaram (' + bauFeitos + '/' + bauMax + ')';
     const fila = Array.isArray(L.fila) ? L.fila.length : 0;
     const min = Number(L.cfg && L.cfg.min) || 0;
     const max = Number(L.cfg && L.cfg.max) || 0;
@@ -1290,7 +1294,7 @@ const TOOLS = [
     id: 'lab',
     name: 'Auto Labirinto',
     icon: 'users',
-    desc: 'Inscreve a conta no lobby do Labirinto da Guild assim que ele reabre, para não perder a corrida. Para de entrar quando os baús do dia acabam, já que a corrida não daria recompensa. Pode também escolher a dificuldade e começar sozinha, se a conta for dona ou sub-dona da guild.',
+    desc: 'Inscreve a conta no lobby do Labirinto da Guild assim que ele reabre, para não perder a corrida. Por padrão para de entrar quando os baús do dia acabam, mas dá para ir assim mesmo. Pode também escolher a dificuldade e começar sozinha, se a conta for dona ou sub-dona da guild.',
     defaults: () => ({
       intervaloMin: 2,
       // Começar e trocar a dificuldade afetam a guild inteira: desligados até
@@ -1302,6 +1306,9 @@ const TOOLS = [
       startAposMinimoMin: 10,
       startSemEntrar: false,
       startSemEntrarMin: 5,
+      // Sem baú a corrida não rende: só vai se for pedido.
+      entrarSemBau: false,
+      startSemBau: false,
     }),
     code: codeLab,
     summary: (c) => {
@@ -1314,6 +1321,7 @@ const TOOLS = [
         if (c.startSemEntrar) g.push(`${c.startSemEntrarMin || 5} min parado`);
         partes.push(g.length ? `começa: ${g.join(' ou ')}` : 'começa: sem gatilho');
       }
+      if (c.entrarSemBau) partes.push(c.startSemBau ? 'vai e começa sem baú' : 'vai sem baú');
       return partes.join(' · ');
     },
   },
