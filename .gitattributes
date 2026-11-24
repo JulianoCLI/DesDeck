@@ -1,0 +1,12 @@
+# O cmd.exe nao executa um .bat com quebras de linha LF: o `goto`, os blocos
+# `for (...)` e ate o `pause` do fim se perdem, e a janela fecha sozinha sem
+# dizer o que houve. Foi o que aconteceu com o iniciar.bat, que chegou ao
+# GitHub em LF e nao abria em outra maquina.
+#
+# `text eol=crlf` guarda o arquivo em LF no repositorio, mas garante que TODO
+# clone escreva CRLF no disco, em qualquer sistema, independentemente do
+# core.autocrlf de quem baixou. As regras mais especificas (*.bat/*.cmd)
+# ficam DEPOIS de `* -text` para vencer a regra generica.
+* -text
+*.bat text eol=crlf
+*.cmd text eol=crlf
