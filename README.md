@@ -14,6 +14,14 @@ Ele confere o ambiente antes de abrir (arquivos do programa, Electron instalado)
 se faltar alguma dependência, tenta instalar sozinho. Se algo der errado, a janela
 fica aberta explicando o quê.
 
+**Uma peculiaridade importante.** Em máquinas com Node.js 24+, o `npm install`
+pode terminar "com sucesso" e mesmo assim não gravar o `electron.exe`: o
+`extract-zip` (usado pelo pacote *electron*) trava no meio da extração. O
+`iniciar.bat` detecta isso e repara sozinho, extraindo o binário direto do zip
+com o .NET (`_reparar-electron.ps1`). Se preferir contornar na origem, instale
+o Node.js LTS (20.x) em vez do 24.x — aí a instalação padrão funciona sem o
+reparo.
+
 Pela linha de comando, se preferir:
 
 ```bash

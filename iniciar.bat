@@ -68,19 +68,33 @@ if exist "%ELECTRON%" (
     echo   Confira sua internet e tente de novo.
     goto :fim
   )
-  rem O npm pode terminar "com sucesso" e mesmo assim nao gravar o electron.exe:
-  rem o pacote baixa um .zip e descompacta depois, e e comum o antivirus barrar
-  rem essa gravacao em silencio. Por isso conferimos o arquivo, nao o codigo de saida.
+  rem O npm pode terminar "com sucesso" e mesmo assim nao gravar o electron.exe.
+  rem Duas causas conhecidas:
+  rem   - o antivirus barra a gravacao em silencio, ou
+  rem   - com Node 24+, o 'extract-zip' do pacote electron trava no meio da
+  rem     extracao e deixa o dist sem o electron.exe.
+  rem Por isso conferimos o arquivo (nao o codigo de saida) e, se faltar,
+  rem tentamos reparar extraindo o zip com o .NET (_reparar-electron.ps1).
   if not exist "%ELECTRON%" (
     echo.
-    echo   [ERRO] A instalacao terminou, mas o Electron nao apareceu.
-    echo.
-    echo   Isso quase sempre e o antivirus barrando a gravacao do
-    echo   electron.exe. O que costuma resolver:
-    echo     1. Libere a pasta abaixo no seu antivirus e rode de novo:
-    echo        %~dp0%APP%
-    echo     2. Ou rode este iniciar.bat como administrador.
-    goto :fim
+    echo   [aviso] O Electron nao apareceu apos o npm install.
+    echo   Tentando reparar: extrair o binario direto do zip...
+    rem Cuidado: dentro deste bloco parentizado, %CD% foi expandido no parse
+    rem (antes do pushd), nao em tempo de execucao. Por isso o caminho do app e
+    rem %~dp0%APP%, absoluto e estavel, em vez de %CD%.
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0%APP%\_reparar-electron.ps1" -app "%~dp0%APP%"
+    set "CODIGO=!errorlevel!"
+    if not exist "%ELECTRON%" (
+      echo.
+      echo   [ERRO] Nao deu para reparar o Electron ^(codigo !CODIGO!^).
+      echo.
+      echo   Isso quase sempre e o antivirus barrando a gravacao do
+      echo   electron.exe. O que costuma resolver:
+      echo     1. Libere a pasta abaixo no seu antivirus e rode de novo:
+      echo        %~dp0%APP%
+      echo     2. Ou rode este iniciar.bat como administrador.
+      goto :fim
+    )
   )
   echo   [ ok ] Electron instalado agora
 )
