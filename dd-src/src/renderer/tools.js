@@ -578,16 +578,36 @@ function codeEggs(cfg) {
 // teto, a corrida não dá mais baú — não vale ocupar vaga nem gastar os 25 min.
 // Sem 'bauPorDia' no pacote não chutamos teto nenhum: não barramos.
 //
-// O que NÃO faz, de propósito: não manda 'lab.iniciar' (começar exige ser
-// dono/sub-dono e a hora é decisão do jogador), não mexe em 'lab.dificuldade'
-// (afeta a guild inteira) e não entra em corrida já rodando.
+// Começar e escolher a dificuldade são opcionais e vêm desligados. Regras
+// lidas do cliente do jogo (js/guild.js, via test-lab-grep.js):
+// 'lab.iniciar' sem argumento; 'lab.dificuldade' com { dif: <id> }; o botão
+// Começar só existe para gerente e exige cfg.min no lobby e nenhuma corrida.
+//
+// O que NÃO faz: 'lab.chamar' (convida a guild inteira), 'lab.sair' e
+// 'lab.voltar'.
 function codeLab(cfg) {
+  const difOk = ['normal', 'dificil', 'pesadelo'].includes(cfg.dificuldade) ? cfg.dificuldade : null;
   return isolar(comCfg('lab', {
     intervaloMs: Math.max(0.5, cfg.intervaloMin || 2) * 60000,
+    autoStart: cfg.autoStart === true,
+    startLotado: cfg.startLotado === true,
+    startAposMinimo: cfg.startAposMinimo === true,
+    startAposMinimoMin: Math.max(0, +cfg.startAposMinimoMin || 0),
+    startSemEntrar: cfg.startSemEntrar === true,
+    startSemEntrarMin: Math.max(0, +cfg.startSemEntrarMin || 0),
+    dificuldade: difOk,
   }, `
 (async () => {
   let ultimaEntrada = 0;
   let ultimoMotivo = null;
+  let ultimoMotivoStart = null;
+  let lobbyDesde = 0;      // desde quando o lobby tem o mínimo
+  let ultimaMudanca = 0;   // desde quando ninguém entra nem sai
+  let filaVista = null;
+  let ultimoStart = 0;
+  let ultimaDif = 0;
+  let difInvalida = null;
+  let avisouSemPermissao = false;
 
   // Pede o lobby e espera a resposta NOVA, como a hunt faz com offline.cfg.
   const pedirLab = async () => {
@@ -617,6 +637,110 @@ function codeLab(cfg) {
     return null;
   };
 
+  // Acompanha o lobby para os gatilhos de tempo.
+  const observarLobby = (L) => {
+    if (!L || !Array.isArray(L.fila)) return;
+    const n = L.fila.length;
+    const min = Number(L.cfg && L.cfg.min) || 0;
+    const agora = Date.now();
+    if (filaVista === null || n !== filaVista) { filaVista = n; ultimaMudanca = agora; }
+    if (min && n < min) lobbyDesde = 0;
+    else if (min && n >= min && !lobbyDesde) lobbyDesde = agora;
+    if (L.run && !L.run.acabou) { lobbyDesde = 0; ultimaMudanca = agora; }
+  };
+
+  // Por que NAO comecariamos agora. null = pode comecar.
+  // Mesmas guardas do botao '#lab-comecar' do jogo.
+  const motivoParaNaoComecar = (L) => {
+    if (!CFG.autoStart) return 'o início automático está desligado';
+    if (!L) return 'o servidor não respondeu o lobby';
+    if (!L.gerente) return 'esta conta não é dono nem sub-dono da guild';
+    if (!L.pronto) return 'o mapa do Labirinto não está instalado no servidor';
+    if (L.run && !L.run.acabou) return 'uma corrida já está em andamento';
+    if (!L.noLobby) return 'a conta ainda não está no lobby';
+    // Sem baú a corrida não rende nada: não puxa a guild para 25 min a troco de nada.
+    const bauMax = Number(L.cfg && L.cfg.bauPorDia) || 0;
+    const bauFeitos = Number(L.bauHoje) || 0;
+    if (bauMax > 0 && bauFeitos >= bauMax) return 'os baús de hoje já acabaram (' + bauFeitos + '/' + bauMax + ')';
+    const fila = Array.isArray(L.fila) ? L.fila.length : 0;
+    const min = Number(L.cfg && L.cfg.min) || 0;
+    const max = Number(L.cfg && L.cfg.max) || 0;
+    if (min && fila < min) return 'faltam ' + (min - fila) + ' para o mínimo de ' + min;
+
+    const agora = Date.now();
+    const motivos = [];
+    if (CFG.startLotado && max && fila >= max) return null;
+    if (CFG.startLotado) motivos.push('lobby em ' + fila + '/' + max);
+    if (CFG.startAposMinimo && CFG.startAposMinimoMin > 0) {
+      const alvo = CFG.startAposMinimoMin * 60000;
+      if (lobbyDesde && agora - lobbyDesde >= alvo) return null;
+      const falta = lobbyDesde ? Math.ceil((alvo - (agora - lobbyDesde)) / 60000) : CFG.startAposMinimoMin;
+      motivos.push('faltam ~' + falta + ' min desde o mínimo');
+    }
+    if (CFG.startSemEntrar && CFG.startSemEntrarMin > 0) {
+      const alvo = CFG.startSemEntrarMin * 60000;
+      if (ultimaMudanca && agora - ultimaMudanca >= alvo) return null;
+      const falta = ultimaMudanca ? Math.ceil((alvo - (agora - ultimaMudanca)) / 60000) : CFG.startSemEntrarMin;
+      motivos.push('faltam ~' + falta + ' min sem ninguém entrar');
+    }
+    if (!motivos.length) return 'nenhum gatilho de início está configurado';
+    return 'nenhum gatilho bateu (' + motivos.join('; ') + ')';
+  };
+
+  const ajustarDificuldade = async (L) => {
+    if (!CFG.dificuldade || !L || !L.gerente) return;
+    if (L.run && !L.run.acabou) return;
+    if (L.dif === CFG.dificuldade) return;
+    const difs = (L.cfg && Array.isArray(L.cfg.dificuldades)) ? L.cfg.dificuldades : null;
+    if (difs && !difs.some((d) => d && d.id === CFG.dificuldade)) {
+      if (difInvalida !== CFG.dificuldade) {
+        difInvalida = CFG.dificuldade;
+        G.log('labirinto: dificuldade "' + CFG.dificuldade + '" não existe neste servidor');
+      }
+      return;
+    }
+    if (Date.now() - ultimaDif < 30000) return;
+    if (!G.enviar('lab.dificuldade', { dif: CFG.dificuldade })) return;
+    ultimaDif = Date.now();
+    G.log('labirinto: dificuldade do grupo: ' + (L.dif || '?') + ' -> ' + CFG.dificuldade);
+  };
+
+  // A parte opcional de líder: dificuldade e start.
+  const cuidarDoStart = async (L) => {
+    if (!CFG.autoStart && !CFG.dificuldade) return;
+    if (!L.gerente) {
+      if (!avisouSemPermissao) {
+        avisouSemPermissao = true;
+        G.log('labirinto: início/dificuldade automáticos ignorados: a conta não é dono nem sub-dono');
+      }
+      return;
+    }
+    avisouSemPermissao = false;
+    await ajustarDificuldade(L);
+    if (!CFG.autoStart || CFG.__off) return;
+
+    const motivo = motivoParaNaoComecar(L);
+    if (motivo) {
+      if (ultimoMotivoStart !== motivo) { ultimoMotivoStart = motivo; G.log('labirinto: não comecei: ' + motivo); }
+      return;
+    }
+    ultimoMotivoStart = null;
+    if (Date.now() - ultimoStart < 60000) return;
+    // Deixa o servidor aplicar a dificuldade antes de começar.
+    if (CFG.dificuldade && L.dif !== CFG.dificuldade && Date.now() - ultimaDif < 10000) return;
+
+    await G.respirar(3000);
+    if (CFG.__off) return;
+    const L2 = G.lab || L;
+    if (L2.run && !L2.run.acabou) return;
+    if (motivoParaNaoComecar(L2)) return;
+
+    if (!G.enviar('lab.iniciar', {})) return;
+    ultimoStart = Date.now();
+    const n = Array.isArray(L2.fila) ? L2.fila.length : '?';
+    G.log('labirinto: comecei o Labirinto com ' + n + ' Tamers (dificuldade ' + (L2.dif || '?') + ')');
+  };
+
   const passo = async () => {
     if (CFG.__off) return;
     const E = G.estado;
@@ -627,7 +751,9 @@ function codeLab(cfg) {
 
     const L = await pedirLab();
     if (!L || CFG.__off) return;
-    if (L.noLobby) { ultimoMotivo = null; return; } // é o estado que queremos
+    // Os gatilhos de tempo medem o lobby: o relógio corre mesmo já inscritos.
+    observarLobby(L);
+    if (L.noLobby) { ultimoMotivo = null; await cuidarDoStart(L); return; }
 
     const motivo = motivoParaNaoEntrar(L, G.estado);
     if (motivo) {
@@ -1164,12 +1290,32 @@ const TOOLS = [
     id: 'lab',
     name: 'Auto Labirinto',
     icon: 'users',
-    desc: 'Inscreve a conta no lobby do Labirinto da Guild assim que ele reabre, para não perder a corrida. Para de entrar quando os baús do dia acabam, já que a corrida não daria recompensa. Começar a corrida e escolher a dificuldade continua com você.',
+    desc: 'Inscreve a conta no lobby do Labirinto da Guild assim que ele reabre, para não perder a corrida. Para de entrar quando os baús do dia acabam, já que a corrida não daria recompensa. Pode também escolher a dificuldade e começar sozinha, se a conta for dona ou sub-dona da guild.',
     defaults: () => ({
       intervaloMin: 2,
+      // Começar e trocar a dificuldade afetam a guild inteira: desligados até
+      // que o usuário peça.
+      dificuldade: null,
+      autoStart: false,
+      startLotado: false,
+      startAposMinimo: false,
+      startAposMinimoMin: 10,
+      startSemEntrar: false,
+      startSemEntrarMin: 5,
     }),
     code: codeLab,
-    summary: (c) => `confere o lobby a cada ${c.intervaloMin || 2} min · entra sozinha`,
+    summary: (c) => {
+      const partes = [`confere a cada ${c.intervaloMin || 2} min`];
+      if (c.dificuldade) partes.push(({ normal: 'Normal', dificil: 'Difícil', pesadelo: 'Pesadelo' })[c.dificuldade]);
+      if (c.autoStart) {
+        const g = [];
+        if (c.startLotado) g.push('lotado');
+        if (c.startAposMinimo) g.push(`${c.startAposMinimoMin || 10} min do mínimo`);
+        if (c.startSemEntrar) g.push(`${c.startSemEntrarMin || 5} min parado`);
+        partes.push(g.length ? `começa: ${g.join(' ou ')}` : 'começa: sem gatilho');
+      }
+      return partes.join(' · ');
+    },
   },
   {
     id: 'passe',

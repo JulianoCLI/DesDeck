@@ -294,6 +294,256 @@ async function main() {
     ok(saiu === 0 && entrou(c) === 0, 'nao manda lab.sair nem lab.entrar');
   }
 
+  // ----------------------------------------------- inicio automatico
+  // Regras lidas do cliente do jogo (js/guild.js, via test-lab-grep.js):
+  // o botao Comecar so existe para gerente e fica disabled com
+  // `falta || correndo || !L.pronto`; 'lab.iniciar' nao leva argumento;
+  // 'lab.dificuldade' leva { dif: <id> }.
+  const comecou = (c) => c.enviados.filter((e) => e.type === 'lab.iniciar').length;
+  const mudouDif = (c) => c.enviados.filter((e) => e.type === 'lab.dificuldade');
+  // Conta ja no lobby e com permissao: o cenario do auto-start.
+  const LIDER = (extra = {}) => ({ ...LAB_REAL(), noLobby: true, gerente: true, ...extra });
+  const START = { intervaloMin: 2, autoStart: true };
+
+  console.log('\n17. por padrao NUNCA comeca nem mexe na dificuldade');
+  {
+    const c = clientFake({ lab: LIDER() });
+    const t = new ToolLab(c, cfg);           // cfg sem autoStart
+    t.running = true;
+    await t.step();
+    ok(comecou(c) === 0 && mudouDif(c).length === 0, 'sem config, nada de lab.iniciar/dificuldade');
+  }
+
+  console.log('\n18. conta sem permissao nao tenta (e avisa uma vez)');
+  {
+    const c = clientFake({ lab: { ...LIDER(), gerente: false } });
+    const t = new ToolLab(c, { ...START, startLotado: true, dificuldade: 'normal' });
+    t.running = true;
+    let avisos = 0;
+    t.log = (m) => { if (String(m).includes('não é dono')) avisos++; };
+    await t.step();
+    await t.step();
+    ok(comecou(c) === 0, 'nao mandou lab.iniciar');
+    ok(mudouDif(c).length === 0, 'nao mandou lab.dificuldade');
+    ok(avisos === 1, `avisou uma unica vez (foram ${avisos})`);
+  }
+
+  console.log('\n19. gatilho 1: lobby lotado');
+  {
+    // 29/30 ainda nao e lotado.
+    const c = clientFake({ lab: LIDER({ fila: Array.from({ length: 29 }, () => ({})) }) });
+    const t = new ToolLab(c, { ...START, startLotado: true });
+    t.running = true;
+    await t.step();
+    ok(comecou(c) === 0, '29/30 nao comeca');
+
+    const c2 = clientFake({ lab: LIDER({ fila: Array.from({ length: 30 }, () => ({})) }) });
+    const t2 = new ToolLab(c2, { ...START, startLotado: true });
+    t2.running = true;
+    await t2.step();
+    ok(comecou(c2) === 1, '30/30 comeca');
+    ok(c2.enviados.find((e) => e.type === 'lab.iniciar').data === undefined
+      || JSON.stringify(c2.enviados.find((e) => e.type === 'lab.iniciar').data) === '{}',
+      'lab.iniciar vai sem argumento util (como o jogo faz)');
+  }
+
+  console.log('\n20. gatilho 2: x min depois de bater o minimo');
+  {
+    const c = clientFake({ lab: LIDER() });   // 14 no lobby, minimo 3
+    const t = new ToolLab(c, { ...START, startAposMinimo: true, startAposMinimoMin: 10 });
+    t.running = true;
+    await t.step();
+    ok(comecou(c) === 0, 'acabou de encher: ainda nao comeca');
+    // 10 min depois.
+    t.lobbyDesde = Date.now() - 10 * 60000;
+    await t.step();
+    ok(comecou(c) === 1, 'passados 10 min, comeca');
+  }
+
+  console.log('\n21. gatilho 2 reinicia se o lobby esvazia');
+  {
+    const c = clientFake({ lab: LIDER({ fila: Array.from({ length: 5 }, () => ({})) }) });
+    const t = new ToolLab(c, { ...START, startAposMinimo: true, startAposMinimoMin: 10 });
+    t.running = true;
+    await t.step();
+    const marcou = t.lobbyDesde;
+    ok(marcou > 0, 'com 5 (minimo 3) o relogio comecou');
+    // Cai para 2: abaixo do minimo, o relogio zera.
+    c.state.lab = c.proximaResposta = LIDER({ fila: [{}, {}] });
+    await t.step();
+    ok(t.lobbyDesde === 0, 'abaixo do minimo o relogio zerou');
+    ok(comecou(c) === 0, 'e nao comecou com gente de menos');
+  }
+
+  console.log('\n22. gatilho 3: x min sem ninguem entrar nem sair');
+  {
+    const c = clientFake({ lab: LIDER() });
+    const t = new ToolLab(c, { ...START, startSemEntrar: true, startSemEntrarMin: 5 });
+    t.running = true;
+    await t.step();
+    ok(comecou(c) === 0, 'acabou de ver o lobby: espera');
+    t.ultimaMudanca = Date.now() - 5 * 60000;
+    await t.step();
+    ok(comecou(c) === 1, '5 min parado, comeca');
+  }
+
+  console.log('\n23. gatilho 3 reinicia quando alguem entra');
+  {
+    const c = clientFake({ lab: LIDER() });
+    const t = new ToolLab(c, { ...START, startSemEntrar: true, startSemEntrarMin: 5 });
+    t.running = true;
+    await t.step();
+    t.ultimaMudanca = Date.now() - 4 * 60000;  // quase la
+    c.state.lab = c.proximaResposta = LIDER({ fila: Array.from({ length: 15 }, () => ({})) });
+    await t.step();                            // entrou mais um: zera
+    ok(comecou(c) === 0, 'entrou alguem: nao comeca');
+    ok(Date.now() - t.ultimaMudanca < 1000, 'o relogio de "parado" reiniciou');
+  }
+
+  console.log('\n24. os 3 juntos: vale o PRIMEIRO que bater');
+  {
+    const todos = { ...START, startLotado: true, startAposMinimo: true, startAposMinimoMin: 10, startSemEntrar: true, startSemEntrarMin: 5 };
+    // Nenhum bateu ainda.
+    const c = clientFake({ lab: LIDER() });
+    const t = new ToolLab(c, todos);
+    t.running = true;
+    await t.step();
+    ok(comecou(c) === 0, 'nenhum gatilho bateu: espera');
+    // So o de "parado" bate.
+    t.ultimaMudanca = Date.now() - 5 * 60000;
+    await t.step();
+    ok(comecou(c) === 1, 'o primeiro a bater ja comeca (nao espera os outros)');
+  }
+
+  console.log('\n25. start ligado mas sem gatilho nenhum nao comeca');
+  {
+    const c = clientFake({ lab: LIDER() });
+    const t = new ToolLab(c, { ...START });   // autoStart sem gatilho
+    t.running = true;
+    let msg = '';
+    t.log = (m) => { msg += m; };
+    await t.step();
+    ok(comecou(c) === 0, 'nao comeca as cegas');
+    ok(/nenhum gatilho/.test(msg), 'o log explica que falta configurar gatilho');
+  }
+
+  console.log('\n26. as guardas do botao Comecar do jogo');
+  {
+    const casos = [
+      ['falta gente (2 < min 3)', { fila: [{}, {}] }],
+      ['corrida rodando', { run: { id: 1 } }],
+      ['mapa nao instalado', { pronto: false }],
+      ['nao esta no lobby', { noLobby: false }],
+    ];
+    for (const [nome, patch] of casos) {
+      const c = clientFake({ lab: LIDER(patch) });
+      const t = new ToolLab(c, { ...START, startLotado: true, startSemEntrar: true, startSemEntrarMin: 1 });
+      t.running = true;
+      t.ultimaMudanca = Date.now() - 60 * 60000;  // o gatilho ja bateu
+      t.lobbyDesde = Date.now() - 60 * 60000;
+      await t.step();
+      ok(comecou(c) === 0, `${nome}: nao comeca`);
+    }
+  }
+
+  console.log('\n27. dificuldade: so corrige quando esta diferente');
+  {
+    // Ja esta em pesadelo: nao remanda.
+    const c = clientFake({ lab: LIDER({ dif: 'pesadelo' }) });
+    const t = new ToolLab(c, { intervaloMin: 2, dificuldade: 'pesadelo' });
+    t.running = true;
+    await t.step();
+    ok(mudouDif(c).length === 0, 'ja na dificuldade certa: nao manda nada');
+
+    // Esta em normal e queremos pesadelo.
+    const c2 = clientFake({ lab: LIDER({ dif: 'normal' }) });
+    const t2 = new ToolLab(c2, { intervaloMin: 2, dificuldade: 'pesadelo' });
+    t2.running = true;
+    await t2.step();
+    const m = mudouDif(c2);
+    ok(m.length === 1, 'mandou lab.dificuldade uma vez');
+    ok(m[0] && m[0].data && m[0].data.dif === 'pesadelo', `payload { dif: 'pesadelo' } (foi ${JSON.stringify(m[0] && m[0].data)})`);
+  }
+
+  console.log('\n28. dificuldade nao e trocada durante a corrida');
+  {
+    const c = clientFake({ lab: LIDER({ dif: 'normal', run: { id: 7 } }) });
+    const t = new ToolLab(c, { intervaloMin: 2, dificuldade: 'pesadelo' });
+    t.running = true;
+    await t.step();
+    ok(mudouDif(c).length === 0, 'o jogo trava os botoes na corrida: nos tambem');
+  }
+
+  console.log('\n29. dificuldade que nao existe no servidor e recusada');
+  {
+    const c = clientFake({ lab: LIDER({ dif: 'normal', cfg: { min: 3, max: 30, bauPorDia: 3, dificuldades: [{ id: 'normal' }, { id: 'dificil' }, { id: 'pesadelo' }] } }) });
+    const t = new ToolLab(c, { intervaloMin: 2, dificuldade: 'impossivel' });
+    t.running = true;
+    let msg = '';
+    t.log = (m) => { msg += m; };
+    await t.step();
+    ok(mudouDif(c).length === 0, 'nao manda id inventado');
+    ok(/não existe/.test(msg), 'o log explica');
+  }
+
+  console.log('\n30. comeca na dificuldade certa, nao na velha');
+  {
+    // Queremos pesadelo, o lobby esta em normal e o gatilho ja bateu: a
+    // ferramenta troca a dificuldade PRIMEIRO e so comeca depois.
+    const c = clientFake({ lab: LIDER({ dif: 'normal', fila: Array.from({ length: 30 }, () => ({})) }) });
+    const t = new ToolLab(c, { ...START, startLotado: true, dificuldade: 'pesadelo' });
+    t.running = true;
+    await t.step();
+    ok(mudouDif(c).length === 1, 'trocou a dificuldade');
+    ok(comecou(c) === 0, 'nao comecou no mesmo passo (espera o servidor aplicar)');
+    // O servidor aplicou: agora sim.
+    c.state.lab = c.proximaResposta = LIDER({ dif: 'pesadelo', fila: Array.from({ length: 30 }, () => ({})) });
+    t.ultimaDif = Date.now() - 20000;
+    await t.step();
+    ok(comecou(c) === 1, 'com a dificuldade aplicada, comeca');
+  }
+
+  console.log('\n31. nao duplica o start nem entra em corrida alheia');
+  {
+    const c = clientFake({ lab: LIDER({ fila: Array.from({ length: 30 }, () => ({})) }) });
+    const t = new ToolLab(c, { ...START, startLotado: true });
+    t.running = true;
+    await t.step();
+    ok(comecou(c) === 1, 'comecou uma vez');
+    await t.step();
+    ok(comecou(c) === 1, 'o passo seguinte nao remanda lab.iniciar');
+
+    // Outro gerente comecou durante o respiro: desistimos.
+    const c2 = clientFake({ lab: LIDER({ fila: Array.from({ length: 30 }, () => ({})) }) });
+    const t2 = new ToolLab(c2, { ...START, startLotado: true });
+    t2.running = true;
+    const real = t2.respirar.bind(t2);
+    t2.respirar = async (ms) => { c2.state.lab = LIDER({ run: { id: 3 }, fila: Array.from({ length: 30 }, () => ({})) }); return real(ms); };
+    await t2.step();
+    ok(comecou(c2) === 0, 'alguem comecou antes: nao duplica a corrida');
+  }
+
+  console.log('\n32. mesmo com start ligado, nunca chama a guild nem sai');
+  {
+    const c = clientFake({ lab: LIDER({ fila: Array.from({ length: 30 }, () => ({})) }) });
+    const t = new ToolLab(c, { ...START, startLotado: true, dificuldade: 'pesadelo' });
+    t.running = true;
+    await t.step();
+    const proibidos = ['lab.sair', 'lab.voltar', 'lab.chamar'];
+    const achou = c.enviados.filter((e) => proibidos.includes(e.type));
+    ok(achou.length === 0, `nada de sair/chamar/voltar (${c.enviados.map((e) => e.type).join(', ')})`);
+  }
+
+  console.log('\n33. os baus esgotados tambem barram o start');
+  {
+    // Sem recompensa a corrida nao vale: nem entramos, nem comecamos.
+    const c = clientFake({ lab: LIDER({ bauHoje: 3, fila: Array.from({ length: 30 }, () => ({})) }) });
+    const t = new ToolLab(c, { ...START, startLotado: true });
+    t.running = true;
+    await t.step();
+    ok(comecou(c) === 0, 'com 3/3 baus nao comeca a corrida');
+  }
+
   console.log(falhas ? `\n=== FALHOU: ${falhas} caso(s) ===` : '\n=== PASS: a ferramenta de labirinto se comporta ===');
   process.exit(falhas ? 1 : 0);
 }

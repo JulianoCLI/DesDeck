@@ -42,9 +42,28 @@ const code = L.code(L.defaults());
 for (const f of ['aoLabMudou.push', 'motivoParaNaoEntrar', 'pedirLab', 'G.respirar', 'G.jitter'])
   ok(code.includes(f), `o corpo injetado tem ${f}`);
 ok(code.includes("G.enviar('lab.entrar'"), 'manda lab.entrar');
-// O que afeta a guild inteira nao pode sair daqui.
-for (const f of ['lab.iniciar', 'lab.dificuldade', 'lab.sair', 'lab.voltar', 'lab.chamar'])
+// Sair do lobby e chamar a guild continuam proibidos, sempre.
+for (const f of ['lab.sair', 'lab.voltar', 'lab.chamar'])
   ok(!code.includes("G.enviar('" + f), `NAO manda ${f}`);
+
+// Com o padrao (start desligado) o codigo ate contem lab.iniciar, mas CFG o
+// barra. O que importa e que o DEFAULT venha desligado e sem dificuldade.
+const d = L.defaults();
+ok(d.autoStart === false, 'o inicio automatico vem DESLIGADO de fabrica');
+ok(!d.dificuldade, 'a dificuldade vem em "nao mexer" de fabrica');
+ok(code.includes('"autoStart":false'), 'o CFG injetado leva autoStart false');
+
+console.log('\nlabirinto com start ligado:');
+const codeS = L.code({ ...d, autoStart: true, startLotado: true, dificuldade: 'pesadelo' });
+ok(codeS.includes("G.enviar('lab.iniciar'"), 'ligado: manda lab.iniciar');
+ok(codeS.includes("G.enviar('lab.dificuldade'"), 'ligado: manda lab.dificuldade');
+ok(codeS.includes('"dif": CFG.dificuldade') || codeS.includes('{ dif: CFG.dificuldade }'), 'dificuldade vai como { dif: <id> }');
+ok(codeS.includes('motivoParaNaoComecar'), 'tem a guarda motivoParaNaoComecar');
+ok(codeS.includes('L.gerente'), 'confere gerente antes de agir');
+ok(codeS.includes('"dificuldade":"pesadelo"'), 'a dificuldade escolhida chega no CFG');
+// Uma dificuldade que nao existe no servidor nao pode ser injetada.
+const codeX = L.code({ ...d, dificuldade: 'impossivel' });
+ok(codeX.includes('"dificuldade":null'), 'dificuldade desconhecida vira null');
 
 console.log('\nferramenta de passe:');
 const P = T.toolById('passe');

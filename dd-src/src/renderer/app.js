@@ -2898,13 +2898,61 @@ function huntForm(cfg) {
 function labForm(cfg) {
   const intervalo = h('input', { class: 'input', type: 'number', min: '1', value: String(cfg.intervaloMin || 2) });
 
+  // Os ids são os de cfg.dificuldades no servidor (lab.info da conta real).
+  const dificuldade = h('select', { class: 'input' },
+    h('option', { value: '', selected: !cfg.dificuldade }, 'Não mexer (deixa como está)'),
+    h('option', { value: 'normal', selected: cfg.dificuldade === 'normal' }, 'Normal — prêmio ×1'),
+    h('option', { value: 'dificil', selected: cfg.dificuldade === 'dificil' }, 'Difícil — prêmio ×1,6'),
+    h('option', { value: 'pesadelo', selected: cfg.dificuldade === 'pesadelo' }, 'Pesadelo — prêmio ×2,4'));
+
+  const autoStart = h('input', { type: 'checkbox', checked: cfg.autoStart === true });
+  const gLotado = h('input', { type: 'checkbox', checked: cfg.startLotado === true });
+  const gAposMin = h('input', { type: 'checkbox', checked: cfg.startAposMinimo === true });
+  const gAposMinN = h('input', { class: 'input', type: 'number', min: '1', style: { width: '90px' }, value: String(cfg.startAposMinimoMin || 10) });
+  const gSemEntrar = h('input', { type: 'checkbox', checked: cfg.startSemEntrar === true });
+  const gSemEntrarN = h('input', { class: 'input', type: 'number', min: '1', style: { width: '90px' }, value: String(cfg.startSemEntrarMin || 5) });
+
+  // Os gatilhos só fazem sentido com o início automático ligado.
+  const bloco = h('div', { style: { marginTop: '8px' } });
+  const sync = () => {
+    const on = autoStart.checked;
+    bloco.style.opacity = on ? '1' : '0.45';
+    for (const e of [gLotado, gAposMin, gAposMinN, gSemEntrar, gSemEntrarN]) e.disabled = !on;
+    gAposMinN.disabled = !on || !gAposMin.checked;
+    gSemEntrarN.disabled = !on || !gSemEntrar.checked;
+  };
+  autoStart.onchange = sync; gAposMin.onchange = sync; gSemEntrar.onchange = sync;
+
+  const linhaNum = (chk, texto, input, sufixo) => h('div', { class: 'row', style: { alignItems: 'center', gap: '8px', margin: '6px 0' } },
+    chk, h('span', { style: { flex: 1 } }, texto), input, h('span', { class: 'help' }, sufixo));
+
+  bloco.append(
+    linhaNum(gLotado, 'Quando o lobby lotar (30 Tamers)', h('span'), ''),
+    linhaNum(gAposMin, 'Depois de atingir o mínimo de 3, esperar', gAposMinN, 'min'),
+    linhaNum(gSemEntrar, 'Quando ninguém entrar nem sair por', gSemEntrarN, 'min'));
+
   const el = h('div', {},
     field('Conferir o lobby a cada (minutos)', intervalo, 'Ela também entra assim que o lobby reabre, sem esperar este intervalo.'),
-    h('div', { class: 'warnbox' }, 'Só se inscreve no lobby: nunca começa a corrida nem muda a dificuldade. Sem guild, sem Digimon ou com o lobby cheio, ela espera e anota o motivo no log.'));
+    field('Dificuldade do grupo', dificuldade, 'Afeta a guild inteira e só o dono/sub-dono pode trocar. A ferramenta mantém a escolhida enquanto não houver corrida.'),
+    checkRow(autoStart, 'Começar a corrida sozinha', 'Só funciona se a conta for dona ou sub-dona da guild. O jogo exige 3 Tamers no lobby para começar.'),
+    bloco,
+    h('span', { class: 'help' }, 'Com mais de um gatilho marcado, vale o primeiro que acontecer.'),
+    h('div', { class: 'warnbox' }, 'Começar manda todos do lobby para a corrida de uma vez e afeta a guild inteira. Em conta que não é dona nem sub-dona, esta parte fica inerte e só a inscrição no lobby funciona. A ferramenta nunca chama a guild nem sai do lobby.'));
+
+  sync();
 
   return {
     el,
-    read: () => ({ intervaloMin: Math.max(1, +intervalo.value || 2) }),
+    read: () => ({
+      intervaloMin: Math.max(1, +intervalo.value || 2),
+      dificuldade: dificuldade.value || null,
+      autoStart: autoStart.checked,
+      startLotado: gLotado.checked,
+      startAposMinimo: gAposMin.checked,
+      startAposMinimoMin: Math.max(1, +gAposMinN.value || 10),
+      startSemEntrar: gSemEntrar.checked,
+      startSemEntrarMin: Math.max(1, +gSemEntrarN.value || 5),
+    }),
   };
 }
 

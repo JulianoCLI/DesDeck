@@ -27,6 +27,9 @@ passe-dump.txt
 passe-estado.txt
 passe-grep.txt
 passe-vivo.txt
+# Idem: saída do grep do Labirinto no JS do jogo (só código público, mas é
+# arquivo gerado, não fonte).
+lab-grep.txt
 # Idem: saídas da descoberta do Mercado e dos testes do Sniper, trazem nick,
 # saldo e as compras feitas na conta real.
 mercado-campos.txt

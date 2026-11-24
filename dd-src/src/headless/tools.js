@@ -577,16 +577,146 @@ class ToolEggs extends HeadlessTool {
 // vaga no lobby nem gastar 25 min (cfg.duracaoMin) de hunt. Se o servidor não
 // mandar 'bauPorDia' nós NÃO chutamos um teto: sem o dado, não barramos.
 //
+// Começar a corrida e escolher a dificuldade são OPCIONAIS e vêm desligados.
+// As regras saíram do cliente do jogo (js/guild.js, lido por test-lab-grep.js):
+//   - 'lab.iniciar' não leva argumento;
+//   - 'lab.dificuldade' leva { dif: <id> }, o id cru de cfg.dificuldades
+//     ('normal' | 'dificil' | 'pesadelo' no servidor observado);
+//   - o botão Começar só existe para 'gerente' (dono/sub-dono) e fica disabled
+//     com `falta || correndo || !L.pronto`, onde falta = cfg.min - fila.length;
+//   - os botões de dificuldade ficam disabled com `ger && !correndo`, ou seja:
+//     só gerente e só fora de corrida.
+// Espelhamos exatamente essas condições: o que o jogo não deixa clicar, nós
+// não mandamos.
+//
 // O que esta ferramenta NÃO faz, de propósito:
-//   - não manda 'lab.iniciar': começar exige ser dono ou sub-dono ('gerente'),
-//     e decidir a hora de começar é do jogador, não nossa;
-//   - não manda 'lab.dificuldade': mexer na dificuldade do grupo afeta todos;
+//   - não manda 'lab.chamar': convida a guild inteira, é barulho para humanos;
+//   - não manda 'lab.sair': quem já está no lobby pode estar segurando o mínimo;
 //   - não entra em corrida já em andamento com 'lab.voltar' sem ser pedido.
 class ToolLab extends HeadlessTool {
   constructor(client, config) {
     super(client, 'lab', config);
     this.ultimaEntrada = 0;
     this.ultimoPedido = 0;
+    // Gatilhos de start: medidos sobre o lobby, não sobre o relógio da conta.
+    this.lobbyDesde = 0;     // quando o lobby atingiu o mínimo (cfg.min)
+    this.ultimaMudanca = 0;  // quando a fila mudou de tamanho pela última vez
+    this.filaVista = null;   // tamanho da fila no passo anterior
+    this.ultimoStart = 0;
+    this.ultimaDif = 0;
+    this.avisouSemPermissao = false;
+  }
+
+  /** Lê a configuração do start, já saneada. */
+  cfgStart() {
+    const c = this.config || {};
+    const num = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; };
+    return {
+      ligado: c.autoStart === true,
+      // 1. lobby lotado (cfg.max, 30 no servidor observado)
+      porLotado: c.startLotado === true,
+      // 2. x min depois de o lobby ter batido o mínimo
+      usaAposMinimo: c.startAposMinimo === true,
+      minutosAposMinimo: num(c.startAposMinimoMin),
+      // 3. x min sem ninguém entrar nem sair
+      usaSemEntrar: c.startSemEntrar === true,
+      minutosSemEntrar: num(c.startSemEntrarMin),
+      dif: typeof c.dificuldade === 'string' && c.dificuldade ? c.dificuldade : null,
+    };
+  }
+
+  /**
+   * Acompanha o lobby para os gatilhos de tempo.
+   * 'lobbyDesde' = desde quando há gente suficiente para começar.
+   * 'ultimaMudanca' = desde quando ninguém entra nem sai.
+   */
+  observarLobby(L) {
+    if (!L || !Array.isArray(L.fila)) return;
+    const n = L.fila.length;
+    const min = Number(L.cfg && L.cfg.min) || 0;
+    const agora = Date.now();
+
+    if (this.filaVista === null || n !== this.filaVista) {
+      this.filaVista = n;
+      this.ultimaMudanca = agora;
+    }
+    // Caiu abaixo do mínimo: a espera recomeça quando voltar a encher.
+    if (min && n < min) this.lobbyDesde = 0;
+    else if (min && n >= min && !this.lobbyDesde) this.lobbyDesde = agora;
+    // Corrida rodando zera tudo: o próximo lobby é outra história.
+    if (L.run && !L.run.acabou) { this.lobbyDesde = 0; this.ultimaMudanca = agora; }
+  }
+
+  /**
+   * Por que NÃO começaríamos a corrida agora.
+   * Devolve null quando pode começar. As guardas são as mesmas do botão
+   * '#lab-comecar' do jogo.
+   */
+  motivoParaNaoComecar(L) {
+    const S = this.cfgStart();
+    if (!S.ligado) return 'o início automático está desligado';
+    if (!L) return 'o servidor não respondeu o lobby';
+    if (!L.gerente) return 'esta conta não é dono nem sub-dono da guild';
+    if (!L.pronto) return 'o mapa do Labirinto não está instalado no servidor';
+    if (L.run && !L.run.acabou) return 'uma corrida já está em andamento';
+    if (!L.noLobby) return 'a conta ainda não está no lobby';
+    // Sem baú a corrida não rende nada para esta conta: não vale puxar a guild
+    // inteira para 25 min de labirinto.
+    const bauMax = Number(L.cfg && L.cfg.bauPorDia) || 0;
+    const bauFeitos = Number(L.bauHoje) || 0;
+    if (bauMax > 0 && bauFeitos >= bauMax) return `os baús de hoje já acabaram (${bauFeitos}/${bauMax})`;
+
+    const fila = Array.isArray(L.fila) ? L.fila.length : 0;
+    const min = Number(L.cfg && L.cfg.min) || 0;
+    const max = Number(L.cfg && L.cfg.max) || 0;
+    // O jogo desabilita o botão enquanto falta gente: começar seria recusado.
+    if (min && fila < min) return `faltam ${min - fila} para o mínimo de ${min}`;
+
+    // Os três gatilhos. Basta UM bater (o usuário escolheu "o primeiro que
+    // bater"), mas é preciso ter pelo menos um ligado.
+    const agora = Date.now();
+    const motivos = [];
+    if (S.porLotado && max && fila >= max) return null;
+    if (S.porLotado) motivos.push(`lobby em ${fila}/${max}`);
+
+    if (S.usaAposMinimo && S.minutosAposMinimo > 0) {
+      const alvo = S.minutosAposMinimo * 60000;
+      if (this.lobbyDesde && agora - this.lobbyDesde >= alvo) return null;
+      const falta = this.lobbyDesde ? Math.ceil((alvo - (agora - this.lobbyDesde)) / 60000) : S.minutosAposMinimo;
+      motivos.push(`faltam ~${falta} min desde o mínimo`);
+    }
+
+    if (S.usaSemEntrar && S.minutosSemEntrar > 0) {
+      const alvo = S.minutosSemEntrar * 60000;
+      if (this.ultimaMudanca && agora - this.ultimaMudanca >= alvo) return null;
+      const falta = this.ultimaMudanca ? Math.ceil((alvo - (agora - this.ultimaMudanca)) / 60000) : S.minutosSemEntrar;
+      motivos.push(`faltam ~${falta} min sem ninguém entrar`);
+    }
+
+    if (!motivos.length) return 'nenhum gatilho de início está configurado';
+    return `nenhum gatilho bateu (${motivos.join('; ')})`;
+  }
+
+  /** Ajusta a dificuldade do grupo, se a configurada for diferente da atual. */
+  async ajustarDificuldade(L) {
+    const S = this.cfgStart();
+    if (!S.dif || !L) return;
+    if (!L.gerente) return;                       // só o líder troca
+    if (L.run && !L.run.acabou) return;           // o jogo trava durante a corrida
+    if (L.dif === S.dif) return;                  // já está no que queremos
+    // O id precisa existir neste servidor: cfg.dificuldades é a fonte.
+    const difs = (L.cfg && Array.isArray(L.cfg.dificuldades)) ? L.cfg.dificuldades : null;
+    if (difs && !difs.some((d) => d && d.id === S.dif)) {
+      if (this.ultimaDifInvalida !== S.dif) {
+        this.ultimaDifInvalida = S.dif;
+        this.log(`dificuldade "${S.dif}" não existe neste servidor (tem: ${difs.map((d) => d.id).join(', ')})`);
+      }
+      return;
+    }
+    if (Date.now() - this.ultimaDif < 30000) return; // não insiste em laço
+    if (!this.send('lab.dificuldade', { dif: S.dif })) return;
+    this.ultimaDif = Date.now();
+    this.log(`dificuldade do grupo: ${L.dif || '?'} -> ${S.dif}`);
   }
 
   getInterval() {
@@ -662,6 +792,58 @@ class ToolLab extends HeadlessTool {
     return null;
   }
 
+  /**
+   * A parte opcional: manter a dificuldade escolhida e dar o start.
+   * Só roda com a conta já no lobby. Sai calada quando nada está ligado.
+   */
+  async cuidarDoStart(L) {
+    const S = this.cfgStart();
+    if (!S.ligado && !S.dif) return;
+
+    // Conta sem permissão: a parte de líder fica inerte, e o log explica uma
+    // única vez. A inscrição no lobby segue funcionando normalmente.
+    if (!L.gerente) {
+      if (!this.avisouSemPermissao) {
+        this.avisouSemPermissao = true;
+        this.log('início/dificuldade automáticos ignorados: esta conta não é dono nem sub-dono da guild');
+      }
+      return;
+    }
+    this.avisouSemPermissao = false;
+
+    await this.ajustarDificuldade(L);
+    if (!S.ligado) return;
+
+    const motivo = this.motivoParaNaoComecar(L);
+    if (motivo) {
+      if (this.ultimoMotivoStart !== motivo) {
+        this.ultimoMotivoStart = motivo;
+        this.log(`não comecei: ${motivo}`);
+      }
+      return;
+    }
+    this.ultimoMotivoStart = null;
+
+    // Respiro depois de mandar o start: 'lab.iniciar' move a guild inteira e
+    // o servidor leva um instante para refletir a corrida.
+    if (Date.now() - this.ultimoStart < 60000) return;
+
+    // A dificuldade pode ter acabado de ser trocada: dá tempo de o servidor
+    // aplicá-la, senão a corrida começaria na dificuldade velha.
+    if (S.dif && L.dif !== S.dif && Date.now() - this.ultimaDif < 10000) return;
+
+    if (!(await this.respirar(3000))) return;
+    // Relê: no respiro outro gerente pode ter começado.
+    const L2 = this.client.state.lab || L;
+    if (L2.run && !L2.run.acabou) return;
+    if (this.motivoParaNaoComecar(L2)) return;
+
+    if (!this.send('lab.iniciar', {})) return;
+    this.ultimoStart = Date.now();
+    const n = Array.isArray(L2.fila) ? L2.fila.length : '?';
+    this.log(`comecei o Labirinto com ${n} Tamers (dificuldade ${L2.dif || '?'})`);
+  }
+
   async step() {
     if (this.desligada) return;
     const E = this.estado;
@@ -676,7 +858,16 @@ class ToolLab extends HeadlessTool {
     const L = await this.pedirLab();
     if (!L) return;
 
-    if (L.noLobby) return; // já inscrito: é o estado que queremos
+    // Os gatilhos de tempo medem o lobby, então o relógio corre mesmo quando
+    // já estamos inscritos: precisa ser antes do return de noLobby.
+    this.observarLobby(L);
+
+    if (L.noLobby) {
+      // Já inscrito: é o estado que queremos. Daqui em diante só resta a parte
+      // opcional de líder (dificuldade e start).
+      await this.cuidarDoStart(L);
+      return;
+    }
 
     const motivo = this.motivoParaNaoEntrar(L, this.estado);
     if (motivo) {
