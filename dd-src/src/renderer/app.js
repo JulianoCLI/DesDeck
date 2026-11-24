@@ -139,6 +139,22 @@ const BACKOFF = [5, 10, 20, 30, 60, 120, 300].map((s) => s * 1000);
 const PROBE_JS = '(() => { const b = document.body; return { t: b ? b.innerText.slice(0, 120000) : "", title: document.title }; })()';
 const ALERT_TYPES = ['alert', 'word', 'freeze', 'drop-alert'];
 
+// Teto do Historico de Ovos guardado no disco. Cada entrada carrega um retrato
+// em data-URL (poucos KB), entao o custo e no arquivo de estado, nao na tela:
+// 2000 ovos ja cobrem semanas de caca de 15 contas, e o filtro por tier torna
+// qualquer numero acima disso irrelevante para quem le.
+const OVOS_MAX = 2000;
+
+// Quais itens sao raros quem diz e o JOGO: o manager marca cada drop com
+// `raro`, pela mesma lista da aba "Itens Raros" da Mochila (shared/itens.json,
+// chaves 'raros' e 'zmoves' - os D-Skills moram la).
+//
+// Sobra uma excecao, e so uma: a Protecao de Ovo esta no bolso dos raros mas
+// cai a cada poucos abates, e afogaria as linhas que importam (Boss Token,
+// D-Skill, Chip AoE). E escolha de interface, por isso mora aqui.
+const DROP_COMUM = [/prote[cç][aã]o de ovo/i];
+const dropRaro = (item) => !!item && !DROP_COMUM.some((re) => re.test(item));
+
 // =============================================================== scripts do usuário
 // Roda JS do usuário dentro da página de cada conta, via executeJavaScript (o mesmo
 // caminho do PROBE_JS acima). A página segue em sandbox, sem Node: um script só mexe
@@ -362,6 +378,13 @@ function defaultState() {
     scripts: [],
     tools: {}, // { [toolId]: { [accountId]: { enabled, cfg } } }
     log: [],
+    // O Historico de Ovos do Painel. Acumula entre sessoes (o jogo so guarda os
+    // ultimos 60 e os esquece no logout) e tem botao de apagar.
+    ovos: [],
+    // Os filtros que o usuario monta no Historico de Ovos ("SSS P1-P5, SS
+    // P4-P5"). Ficam no estado, e nao em variavel de modulo como o ovoFilter:
+    // montar um da trabalho, e perde-lo ao reiniciar seria perder o trabalho.
+    ovoFiltros: [],
     daily: {},
     ui: { view: 'grid', current: null, groupFilter: g.id, mix: false },
     muteAll: false,
@@ -388,6 +411,12 @@ function normalize(s) {
   }));
   out.tools = s.tools && typeof s.tools === 'object' ? s.tools : {};
   out.log = Array.isArray(s.log) ? s.log.slice(-800) : [];
+  out.ovos = Array.isArray(s.ovos) ? s.ovos.slice(-OVOS_MAX) : [];
+  // Só os filtros com id, nome e ao menos uma regra: um registro meio gravado
+  // viraria um chip que não filtra nada e não dá para apagar.
+  out.ovoFiltros = Array.isArray(s.ovoFiltros)
+    ? s.ovoFiltros.filter((f) => f && f.id && f.nome && Array.isArray(f.regras) && f.regras.length)
+    : [];
   out.daily = s.daily || {};
   return out;
 }
@@ -687,6 +716,25 @@ function createRuntime(acc) {
     if (!rr) return;
     rr.painel = painel;
     desenhaPainel(id);
+    // O card do Painel lê as métricas (XP/h, Bits, D-Dol, hunt…) de r.painel
+    // pelo data-live. Sem este updateLive, elas só mudariam no próximo tique do
+    // relógio: o resumo chegava e a tela continuava mostrando '—'.
+    updateLive();
+  });
+
+  // O que aconteceu de notável na conta: ovo capturado, ovo chocado, item raro
+  // dropado, venda de ovo e compra do sniper. Vira linha na Atividade do Painel.
+  const unsubHeadlessAtividade = deck.onHeadlessAtividade(({index, atividade}) => {
+    if (index !== id) return;
+    registraAtividade(id, atividade);
+  });
+
+  // O histórico de ovos da conta. O servidor manda os últimos 60 no login e um
+  // a cada captura; aqui eles são somados ao histórico guardado, que é o único
+  // lugar onde o passado além desses 60 continua existindo.
+  const unsubHeadlessHistorico = deck.onHeadlessHistorico(({index, historico}) => {
+    if (index !== id) return;
+    guardaOvos(id, historico);
   });
 
   // O motivo da falha. Sem isto, o card dizia só "disconnected" e a explicação
@@ -743,6 +791,8 @@ function createRuntime(acc) {
     if (unsubHeadlessStatus) unsubHeadlessStatus();
     if (unsubHeadlessError) unsubHeadlessError();
     if (unsubHeadlessPainel) unsubHeadlessPainel();
+    if (unsubHeadlessAtividade) unsubHeadlessAtividade();
+    if (unsubHeadlessHistorico) unsubHeadlessHistorico();
     if (isHeadless(id)) deck.headlessStop(id).catch(() => {});
   };
 
@@ -910,6 +960,130 @@ function desenhaPainel(accId) {
       p.evpMax ? h('span', null, `EVP ${fmtNum(p.evp)}/${fmtNum(p.evpMax)}`) : null,
       p.evento ? h('span', null, `${p.evento.nome} ${p.evento.pct}%`) : null) : null,
   ));
+}
+
+// ---- Histórico de Ovos e Atividade (headless)
+//
+// Por que acumular aqui: o servidor só guarda os últimos 60 ovos e os manda uma
+// vez, no login. Quem fecha o app perde o resto. Este histórico é o único lugar
+// onde a captura de ontem continua existindo — por isso vive no estado
+// criptografado, com botão de apagar.
+
+/** A chave de um ovo, para não gravar o mesmo duas vezes. */
+const chaveOvo = (accId, o) => `${accId}|${o.especie}|${o.em}|${o.potencia}|${o.nota}`;
+
+/**
+ * Soma os ovos de uma conta ao histórico guardado.
+ *
+ * Chamado a cada login (com os 60 do 'welcome') e a cada captura. Os 60 se
+ * repetem a cada reconexão: sem a chave, uma conta que cai e volta 10x no dia
+ * gravaria os mesmos ovos 10x.
+ */
+function guardaOvos(accId, lista) {
+  if (!Array.isArray(lista) || !lista.length) return;
+  const acc = accById(accId);
+  const vistos = new Set(state.ovos.map((o) => o.k));
+  let novos = 0;
+  for (const o of lista) {
+    if (!o) continue;
+    const k = chaveOvo(accId, o);
+    if (vistos.has(k)) continue;
+    vistos.add(k);
+    state.ovos.push({ ...o, k, accId, nomeConta: acc ? acc.name : '' });
+    novos++;
+  }
+  if (!novos) return;
+  // Mais novo por último na lista; o corte tira os mais antigos.
+  state.ovos.sort((a, b) => (a.em || 0) - (b.em || 0));
+  if (state.ovos.length > OVOS_MAX) state.ovos.splice(0, state.ovos.length - OVOS_MAX);
+  save();
+  if (state.ui.view === 'dash') renderOvos();
+}
+
+// A venda de ovos e a compra do sniper não são pacotes do jogo: são decisões
+// nossas, que chegam como texto do log da ferramenta. Reconhecer só as duas
+// frases que interessam evita encher a Atividade com "passo falhou" e afins.
+const SNIPER_RE = /^comprei #(\S+) \(([^)]*)\) por (\d+) (\S+)/i;
+
+/**
+ * O nome do que foi negociado no Mercado, como o jogo o escreve.
+ *
+ * O campo 'tipo' do histórico diz a natureza do negócio (menus2.js, nomeVenda):
+ * digimon, ovo, casa (Ilha), bike (Cartão de Speed) ou item — e 'diamantes' é
+ * DCoin, não D-Dol.
+ */
+function nomeNegocio(a) {
+  // 'nome' vem pronto do processo principal, que tem o catálogo das espécies e
+  // dos itens; aqui no renderer só existiria o slug ("agumon").
+  const nome = a.nome || a.especie || null;
+  if (a.oque === 'digimon') {
+    return `${nome || 'Digimon'}${a.potencia ? ` P${a.potencia}` : ''}${a.shiny ? ' ✦' : ''}`;
+  }
+  if (a.oque === 'ovo') {
+    return `ovo${nome ? ` de ${nome}` : ''}${a.potencia ? ` P${a.potencia}` : ''}${a.shiny ? ' ✦' : ''}`;
+  }
+  if (a.oque === 'casa') return 'uma Ilha';
+  if (a.oque === 'bike') return 'um Cartão de Speed';
+  if (a.item === 'diamantes') return 'DCoin';
+  return nome || a.item || 'item';
+}
+
+/**
+ * Transforma uma atividade do headless numa linha do log, ou ignora.
+ *
+ * O filtro é aqui e não no socket porque é escolha de interface: o que conta
+ * como "digno de uma linha" pode mudar sem mexer no protocolo.
+ */
+function registraAtividade(accId, a) {
+  if (!a) return;
+  const acc = accById(accId);
+  if (!acc) return;
+
+  if (a.tipo === 'captura' && a.ovo) {
+    const o = a.ovo;
+    const pot = o.potencia ? ` P${o.potencia}` : '';
+    const ux = o.scanner === 'ux' ? ' [UX]' : '';
+    log('ovo', acc, `ovo ${o.letra}${pot}${ux}: ${o.nome}${o.shiny ? ' ✦' : ''}`);
+    return;
+  }
+
+  if (a.tipo === 'chocou') { log('chocou', acc, a.txt); return; }
+
+  // Item dropado. Raro é o que o JOGO chama de raro: o manager marca a[.raro]
+  // pela mesma lista da aba "Itens Raros" da Mochila (shared/itens.json, chaves
+  // 'raros' e 'zmoves'). A Proteção de Ovo está nessa lista mas cai o tempo
+  // todo, então é a única exceção — e agora é a única mesmo, porque a "Energia
+  // de Ovo" nunca foi rara: é categoria 'datas'.
+  if (a.tipo === 'drop') {
+    if (a.raro && dropRaro(a.item)) log('item', acc, `dropou ${a.item}${a.de ? ` (${a.de})` : ''}`);
+    return;
+  }
+
+  // Venda ou compra no Mercado da Comunidade — entre players. A venda de ovos
+  // da ferramenta é 'ovo.vender', para o NPC da Loja, e não aparece aqui.
+  if (a.tipo === 'mercado') {
+    const moeda = a.moeda === 'gemas' ? 'D-Dol' : 'bits';
+    const total = (a.preco || 0) * (a.qtd || 1);
+    const qtd = a.qtd > 1 ? `${fmtNum(a.qtd)}× ` : '';
+    const quem = a.outro ? ` ${a.vendi ? 'para' : 'de'} ${a.outro}` : '';
+    log('mercado', acc, `${a.vendi ? 'vendeu' : 'comprou'} ${qtd}${nomeNegocio(a)} por ${fmtNum(total)} ${moeda}${quem}`);
+    return;
+  }
+
+  if (a.tipo === 'ferramenta') {
+    const txt = String(a.txt || '');
+    // A venda de ovos é para o NPC da Loja ('ovo.vender'), não o Mercado da
+    // Comunidade. Ficava como "vendeu N ovo(s) no Mercado", que era errado e
+    // poluía a lista: dezenas de linhas por hora, de uma venda automática que
+    // não é notícia. As vendas reais entre players vêm como tipo 'mercado'.
+    const s = SNIPER_RE.exec(txt);
+    if (s && a.tool === 'sniper') {
+      const moeda = s[4] === 'gemas' || /D-Dol/i.test(s[4]) ? 'D-Dol' : 'bits';
+      log('sniper', acc, `sniper comprou ${s[2]} por ${fmtNum(Number(s[3]))} ${moeda}`);
+      return;
+    }
+    return;
+  }
 }
 
 async function toggleHeadlessMode(accId, enable) {
@@ -1400,6 +1574,25 @@ function liveValue(key) {
     case 'recov': return acc ? String(acc.stats.recoveries) : '';
     case 'mem': return r && r.metrics ? fmtMem(r.metrics.memKB) : '—';
     case 'cpu': return r && r.metrics ? fmtCpu(r.metrics.cpu) : '—';
+
+    // ---- as métricas do card no Painel. Todas vêm do resumo do headless
+    // (r.painel): fora do headless não há socket e não há o que mostrar.
+    //
+    // As taxas podem ser null de propósito: menos de 1 min de caça. É o mesmo
+    // corte que o jogo faz, e '—' é honesto onde um número seria invenção.
+    case 'xph': { const t = r && r.painel && r.painel.taxas; return t && t.xpTamerH != null ? fmtNum(Math.round(t.xpTamerH)) : '—'; }
+    case 'bitsh': { const t = r && r.painel && r.painel.taxas; return t && t.bitsH != null ? fmtNum(Math.round(t.bitsH)) : '—'; }
+    case 'killsh': { const t = r && r.painel && r.painel.taxas; return t && t.killsH != null ? fmtNum(Math.round(t.killsH)) : '—'; }
+    case 'bits': return r && r.painel ? fmtNum(r.painel.bits) : '—';
+    case 'ddol': return r && r.painel ? fmtNum(r.painel.ddol) : '—';
+    // 0 é uma afirmação ("acabaram hoje"); null é a ausência dela (o lobby do
+    // Labirinto ainda não respondeu, ou a conta não tem guild).
+    case 'labs': return r && r.painel && r.painel.labs != null ? String(r.painel.labs) : '—';
+    case 'hunt': return r && r.painel && r.painel.hunt ? r.painel.hunt.nome : '—';
+    // O tempo de CAÇA, não o tempo conectado: medido em conta real, dá para
+    // estar 48 min online com 0 de caça (Hospital, praça, menus).
+    case 'caca': return r && r.painel && r.painel.farm ? fmtDur(r.painel.farm.caca) : '—';
+
     case 'scr': {
       const accs = state.accounts.filter((a) => screenOf(a) === id);
       const on = accs.filter((a) => contaOnline(rt.get(a.id))).length;
@@ -1431,9 +1624,32 @@ function liveValue(key) {
     default: return '';
   }
 }
+// Os retratos no card do Painel: o Digimon ativo contra o alvo, como no foco.
+//
+// Fora do laço de texto do updateLive porque imagem não é textContent. A guarda
+// do 'assinatura' é o que impede recriar dois <img> com data-URL a cada tique:
+// o navegador descartaria e redecodificaria as imagens 1x por segundo.
+function desenhaRostos(el, accId) {
+  const r = rt.get(accId);
+  const p = r && r.painel;
+  const meu = p && p.digimon;
+  const alvo = p && p.alvo;
+  const assinatura = `${meu ? meu.especie : ''}|${alvo ? alvo.especie : ''}`;
+  if (el.dataset.faces === assinatura) return;
+  el.dataset.faces = assinatura;
+  if (!meu && !alvo) { el.replaceChildren(); return; }
+  el.replaceChildren(
+    retratoEl(meu && meu.nome, meu && meu.img, 'meu'),
+    h('span', { class: 'dash-vs' }, 'vs'),
+    retratoEl(alvo && alvo.nome, alvo && alvo.img, 'alvo'),
+  );
+}
+
 function updateLive() {
   for (const el of $$('[data-live]')) {
-    const v = liveValue(el.dataset.live);
+    const chave = el.dataset.live;
+    if (chave.startsWith('faces:')) { desenhaRostos(el, chave.slice(6)); continue; }
+    const v = liveValue(chave);
     if (el.textContent !== v) el.textContent = v;
   }
   for (const el of $$('[data-dot]')) {
@@ -2114,27 +2330,40 @@ function renderDash() {
     h('div', { class: 'label' }, label), h('div', { class: 'value', dataset: { live: key } }), hint ? h('div', { class: 'hint' }, hint) : null);
   const cards = state.accounts.map((acc) => {
     const g = groupOf(acc);
-    return paintAccColor(h('div', { class: 'card acc-card' },
-      shot(acc),
+    // O duplo clique substitui o botão "Focar". Clique simples não serve: o
+    // card inteiro ficaria sendo um botão, e selecionar o texto de uma métrica
+    // jogaria a pessoa para a tela da conta sem querer.
+    return paintAccColor(h('div', {
+      class: 'card acc-card',
+      title: 'Dois cliques para focar esta conta',
+      ondblclick: () => { if (acc.enabled) toggleFocus(acc.id); else setEnabled(acc.id, true); },
+    },
+      // O print da tela só existe no modo webview. Em headless não há página
+      // para fotografar, e o espaço reservado para ele (2/3 da altura do card)
+      // ficava ocupado por uma inicial gigante — empurrando as métricas e os
+      // retratos para fora da área visível.
+      isHeadless(acc.id) ? null : shot(acc),
       h('div', { class: 'acc-card-body' },
         h('div', { class: 'acc-card-title' },
           h('span', { class: 'dot', dataset: { dot: acc.id } }),
           h('span', { class: 'acc-name' }, acc.name),
           g ? h('span', { class: 'pill', style: { '--gc': tone(g.color) } }, g.name) : null),
         h('div', { class: 'acc-meta', style: { marginBottom: '8px' }, dataset: { live: 'status:' + acc.id } }),
+        // O retrato de quem está lutando, igual ao modo foco. Em headless não há
+        // tela: sem a imagem, o card é só números e não se reconhece a conta.
+        h('div', { class: 'dash-faces', dataset: { live: 'faces:' + acc.id } }),
+        // As métricas que respondem "esta conta está rendendo?". Memória, CPU e
+        // quedas saíram: nenhuma delas diz nada sobre a caça, e ocupavam as seis
+        // linhas que o card tem.
         h('div', { class: 'kv' },
-          h('div', {}, h('span', {}, 'online agora'), h('span', { dataset: { live: 'up:' + acc.id } })),
-          h('div', {}, h('span', {}, 'total online'), h('span', { dataset: { live: 'total:' + acc.id } })),
-          h('div', {}, h('span', {}, 'quedas'), h('span', { dataset: { live: 'drops:' + acc.id } })),
-          h('div', {}, h('span', {}, 'voltaram'), h('span', { dataset: { live: 'recov:' + acc.id } })),
-          h('div', {}, h('span', {}, 'memória'), h('span', { dataset: { live: 'mem:' + acc.id } })),
-          h('div', {}, h('span', {}, 'CPU'), h('span', { dataset: { live: 'cpu:' + acc.id } }))),
-        h('div', { class: 'acc-card-actions' },
-          acc.enabled
-            ? h('button', { class: 'btn sm', onclick: () => toggleFocus(acc.id) }, icon('expand', 14), 'Focar')
-            : h('button', { class: 'btn sm', onclick: () => setEnabled(acc.id, true) }, icon('power', 14), 'Ligar'),
-          acc.enabled ? h('button', { class: 'btn sm', onclick: () => manualReload(acc.id) }, icon('reload', 14), 'Recarregar') : null,
-          h('button', { class: 'btn sm', onclick: () => openAccountForm(acc) }, icon('edit', 14), 'Editar')))), acc);
+          h('div', {}, h('span', {}, 'XP/h'), h('span', { dataset: { live: 'xph:' + acc.id } })),
+          h('div', {}, h('span', {}, 'Bits/h'), h('span', { dataset: { live: 'bitsh:' + acc.id } })),
+          h('div', {}, h('span', {}, 'Kills/h'), h('span', { dataset: { live: 'killsh:' + acc.id } })),
+          h('div', {}, h('span', {}, 'Bits'), h('span', { dataset: { live: 'bits:' + acc.id } })),
+          h('div', {}, h('span', {}, 'D-Dol'), h('span', { dataset: { live: 'ddol:' + acc.id } })),
+          h('div', {}, h('span', {}, 'Labs'), h('span', { dataset: { live: 'labs:' + acc.id } })),
+          h('div', {}, h('span', {}, 'hunt'), h('span', { dataset: { live: 'hunt:' + acc.id } })),
+          h('div', {}, h('span', {}, 'caçando há'), h('span', { dataset: { live: 'caca:' + acc.id } }))))), acc);
   });
 
   dash.replaceChildren(
@@ -2143,40 +2372,276 @@ function renderDash() {
       h('span', { class: 'sub' }, `hoje, ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}`),
       h('span', { class: 'grow' }),
       h('button', { class: 'btn sm', onclick: () => showSummary(Date.now() - 24 * 3600000, 'Resumo das últimas 24h') }, 'Resumo 24h')),
-    h('div', { class: 'kpi-grid' },
-      stat('Contas online', 'kpi:online', null, 'accent'),
-      stat('Farmando sem parar', 'kpi:farm', 'conta mais antiga online'),
-      stat('Tempo online hoje', 'kpi:today', 'somando todas as contas'),
-      stat('Quedas hoje', 'kpi:drops'),
-      stat('Voltaram sozinhas', 'kpi:recov'),
-      stat('Recuperação', 'kpi:rate', 'quedas que voltaram'),
-      stat('Alertas hoje', 'kpi:alerts'),
-      stat('Memória do app', 'kpi:mem'),
-      stat('CPU do app', 'kpi:cpu')),
+    // Sem faixa de KPIs. Ela ocupava a primeira tela inteira com números que o
+    // resto do Painel já conta melhor: quantas contas estão online se vê nos
+    // cards, quedas e alertas aparecem na Atividade na hora em que acontecem, e
+    // os totais do dia continuam no Resumo 24h, a um clique daqui.
     h('div', { class: 'dash-cols' },
       h('div', {},
         h('h3', { class: 'section-title' }, 'Contas'),
         cards.length ? h('div', { class: 'acc-cards' }, cards) : h('div', { class: 'card stat' }, 'Nenhuma conta ainda.')),
-      h('div', { class: 'card logbox' },
-        h('h3', { class: 'section-title' }, 'Atividade'),
-        h('div', { class: 'chips', id: 'logChips' }),
-        h('div', { class: 'log', id: 'logList' }))),
+      h('div', { class: 'dash-side' },
+        h('div', { class: 'card logbox' },
+          h('h3', { class: 'section-title' }, 'Atividade'),
+          h('div', { class: 'chips', id: 'logChips' }),
+          h('div', { class: 'log', id: 'logList' })),
+        h('div', { class: 'card logbox' },
+          h('div', { class: 'inline' },
+            h('h3', { class: 'section-title', style: { margin: '0' } }, 'Histórico de Ovos'),
+            h('span', { class: 'grow' }),
+            h('span', { class: 'acc-meta', id: 'ovosCount' }),
+            h('button', { class: 'btn sm', id: 'ovosClear', onclick: apagarOvos }, icon('trash', 14), 'Apagar')),
+          h('div', { class: 'chips', id: 'ovoChips' }),
+          h('div', { class: 'ovo-list', id: 'ovoList' })))),
   );
   renderLog();
+  renderOvos();
   updateLive();
+}
+
+// =============================================================== ovos
+// Um filtro por vez, como pedido: clicar em "SS" mostra só SS. 'all' volta ao
+// começo. Guardar em variável de módulo (e não no estado) é de propósito: é
+// uma escolha do momento, não uma preferência que deva sobreviver ao reinício.
+let ovoFilter = 'all';
+
+// As letras na ordem do jogo (ovo-tier.js), mais a potência e o scanner UX, que
+// são os outros dois eixos pelos quais um ovo se destaca.
+const OVO_FILTROS = [
+  ['all', 'Tudo'], ['SSS', 'SSS'], ['SS', 'SS'], ['S', 'S'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D'],
+  ['shiny', '✦ Shiny'], ['ux', 'UX'], ['p5', 'P5'], ['p4', 'P4'],
+];
+
+/**
+ * Um ovo passa por um filtro salvo?
+ *
+ * O filtro é uma lista de regras unidas por OU, como o pedido "SSS P1 ao P5,
+ * SS P4 ao P5": cada regra é uma letra com uma faixa de potência. É OU porque
+ * nenhum ovo é SSS e SS ao mesmo tempo — E não deixaria passar nada.
+ *
+ * 'ux' e 'shiny' são exigências dentro da regra, não regras próprias: "SSS UX"
+ * pede as duas coisas no mesmo ovo.
+ */
+function ovoPassaNoFiltro(o, f) {
+  if (!f || !Array.isArray(f.regras) || !f.regras.length) return true;
+  return f.regras.some((r) => {
+    if (r.letra && r.letra !== o.letra) return false;
+    const p = o.potencia || 0;
+    if (r.pMin != null && p < r.pMin) return false;
+    if (r.pMax != null && p > r.pMax) return false;
+    if (r.ux && o.scanner !== 'ux') return false;
+    if (r.shiny && !o.shiny) return false;
+    return true;
+  });
+}
+
+function renderOvos() {
+  const chips = $('#ovoChips'), list = $('#ovoList'), cont = $('#ovosCount');
+  if (!chips || !list) return;
+
+  const salvos = state.ovoFiltros || [];
+  chips.replaceChildren(
+    ...OVO_FILTROS.map(([k, label]) => h('button', {
+      class: 'chip' + (ovoFilter === k ? ' active' : ''),
+      onclick: () => { ovoFilter = k; renderOvos(); },
+    }, label)),
+    // Os filtros que o próprio usuário montou. Ficam depois dos de fábrica, com
+    // um X para apagar: são dele, e tirar um não pode exigir ir às configurações.
+    ...salvos.map((f) => h('button', {
+      class: 'chip chip-custom' + (ovoFilter === 'f:' + f.id ? ' active' : ''),
+      title: descreveFiltroOvo(f),
+      onclick: () => { ovoFilter = 'f:' + f.id; renderOvos(); },
+    }, f.nome, h('span', {
+      class: 'chip-x', title: 'Apagar este filtro',
+      onclick: (e) => { e.stopPropagation(); apagarFiltroOvo(f.id); },
+    }, '×'))),
+    h('button', { class: 'chip chip-novo', title: 'Criar um filtro seu, por letra e potência', onclick: novoFiltroOvo }, '+ Filtro'),
+  );
+
+  const salvo = ovoFilter.startsWith('f:') ? salvos.find((f) => 'f:' + f.id === ovoFilter) : null;
+  // Um filtro salvo que foi apagado noutra aba: cai para 'Tudo' em vez de
+  // esconder todos os ovos sem explicação.
+  if (ovoFilter.startsWith('f:') && !salvo) ovoFilter = 'all';
+
+  const match = (o) => (salvo ? ovoPassaNoFiltro(o, salvo)
+    : ovoFilter === 'all'
+    || (ovoFilter === 'shiny' && o.shiny)
+    || (ovoFilter === 'ux' && o.scanner === 'ux')
+    || (ovoFilter === 'p5' && o.potencia === 5)
+    || (ovoFilter === 'p4' && o.potencia === 4)
+    || o.letra === ovoFilter);
+
+  const todos = state.ovos.filter(match);
+  // Mais novo primeiro, e um teto na tela: 2000 linhas com imagem travariam a
+  // rolagem, e ninguém lê além das primeiras dezenas.
+  const rows = todos.slice(-200).reverse();
+  if (cont) cont.textContent = `${fmtNum(todos.length)} de ${fmtNum(state.ovos.length)}`;
+  const btn = $('#ovosClear');
+  if (btn) btn.disabled = !state.ovos.length;
+
+  list.replaceChildren(...(rows.length ? rows.map(ovoRow)
+    : [h('div', { class: 'log-empty' }, state.ovos.length ? 'Nenhum ovo com este filtro.' : 'Nenhum ovo registrado ainda.')]));
+}
+
+function ovoRow(o) {
+  const d = new Date(o.em || 0);
+  const quando = dayKey(o.em) === dayKey() ? fmtTime(o.em) : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`;
+  return h('div', { class: 'ovo-row', title: `${o.nome} · ${new Date(o.em || 0).toLocaleString('pt-BR')}` },
+    retratoEl(o.nome, o.img, 'ovo'),
+    h('div', { class: 'ovo-info' },
+      h('div', { class: 'ovo-nome' }, (o.shiny ? '✦ ' : '') + o.nome),
+      h('div', { class: 'ovo-sub' },
+        o.nomeConta ? h('span', {}, o.nomeConta) : null,
+        h('span', {}, quando),
+        // A nota de 0 a 10 é o número por trás da letra: duas letras iguais
+        // podem estar bem longe uma da outra dentro da mesma faixa.
+        o.nota != null ? h('span', {}, `nota ${Number(o.nota).toFixed(2)}`) : null,
+        o.scanner === 'ux' ? h('span', { class: 'ovo-ux' }, 'UX') : null)),
+    h('div', { class: 'ovo-tags' },
+      h('span', { class: 'ovo-tier t' + (o.letra || 'x') }, o.letra || '?'),
+      o.potencia ? h('span', { class: 'ovo-pot p' + o.potencia }, 'P' + o.potencia) : null));
+}
+
+/** O filtro em palavras: "SSS P1–P5 · SS P4–P5". Vira o title do chip. */
+function descreveFiltroOvo(f) {
+  if (!f || !f.regras || !f.regras.length) return 'Mostra todos os ovos';
+  return f.regras.map((r) => {
+    const faixa = r.pMin === r.pMax ? `P${r.pMin}` : `P${r.pMin}–P${r.pMax}`;
+    return [r.letra || 'qualquer', faixa, r.ux ? 'UX' : '', r.shiny ? '✦' : ''].filter(Boolean).join(' ');
+  }).join(' · ');
+}
+
+const LETRAS_OVO = ['SSS', 'SS', 'S', 'A', 'B', 'C', 'D'];
+
+/**
+ * O editor de filtro: uma linha por letra, com a faixa de potência.
+ *
+ * Em grade e não em texto livre: "SSS P1 ao P5, SS P4 ao P5" é fácil de dizer e
+ * chato de escrever sem errar. Aqui marca-se a letra e escolhem-se os dois
+ * extremos — o que se pode montar é exatamente o que o filtro sabe aplicar.
+ */
+function novoFiltroOvo() {
+  // Começa vazio: um padrão marcado viraria um filtro salvo sem querer.
+  const linhas = new Map(); // letra -> { on, pMin, pMax, ux, shiny }
+  for (const l of LETRAS_OVO) linhas.set(l, { on: false, pMin: 1, pMax: 5, ux: false, shiny: false });
+
+  const nomeIn = h('input', { class: 'inp', placeholder: 'ex.: Os bons', maxlength: 24 });
+  const resumo = h('p', { class: 'help', style: { margin: '2px 0 0' } }, 'Marque pelo menos uma letra.');
+
+  const atualiza = () => {
+    const f = coleta();
+    resumo.textContent = f.regras.length ? descreveFiltroOvo(f) : 'Marque pelo menos uma letra.';
+    // Quantos ovos o filtro pegaria AGORA. Sem isto, só se descobre que o
+    // filtro está errado depois de salvar e clicar nele.
+    if (f.regras.length) {
+      const n = state.ovos.filter((o) => ovoPassaNoFiltro(o, f)).length;
+      resumo.textContent += ` — ${fmtNum(n)} de ${fmtNum(state.ovos.length)} ovo(s)`;
+    }
+  };
+
+  const coleta = () => ({
+    regras: LETRAS_OVO.filter((l) => linhas.get(l).on).map((l) => {
+      const v = linhas.get(l);
+      // Invertido pelo usuário (min 5, max 1) não devolveria nada: ordena.
+      const a = Math.min(v.pMin, v.pMax), b = Math.max(v.pMin, v.pMax);
+      return { letra: l, pMin: a, pMax: b, ux: v.ux, shiny: v.shiny };
+    }),
+  });
+
+  const selP = (letra, qual) => {
+    const v = linhas.get(letra);
+    return h('select', {
+      class: 'inp inp-mini',
+      onchange: (e) => { v[qual] = Number(e.target.value); atualiza(); },
+    }, ...[1, 2, 3, 4, 5].map((n) => h('option', { value: String(n), selected: v[qual] === n ? '' : null }, 'P' + n)));
+  };
+
+  const linha = (letra) => {
+    const v = linhas.get(letra);
+    const cb = h('input', { type: 'checkbox', onchange: (e) => { v.on = e.target.checked; atualiza(); } });
+    const ux = h('input', { type: 'checkbox', onchange: (e) => { v.ux = e.target.checked; atualiza(); } });
+    const sh = h('input', { type: 'checkbox', onchange: (e) => { v.shiny = e.target.checked; atualiza(); } });
+    return h('div', { class: 'ovof-linha' },
+      h('label', { class: 'ovof-letra' }, cb, h('span', { class: 'ovo-tier t' + letra }, letra)),
+      h('div', { class: 'ovof-faixa' }, selP(letra, 'pMin'), h('span', {}, 'até'), selP(letra, 'pMax')),
+      h('label', { class: 'ovof-mini', title: 'Só os capturados com scanner UX' }, ux, h('span', {}, 'UX')),
+      h('label', { class: 'ovof-mini', title: 'Só os shiny' }, sh, h('span', {}, '✦')));
+  };
+
+  const salvar = () => {
+    const f = coleta();
+    if (!f.regras.length) { toast('Marque pelo menos uma letra.', 'warn'); return; }
+    const nome = (nomeIn.value || '').trim() || descreveFiltroOvo(f).slice(0, 24);
+    if (!state.ovoFiltros) state.ovoFiltros = [];
+    const id = uid();
+    state.ovoFiltros.push({ id, nome, regras: f.regras });
+    save();
+    // Já abre no filtro recém-criado: foi para isso que ele o montou.
+    ovoFilter = 'f:' + id;
+    closeModal();
+    renderOvos();
+    toast(`Filtro "${nome}" salvo.`, 'ok');
+  };
+
+  modal({
+    title: 'Novo filtro de ovos',
+    body: h('div', {},
+      field('Nome', nomeIn, 'Como ele vai aparecer no botão.'),
+      h('div', { class: 'ovof-grade' }, ...LETRAS_OVO.map(linha)),
+      resumo),
+    foot: [
+      h('button', { class: 'btn', onclick: () => closeModal() }, 'Cancelar'),
+      h('button', { class: 'btn primary', onclick: salvar }, 'Salvar filtro'),
+    ],
+  });
+}
+
+async function apagarFiltroOvo(id) {
+  const f = (state.ovoFiltros || []).find((x) => x.id === id);
+  if (!f) return;
+  const ok = await confirmBox('Apagar filtro', `Apaga o filtro "${f.nome}". Os ovos não são tocados.`, 'Apagar', true);
+  if (!ok) return;
+  state.ovoFiltros = state.ovoFiltros.filter((x) => x.id !== id);
+  if (ovoFilter === 'f:' + id) ovoFilter = 'all';
+  save();
+  renderOvos();
+}
+
+async function apagarOvos() {
+  if (!state.ovos.length) return;
+  // Pergunta antes: é o único lugar onde o histórico além dos últimos 60 do
+  // servidor existe. Apagado, não volta.
+  const ok = await confirmBox('Apagar histórico de ovos',
+    `Apaga as ${fmtNum(state.ovos.length)} captura(s) registradas. O jogo só guarda as últimas 60, então o resto não volta.`,
+    'Apagar', true);
+  if (!ok) return;
+  state.ovos = [];
+  save();
+  renderOvos();
+  toast('Histórico de ovos apagado.', 'ok');
 }
 
 function renderLog() {
   const chips = $('#logChips'), list = $('#logList');
   if (!chips || !list) return;
-  const filters = [['all', 'Tudo'], ['drop', 'Quedas'], ['recover', 'Voltas'], ['alert', 'Alertas']];
+  // 'Jogo' junta o que acontece dentro da conta (ovo, choco, item, venda,
+  // sniper); as quedas e alertas são do app. Separar os dois é o que faz a
+  // Atividade servir: um alerta de captcha não disputa espaço com um drop.
+  const filters = [
+    ['all', 'Tudo'], ['jogo', 'Jogo'], ['ovo', 'Ovos'], ['chocou', 'Chocados'],
+    ['item', 'Itens'], ['mercado', 'Mercado'], ['drop', 'Quedas'], ['alert', 'Alertas'],
+  ];
   chips.replaceChildren(...filters.map(([k, label]) => h('button', {
     class: 'chip' + (logFilter === k ? ' active' : ''), onclick: () => { logFilter = k; renderLog(); },
   }, label)));
+  const JOGO = ['ovo', 'chocou', 'item', 'mercado', 'sniper'];
   const match = (e) => logFilter === 'all'
+    || (logFilter === 'jogo' && JOGO.includes(e.type))
+    || (logFilter === 'mercado' && (e.type === 'mercado' || e.type === 'sniper'))
     || (logFilter === 'drop' && (e.type === 'drop' || e.type === 'freeze'))
     || (logFilter === 'recover' && e.type === 'recover')
-    || (logFilter === 'alert' && ALERT_TYPES.includes(e.type));
+    || (logFilter === 'alert' && ALERT_TYPES.includes(e.type))
+    || e.type === logFilter;
   const rows = state.log.filter(match).slice(-150).reverse();
   list.replaceChildren(...(rows.length ? rows.map(logRow) : [h('div', { class: 'log-empty' }, 'Nada por aqui ainda.')]));
 }
@@ -3701,7 +4166,7 @@ function openSettings() {
         h('p', { class: 'about' }, 'Os logins dos jogos (cookies) ficam na pasta de cada conta, criptografados pelo Chromium com a proteção do Windows (na versão instalada). As páginas dos jogos não conseguem falar com o DigiDeck nem pedir câmera, microfone ou localização.')),
       h('div', { class: 'settings-section' },
         h('h4', {}, 'Geral'),
-        checkRow(inputs.closeToTray, 'Fechar a janela manda para a bandeja', 'As contas continuam farmando. Para sair de verdade, use Sair no ícone da bandeja.'),
+        checkRow(inputs.closeToTray, 'Minimizar manda para a bandeja', 'As contas continuam farmando, e o ícone da bandeja traz a janela de volta. Fechar a janela (X) encerra o DigiDeck.'),
         checkRow(inputs.preventSleep, 'Impedir que o PC entre em suspensão', 'A tela pode desligar normalmente.'),
         checkRow(inputs.economy, 'Economia de recursos (recomendado)', 'Conta que não está na tela (outra tela, atrás da principal, painel, bloqueio, janela minimizada ou na bandeja) para de desenhar e segue jogando. No DigiIdle o servidor continua caçando e manda só o estado. Bem menos CPU, GPU e rede. Contas de outros jogos já vêm com "Sempre desenhar" marcado (dá para desmarcar na conta, se o jogo seguir rodando oculto).'),
         checkRow(inputs.bootHeadless, 'Iniciar todas as contas em modo headless', 'Sem renderizar a interface: apenas WebSocket. Medido: ~10 MB por conta em headless contra ~254 MB com janela (5 contas: 2.2 GB para 244 MB). A conta precisa ter feito login antes em modo normal. O botão de poder alterna conta por conta.'),

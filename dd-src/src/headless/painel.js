@@ -81,6 +81,30 @@ function ondeEsta(estado, areas) {
 }
 
 /**
+ * O tempo CACANDO da sessao, em ms.
+ *
+ * Copiado do cliente do jogo (app.js: `const msCaca = (s) => s.caca ?? ...`).
+ * Nao e o tempo conectado: Hospital, praca e menus fora da hunt nao contam.
+ * Medido em conta real: online=2921 s com caca=0 - usar o tempo conectado
+ * dividiria o ganho por um tempo em que a conta nao estava cacando, e toda taxa
+ * sairia menor do que o jogo mostra.
+ */
+const msCaca = (s) => (s.caca != null ? s.caca : Math.max(0, Date.now() - (s.inicio || Date.now())));
+
+/**
+ * A taxa por hora de um ganho da sessao, ou null.
+ *
+ * O servidor NAO manda xph/bitsph: o cliente do jogo divide pelo tempo de caca
+ * (app.js porHora()). O corte de 1 min e do proprio jogo, e e o que impede uma
+ * conta com 10 s de caca de anunciar "900.000 bits/h". null = "ainda nao da
+ * para dizer", e a UI mostra '-' como o jogo faz.
+ */
+function porHora(s, v) {
+  const ms = msCaca(s);
+  return ms >= 60000 ? (v || 0) / (ms / 3600000) : null;
+}
+
+/**
  * O resumo completo de uma conta, pronto para desenhar.
  * Nunca lanca: sem catalogo, devolve o que da para saber sem ele.
  */
@@ -105,12 +129,32 @@ async function resumo(estado) {
     inimigo && inimigo.id ? retrato(inimigo.id, especies[inimigo.id]).catch(() => null) : null,
   ]);
 
+  const areaAtual = estado.huntSlug ? areas[estado.huntSlug] : null;
+
   return {
     nick: estado.nick || null,
     nivel: estado.nivel || 0,
     bits: estado.bits || 0,
+    // D-Dol. Conferido em conta real: 'gemas' e o D-Dol do Mercado; o
+    // 'diamantes' e o DCoin da Shop. Sao moedas diferentes.
+    ddol: estado.gemas || 0,
     onde: ondeEsta(estado, areas),
     online: estado.online || 0,
+
+    // A hunt atual pelo nome, nao pelo slug: 'bloomlordmon' no card nao diz
+    // onde a conta esta para quem le de relance.
+    hunt: estado.huntSlug ? {
+      slug: estado.huntSlug,
+      nome: areaAtual ? areaAtual.nome : estado.huntSlug,
+      nivel: areaAtual ? areaAtual.nivel : 0,
+    } : null,
+
+    // Quantos labirintos ainda cabem hoje. null = nao sabemos ainda: o pacote
+    // 'lab' so chega em resposta a 'lab.info', e nem toda conta tem guild.
+    // Zero e uma afirmacao ("acabaram"); null e a ausencia dela.
+    labs: (estado.labBauPorDia != null && estado.labBauHoje != null)
+      ? Math.max(0, estado.labBauPorDia - estado.labBauHoje)
+      : null,
 
     digimon: meu ? {
       nome: especies[meu.especie] ? especies[meu.especie].nome : (meu.especie || '—'),
@@ -141,6 +185,20 @@ async function resumo(estado) {
       bits: s.bits || 0,
       shinyVistos: s.shinyVistos || 0,
       desde: s.inicio || 0,
+      // O tempo de caca da sessao, que e o denominador das taxas abaixo.
+      // Mandado junto para o card poder mostrar "ha 1h12 cacando" e para a UI
+      // saber por que uma taxa veio null.
+      caca: msCaca(s),
+    },
+
+    // As taxas por hora. null = menos de 1 min de caca, e a UI mostra '-'.
+    // Calculadas aqui e nao no renderer porque o denominador (o tempo de caca)
+    // so existe no estado do socket.
+    taxas: {
+      xpTamerH: porHora(s, s.xpTamer),
+      bitsH: porHora(s, s.bits),
+      killsH: porHora(s, s.abates),
+      capturasH: porHora(s, s.capturas),
     },
 
     evp: estado.evp || 0,

@@ -500,12 +500,76 @@ body.dragging .wv-wrap::after { content: ""; position: absolute; inset: 0; z-ind
 .kv span:first-child { color: var(--faint); }
 .kv span:last-child { font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .acc-card-actions { display: flex; gap: 6px; margin-top: 12px; }
+/* Os botoes Focar/Recarregar/Editar sairam do card: focar agora e duplo clique.
+   O cursor avisa que o card inteiro responde. */
+.acc-card { cursor: default; }
+
+/* Quem esta lutando contra quem, no card do Painel. Mesma ideia do painel
+   headless do modo foco, numa linha so: o card do Painel tem as 8 metricas
+   embaixo e nao sobra altura para barra de vida e nomes. */
+.dash-faces { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 44px; margin-bottom: 8px; }
+.dash-faces:empty { display: none; }
+.dash-faces .hl-face { height: 44px; margin: 0; }
+.dash-faces .hl-face img { max-height: 44px; }
+.dash-vs { opacity: .35; font-size: 10px; text-transform: uppercase; }
+
+/* -------------------------------------------------------------- historico de ovos */
+/* Atividade e Historico de Ovos dividem a coluna da direita.
+   Grid de duas faixas iguais, nao duas caixas soltas: empilhadas, a Atividade
+   crescia ate o seu max-height e empurrava o Historico para baixo da dobra -
+   quem abria o Painel so via a primeira. O sticky fica no grid; as caixas
+   dentro dele rolam cada uma no seu espaco. */
+.dash-side {
+  display: grid; grid-template-rows: 1fr 1fr; gap: 12px;
+  position: sticky; top: 0; height: calc(100vh - 130px);
+}
+.dash-side > .logbox { position: static; max-height: none; min-height: 0; }
+.ovo-list { overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.ovo-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 5px 2px; border-bottom: 1px solid var(--line); }
+.ovo-row .hl-face { height: 30px; margin: 0; }
+.ovo-row .hl-face img { max-height: 30px; }
+.ovo-row .hl-semfoto { width: 26px; height: 26px; font-size: 11px; }
+.ovo-info { min-width: 0; }
+.ovo-nome { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ovo-sub { display: flex; gap: 6px; font-size: 10.5px; color: var(--faint); flex-wrap: wrap; }
+.ovo-ux { color: var(--accent-2); font-weight: 600; }
+.ovo-tags { display: flex; gap: 4px; align-items: center; flex: none; }
+/* A letra em cor: o olho acha um SSS numa lista de 200 linhas sem ler nada. */
+.ovo-tier { font-family: var(--mono); font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--line-2); color: var(--muted); }
+.ovo-tier.tD, .ovo-tier.tC { background: rgba(255, 255, 255, .07); }
+.ovo-tier.tB { background: rgba(74, 222, 128, .16); color: #86efac; }
+.ovo-tier.tA { background: rgba(96, 165, 250, .18); color: #93c5fd; }
+.ovo-tier.tS { background: rgba(192, 132, 252, .2); color: #d8b4fe; }
+.ovo-tier.tSS { background: rgba(251, 191, 36, .2); color: #fcd34d; }
+.ovo-tier.tSSS { background: var(--grad); color: var(--accent-ink); }
+.ovo-pot { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radius: 4px; background: rgba(255, 255, 255, .06); color: var(--faint); }
+/* P4 e P5 sao 0,5% e 0,005% das capturas: merecem destaque proprio. */
+.ovo-pot.p4 { background: rgba(251, 191, 36, .18); color: #fcd34d; }
+.ovo-pot.p5 { background: rgba(248, 113, 113, .2); color: #fca5a5; }
 
 .logbox { padding: 14px; position: sticky; top: 0; max-height: calc(100vh - 130px); display: flex; flex-direction: column; }
 .chips { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
 .chip { border: 1px solid var(--line-2); background: transparent; color: var(--muted); border-radius: 99px; padding: 2px 10px; font-size: 12px; font-weight: 500; cursor: pointer; }
 .chip:hover { color: var(--text); }
 .chip.active { background: var(--grad); color: var(--accent-ink); border-color: transparent; }
+
+/* Os filtros que o proprio usuario montou, no Historico de Ovos. O X fica
+   dentro do chip: apagar um filtro nao deve exigir ir a outra tela. */
+.chip-custom { display: inline-flex; align-items: center; gap: 5px; border-style: dashed; }
+.chip-custom .chip-x { opacity: .5; font-weight: 700; line-height: 1; padding: 0 1px; }
+.chip-custom .chip-x:hover { opacity: 1; color: var(--bad); }
+.chip-novo { border-style: dashed; color: var(--faint); }
+.chip-novo:hover { color: var(--accent); border-color: var(--accent); }
+
+/* O editor de filtro: uma linha por letra (SSS..D), com a faixa de potencia e
+   as exigencias de UX/shiny. Grade, e nao texto livre, porque o que se pode
+   montar aqui e exatamente o que o filtro sabe aplicar. */
+.ovof-grade { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 8px; }
+.ovof-linha { display: grid; grid-template-columns: 76px 1fr auto auto; gap: 8px; align-items: center; }
+.ovof-letra { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.ovof-faixa { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.ovof-mini { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; cursor: pointer; }
+.inp-mini { width: 62px; padding: 3px 6px; font-size: 12px; }
 .log { overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .log-row { display: grid; grid-template-columns: 42px 10px 1fr; gap: 8px; align-items: baseline; padding: 6px 2px; font-size: 12px; border-bottom: 1px solid var(--line); }
 .log-row .time { color: var(--faint); font-family: var(--mono); font-size: 11px; }
@@ -515,6 +579,12 @@ body.dragging .wv-wrap::after { content: ""; position: absolute; inset: 0; z-ind
 .log-row.alert .mark, .log-row.word .mark { background: var(--danger); }
 .log-row.net .mark { background: var(--faint); }
 .log-row.security .mark { background: var(--accent-2); }
+/* As linhas do jogo (ovo, choco, item, mercado). Cores proprias para nao se
+   confundirem com queda/alerta, que sao problemas do app. */
+.log-row.ovo .mark { background: var(--accent-2); }
+.log-row.chocou .mark { background: #fcd34d; }
+.log-row.item .mark { background: #d8b4fe; }
+.log-row.mercado .mark, .log-row.sniper .mark { background: var(--ok); }
 .log-row b { font-weight: 600; }
 .log-empty { color: var(--faint); padding: 12px 2px; }
 

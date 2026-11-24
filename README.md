@@ -161,8 +161,76 @@ Duas decisões que vale registrar:
 
 ---
 
+## Painel
+
+A tela **Painel** (Ctrl+D) é onde se acompanha o conjunto das contas em modo
+headless, que não têm tela para olhar.
+
+**Card de cada conta.** Oito métricas, todas vindas do socket do jogo:
+
+| Campo | De onde vem |
+|---|---|
+| XP/h, Bits/h, Kills/h | calculadas sobre o **tempo de caça** da sessão |
+| Bits | saldo atual |
+| D-Dol | `gemas` (não confundir com DCoin, que é a moeda da Shop) |
+| Labs | labirintos que ainda cabem hoje (baús por dia − usados) |
+| hunt | nome da área onde a conta está caçando |
+| caçando há | tempo de caça, que **não** é o tempo conectado |
+
+As taxas aparecem como `—` enquanto a sessão tiver menos de 1 minuto de caça.
+É o mesmo corte que o cliente do jogo faz: com 10 segundos de caça, qualquer
+número por hora seria invenção. O mesmo vale para "Labs" antes de o lobby
+responder — `0` significa "acabaram hoje", `—` significa "ainda não sei".
+
+O card mostra o retrato do Digimon ativo contra o alvo. **Dois cliques no card
+focam a conta** (não há mais botões Focar/Recarregar/Editar: eles ocupavam uma
+fileira inteira para repetir o que o menu de contexto e a barra lateral já
+fazem).
+
+**Atividade.** Só o que vale uma linha:
+
+- ovo capturado, com letra (D…SSS), potência e marca de UX;
+- ovo chocado;
+- item raro dropado;
+- venda ou compra no **Mercado da Comunidade**, com quem, quanto e em que moeda;
+- compra do Sniper, com item e valor.
+
+Não há faixa de KPIs no topo: ela gastava a primeira tela inteira com números
+que o resto do Painel já conta melhor. Os totais do dia continuam no **Resumo
+24h**, e online/quedas ficam na barra lateral.
+
+**O que conta como item raro.** Não é uma lista escrita à mão: é a mesma
+classificação da aba **Itens Raros** da Mochila (`shared/itens.json`, chaves
+`raros` e `zmoves` — os D-Skills moram lá). Então Boss Token, D-Skill e Chip AoE
+entram; "Energia de Ovo … Instável" não, porque é categoria `datas` e cai a cada
+poucos abates. A única exceção de interface é a **Proteção de Ovo**: está no
+bolso dos raros, mas cai o tempo todo e afogaria o resto.
+
+**Mercado da Comunidade ≠ Loja.** A Atividade mostra só negócios **entre
+players** (pacotes `mercado.*`). A venda automática de ovos da ferramenta
+`eggs` é `ovo.vender`, para o NPC da Loja, e não aparece ali — seriam dezenas de
+linhas por hora de algo que não é notícia.
+
+**Histórico de Ovos.** O jogo guarda as últimas 60 capturas e as esquece no
+logout. O DesDeck acumula as suas (até 2000, de todas as contas) e as filtra uma
+de cada vez: por letra, por shiny, por UX ou por potência. O botão **Apagar**
+limpa tudo — e pergunta antes, porque não há como recuperar.
+
+**Filtros seus.** O botão **+ Filtro** abre uma grade com uma linha por letra
+(SSS…D), cada uma com faixa de potência e exigências de UX/shiny. Dá para montar
+"SSS P1 ao P5, SS P4 ao P5": as regras se combinam por **ou**, porque nenhum ovo
+é SSS e SS ao mesmo tempo. Antes de salvar, o editor diz quantos ovos o filtro
+pegaria agora ("4 de 8"). O filtro salvo vira um botão ao lado dos de fábrica,
+com um × para apagá-lo, e sobrevive ao reinício.
+
+---
+
 ## Outros recursos
 
+- **Bandeja** — **minimizar** manda a janela para a bandeja e as contas seguem
+  farmando; o ícone da bandeja a traz de volta. **Fechar (X) encerra o DigiDeck.**
+  Dá para desligar o envio à bandeja em Configurações → Geral; o X fecha de
+  qualquer forma.
 - **Proxy por tela** — formato `host:porta:usuário:senha`, com botão de testar o IP
   de saída. Sem fallback: se o proxy falhar, a conta não conecta pelo seu IP real.
 - **Isolamento** — cada conta usa a própria sessão/partição.
@@ -185,6 +253,14 @@ DesDeck-Dev/
 │   │   └── renderer/
 │   │       ├── app.js        # Interface, telas, contas, scripts
 │   │       └── tools.js      # As ferramentas de automação
+│   │   └── headless/         # O modo sem tela
+│   │       ├── client.js     # Socket do jogo e roteador de pacotes
+│   │       ├── manager.js    # Uma instância por conta
+│   │       ├── painel.js     # Monta o resumo que o card do Painel mostra
+│   │       ├── ovos.js       # Letra do tier + retrato de cada ovo capturado
+│   │       ├── ovo-tier.js   # A conta do tier, portada do cliente do jogo
+│   │       ├── catalogo.js   # Os /shared/*.json do jogo, em cache
+│   │       └── sprites.js    # Recorta o retrato da folha de sprites
 │   ├── package.json
 │   └── electron-builder.json
 └── README.md

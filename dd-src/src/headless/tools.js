@@ -139,6 +139,21 @@ class HeadlessTool {
 
   log(...args) {
     console.log(`[headless:${this.toolId}]`, ...args);
+    // O painel precisa ver isto. A venda de ovos e a compra do sniper não são
+    // pacotes do jogo: são decisões NOSSAS, e até aqui só existiam no
+    // console.log do processo principal — invisíveis para quem usa o app.
+    // Emitir não pode derrubar a ferramenta: um ouvinte com defeito não vale
+    // uma compra perdida.
+    try {
+      if (this.client && this.client.emit) {
+        this.client.emit('atividade', {
+          tipo: 'ferramenta',
+          em: Date.now(),
+          tool: this.toolId,
+          txt: args.map((a) => (a instanceof Error ? a.message : String(a))).join(' '),
+        });
+      }
+    } catch { /* ouvinte com defeito não atrapalha a ferramenta */ }
   }
 }
 

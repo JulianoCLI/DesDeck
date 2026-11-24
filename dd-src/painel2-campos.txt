@@ -1,0 +1,199 @@
+contas com sessao: 16 | usando: persist:acc-38251004-6ff8-4e86-aa80-ea424c92802e
+
+conectado: desjuli | nivel 332
+
+escutando 90s...
+
+
+================================================================
+1. estado.sessao (de onde saem XP/h, Bits/h, Kills/h, tempo de caca)
+================================================================
+  campos: inicio:number, caca:number, xpTamer:number, xpDigimon:number, bits:number, abates:number, capturas:number, gasto:number, usados:object, achados:object, shinyVistos:number, shinyPegos:number
+
+  {
+  "inicio": 1795545348595,
+  "caca": 0,
+  "xpTamer": 0,
+  "xpDigimon": 0,
+  "bits": 0,
+  "abates": 0,
+  "capturas": 0,
+  "gasto": 0,
+  "usados": {},
+  "achados": {},
+  "shinyVistos": 0,
+  "shinyPegos": 0
+}
+
+  caca presente? SIM (0 ms = 0.00 h)
+  (menos de 1 min de caca: o proprio jogo mostra "-" nesse caso)
+
+================================================================
+2. MOEDAS (qual campo e o D-Dol)
+================================================================
+  estado.bits = 27281985
+  estado.gemas = 541
+  estado.diamantes = 0
+  (o cliente rotula: bits=Bits, gemas=D-Dol, diamantes=DCoin)
+
+================================================================
+3. HISTORICO DE OVOS (welcome.historico)
+================================================================
+  welcome.historico: array(60)
+  campos de uma entrada: especie:string, nivel:number, shiny:boolean, potencia:number, qualidade:number, nota:number, scanner:string, em:number, ovo:string, ivs:array(6), u:array(2)
+
+  primeiras 3:
+[
+  {
+    "especie": "floramon",
+    "nivel": 60,
+    "shiny": false,
+    "potencia": 1,
+    "qualidade": 0,
+    "nota": 0,
+    "scanner": "scanner-ultra",
+    "em": 1795541036983,
+    "ovo": "Rookie",
+    "ivs": [
+      29,
+      13,
+      18,
+      30,
+      12,
+      30
+    ],
+    "u": [
+      0.2222729059061459,
+      0.19865134513084104
+    ]
+  },
+  {
+    "especie": "floramon",
+    "nivel": 60,
+    "shiny": false,
+    "potencia": 1,
+    "qualidade": 0,
+    "nota": 0,
+    "scanner": "scanner-ultra",
+    "em": 1795539919431,
+    "ovo": "Rookie",
+    "ivs": [
+      32,
+      32,
+      10,
+      22,
+      2,
+      25
+    ],
+    "u": [
+      0.6386721187105862,
+      0.6133393064450743
+    ]
+  },
+  {
+    "especie": "floramon",
+    "nivel": 60,
+    "shiny": false,
+    "potencia": 1,
+    "qualidade": 0,
+    "nota": 0,
+    "scanner": "scanner-ultra",
+    "em": 1795539524982,
+    "ovo": "Rookie",
+    "ivs": [
+      5,
+      5,
+      28,
+      10,
+      31,
+      9
+    ],
+    "u": [
+      0.46391382421472116,
+      0.7648137704633049
+    ]
+  }
+]
+
+  entradas com .ovo (tier pronto): 60/60
+  valores de .ovo vistos: Rookie
+  valores de .potencia vistos: 1, 2, 3, 4
+  com .shiny (UX): 0
+
+================================================================
+4. LOGS (o campo .tipo e o texto reais)
+================================================================
+  pacotes 'log' recebidos: 14
+
+  tipo "abate" (7):
+    Bloomlordmon derrotado! +11265 xp tamer, +11265 xp digimon, +658 bits (+86 do bônus de loot) · drop: Energia de Ovo Bird Instável
+    Bloomlordmon derrotado! +11265 xp tamer, +11265 xp digimon, +658 bits (+86 do bônus de loot)
+    Bloomlordmon derrotado! +11265 xp tamer, +11265 xp digimon, +658 bits (+86 do bônus de loot)
+    Bloomlordmon derrotado! +11265 xp tamer, +11265 xp digimon, +658 bits (+86 do bônus de loot) · drop: Energia de Ovo Bird Refinada
+    Bloomlordmon derrotado! +11265 xp tamer, +11265 xp digimon, +658 bits (+86 do bônus de loot)
+    Bloomlordmon derrotado! +11265 xp tamer, +11265 xp digimon, +658 bits (+86 do bônus de loot)
+    Bloomlordmon derrotado! +11265 xp tamer, +11265 xp digimon, +658 bits (+86 do bônus de loot)
+
+  tipo "captura-falhou" (7):
+    O Scanner Ultra falhou em Bloomlordmon.
+    O Scanner Ultra falhou em Bloomlordmon.
+    O Scanner Ultra falhou em Bloomlordmon.
+    O Scanner Ultra falhou em Bloomlordmon.
+    O Scanner Ultra falhou em Bloomlordmon.
+    O Scanner Ultra falhou em Bloomlordmon.
+    O Scanner Ultra falhou em Bloomlordmon.
+
+================================================================
+5. TOASTS (o canal do ovo chocado e de avisos)
+================================================================
+  toasts recebidos: 0
+
+  casam /^O ovo chocou/: 0
+
+================================================================
+6. CAPTURA DE OVO (pacote "captura")
+================================================================
+  capturas recebidas: 7
+{
+  "corpo": 2447,
+  "esp": "bloomlordmon",
+  "ok": false,
+  "scanner": "scanner-ultra",
+  "t": "captura"
+}
+    m.ok, m.ovo.{potencia,shiny,especie,data}, m.historico, m.esp
+
+================================================================
+7. LABIRINTO (baus do dia)
+================================================================
+  pacote "lab" nao chega sozinho: o cliente pede "lab.info" (barrado aqui)
+
+================================================================
+8. HUNT ATUAL
+================================================================
+  huntSlug=bloomlordmon local=hunt online=2921s
+
+================================================================
+9. TODOS OS PACOTES VISTOS
+================================================================
+  batalha                125
+  estado                 96
+  log                    14
+  dex                    8
+  captura                7
+  selos                  5
+  chat.historico         4
+  pong                   3
+  chat                   3
+  welcome                1
+  depot                  1
+  ovos                   1
+  chat.fixada            1
+  metas                  1
+
+================================================================
+10. CAMPOS DE TOPO DO "estado"
+================================================================
+  asas, ativoId, auto, autoColecao, bikes, bits, boosts, boostsBolsa, bossVitorias, capOvos, casas, chocadeira, colecaoQtd, depotQtd, diamantes, discord, economia, equipe, eventoXP, eventos, evp, evpMax, expShares, fundRestam, gemas, guildEquipe, guildId, guildImagemV, guildTag, guildTagCor, huntSlug, itens, liderTH, local, nick, nivel, nivelChat, online, passe, pastas, pvp, servidorAgora, sessao, skins, starterPego, t, topCatch, travaSaidaAte, tutorial, vipAte, visual, xp, xpNivel, xpProximo
+
+relatorio: C:\Users\pc\Desktop\DesDeck-Dev\dd-src\painel2-campos.txt

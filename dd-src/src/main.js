@@ -131,13 +131,20 @@ function createWindow() {
     if (!process.argv.includes('--hidden')) win.show();
   });
 
-  win.on('close', (e) => {
+  // Minimizar manda para a bandeja; fechar fecha de verdade.
+  //
+  // É o contrário do que era: o X escondia a janela e o app continuava rodando
+  // invisível, então quem queria sair ficava com contas farmando sem saber. O
+  // botão de fechar agora faz o que diz, e quem quer deixar farmando em segundo
+  // plano minimiza — que é o gesto que já significa "sai da frente, mas fica".
+  // 'minimize' não é cancelável (ao contrário de 'close'): a janela já está
+  // minimizada quando o evento chega. Então ela é escondida depois — o
+  // showWindow() restaura antes de mostrar, senão voltaria minimizada.
+  win.on('minimize', () => {
     const toTray = !state || !state.settings || state.settings.closeToTray !== false;
-    if (!quitting && toTray) {
-      e.preventDefault();
-      win.hide();
-    }
+    if (!quitting && toTray) win.hide();
   });
+  win.on('close', () => { quitting = true; });
   win.on('closed', () => { win = null; });
 
   for (const ev of ['blur', 'hide', 'minimize']) win.on(ev, () => send('win:away'));
@@ -594,6 +601,14 @@ if (!app.requestSingleInstanceLock()) {
     // O resumo do card: quem esta lutando contra quem, e com que resultado.
     headlessManager.on('account:painel', ({ index, painel }) => {
       send('headless:account:painel', { index, painel });
+    });
+    // As atividades (ovo capturado, ovo chocado, drop, log das ferramentas) e o
+    // historico de ovos. Vao para o renderer porque e la que vive o Painel.
+    headlessManager.on('account:atividade', ({ index, atividade }) => {
+      send('headless:account:atividade', { index, atividade });
+    });
+    headlessManager.on('account:historico', ({ index, historico }) => {
+      send('headless:account:historico', { index, historico });
     });
     headlessManager.on('account:error', ({ index, message }) => {
       send('headless:account:error', { index, message });

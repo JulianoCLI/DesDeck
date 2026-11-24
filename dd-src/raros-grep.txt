@@ -1,0 +1,1427 @@
+fontes baixadas: 102
+
+======================================================================
+1a. A ABA "ITENS RAROS" / qualquer rotulo de raridade
+======================================================================
+  /js/app.js  (14)
+    L110: for (const lista of [this.itens.scanners, this.itens.pocoes, this.itens.revives, this.itens.evolucao || [], this.itens.chips, this.itens.raros || [], this.itens.ovos || [], this.itens.zmoves || [], this.itens.datas || [], this.itens.auras || [], this.itens.comidas || []]) {
+    L928: ? ['ok', `Pronto para treinar em ${esc(m.vaiParaNome)}`, `Clique em Entrar e pode fechar o jogo. Rende XP do Tamer, XP do Digimon ativo${m.scan ? ', Bits e ovos do scan' : ' e Bits'}. O VIP também leva itens normais, sem os raros.`, 'entrar', 'Entrar']
+    L1494: // Cartão de Speed é item da Mochila › Itens Raros: acende lá quando nenhum está ativo.
+    L1495: const raros = (E.bikes || []).length > 0 && !E.bikes.some((b) => b.ativa);
+    L1505: raros,
+    L1516: $('#bolsa-ponto')?.classList.toggle('hidden', !(chocadeira || raros || boosts || selos.vinculo));
+    L1517: $('[data-selo-nav="mochila"]')?.classList.toggle('hidden', !(chocadeira || raros || boosts || selos.vinculo));
+    L2809: ${itens.some((it) => it.id?.startsWith('bau-bg-')) ? '<p class="bgf-nada">O baú foi para a Mochila › Raros: abra quando quiser.</p>' : ''}
+    L3704: const raros = [];
+    L3705: if (area.raros) {
+    L3706: const pct = (v) => `${String(+(v * area.raros).toFixed(5)).replace('.', I18N.decimal)}%`;
+    L3707: raros.push(drop('token-boss', pct(0.05), 'Boss Token'), ...['fragmento-chave', 'fragmento-shiny', 'fragmento-bike'].map((it) => drop(it, pct(0.0005))));
+    L3709: if (area.nivel >= 100) raros.push(drop('fragmento-ovo-shiny', '0,00375%'));
+    L3725: ${raros.length ? `<div class="ha-sub">Raros${area.raros ? `<em data-dica="Já com o Loot Boost">${esc(cat.regiao(area.ilha).nome)} ×${String(area.raros).replace('.', I18N.decimal)}</em>` : ''}</div>${raros.join('')}` : ''}</div>
+  /js/cena.js  (3)
+    L985: // As bikes do Cartão de Speed já montadas como roupa, por personagem e raridade ("rina-mitica").
+    L2250: // Cartão de Speed ativo na hunt: a bike da raridade do cartão, do personagem da roupa
+    L2251: // (tools/montar_bikes.mjs, mesma grade); uma por personagem e raridade, todas as roupas a dividem.
+  /js/regras.js  (2)
+    L26: const raridade = Math.log10(Math.max(100, preco)) - 1;
+    L27: const fator = 1 + raridade ** 3 / 17;
+  /js/menus.js  (11)
+    L40: // Barra: busca, elemento, onde está, "sem raros" e a ordem (lembrada por tela, ex. "Oferenda");
+    L49: const raro = (d, e) => d.shiny || d.potencia === 5 || e?.lendario || (d.refino || []).some((r) => r > 0);
+    L57: const f = { busca: '', elem: '', local: '', semRaros: false, ordem: CHAVE_SEL[guardada] || guardada === 'nome' ? guardada : ordemPadrao, limite: LOTE_SEL };
+    L63: return (!q || nomeDe(d).includes(q)) && (!f.elem || e?.elemento === f.elem) && (!f.local || d.local === f.local) && !(f.semRaros && raro(d, e));
+    L83: <button class="bt-sec sel-tog ${f.semRaros ? 'on' : ''}" id="sel-raros" data-dica="Esconde UX, P5, lendários e refinados">🛡 Sem raros</button>
+    L93: const filtrado = f.busca.trim() || f.elem || f.local || f.semRaros;
+    L96: if (sem) sem.onclick = () => { Object.assign(f, { busca: '', elem: '', local: '', semRaros: false, limite: LOTE_SEL }); ctx.rerender(); };
+    L126: $('#sel-raros', c).onclick = (e) => { f.semRaros = !f.semRaros; e.currentTarget.classList.toggle('on', f.semRaros); f.limite = LOTE_SEL; pintarLista(); };
+    L219: const raridadePasse = (d) => (d === 30 ? 'lendario' : d === 28 ? 'mitico' : MARCOS_PASSE.includes(d) || d >= 26 || d === 13 || d === 18 ? 'raro' : d % 3 === 0 || d === 25 || d === 20 ? 'incomum' : 'comum');
+    L286: return `<div class="ps-col ps-${raridadePasse(d.dia)} ${marco ? 'marco' : ''} ${fim ? 'fim' : ''} ${d.dia <= feitos ? 'feito' : ''} ${atual ? 'atual' : ''} ${d.dia === visto ? 'sel' : ''}" data-dia="${d.dia}">
+    L327: <div class="ps-det ps-${raridadePasse(visto)}"><div class="ps-det-cab"><h4>Dia ${visto}</h4><em class="${visto <= feitos ? 'ok' : adianteDe(visto) <= 0 ? 'hoje' : ''}">${quando}</em>${visto !== base ? '<button type="button" class="ps-volta" id="passe-hoje">Ver o dia atual</button>' : ''}</div>
+  /js/cofre.js  (1)
+    L363: // ------------------------------------------------------------ Exp. Share (Mochila → Itens Raros → Exp. Share)
+  /js/mochila.js  (11)
+    L18: { id: 'raros', ico: 'token-boss', nome: 'Itens Raros', curto: 'Raros', desc: 'Baús, tokens, tickets, fragmentos, discos e Cartões de Speed', luz: '#fbbf24', vazio: 'Nenhum item raro ainda.' },
+    L24: const RARIDADE = { comum: 'Comum', incomum: 'Incomum', rara: 'Raro', mitica: 'Mítico', lendaria: 'Lendário' };
+    L26: const NOTA_RARO = {};
+    L49: if (bolso === 'raros') {
+    L51: const raros = (it.raros || []).filter((r) => tem(r.id) > 0 || (r.id === 'exp-share' && nShare));
+    L55: g = [['Baús', raros.filter(bau)], ['Tokens e fragmentos', raros.filter(peca)], ['Tickets e especiais', raros.filter((r) => !peca(r) && !bau(r))], ['D-Skills', skills],
+    L78: if (bolso === 'raros') return soma(it.raros || []) + soma(it.zmoves || []) + (e.bikes || []).length;
+    L98: return { texto: i.desc, fonte: i.fonte, nota: NOTA_RARO[i.id] };
+    L123: if (i.bike) return `<button class="mo-s mo-sp sp-${i.raridade}${i.id === sel ? ' on' : ''}" data-item="${i.id}"${dica(i.nome)}><img src="/icones/speed.png" alt=""><b>${pctSpeed(i)}</b>${i.ativa ? '<em>Ativo</em>' : ''}</button>`;
+    L129: <div class="mo-info"><span class="mo-selo sp-${b.raridade}">${RARIDADE[b.raridade]}</span><span class="mo-serial">#${String(b.serial).padStart(6, '0')}</span></div>
+    L238: else ctx.menus.usarItemRaro(a, it);
+  /js/boss.js  (4)
+    L17: const raridade = (ch) => RARIDADES.find(([min]) => ch >= min);
+    L132: const [, cl, nome] = raridade(r.chance);
+    L134: return `<div class="bs-card rar-${cl}" style="--i:${i}" data-dica="${esc(cat.itens.raros?.find((x) => x.id === r.item)?.desc || nomeItem(cat, r.item))}">
+    L316: const [, cl, nomeRar] = raridade(r.chance);
+  /js/digidex.js  (5)
+    L483: $('#dx-x', el).onclick = () => abrirRaros('x');
+    L484: $('#dx-p5', el).onclick = () => abrirRaros('p5');
+    L530: function abrirRaros(tipo) {
+    L534: const pedir = () => enviar('dex.raros', { tipo, ...st });
+    L569: }, { icone: 'menu-digidex', largura: 'dex', ouvir: { 'dex.raros': (m) => { if (m.tipo === tipo) { dados = m; st.pag = m.pag; ctx.rerender(); } } } });
+  /js/wiki.js  (33)
+    L44: const RAR_ILHA = [['comum', 'Comum', 74.5, '25%', 1, '+15%'], ['incomum', 'Incomum', 20, '40%', 1, '+25%'], ['rara', 'Raro', 5, '75%', 1, '+50%'], ['mitica', 'Mítico', 0.5, '100%', 1, '+75%'], ['lendaria', 'Lendário', 0.005, '100%', 2, '+100%']];
+    L604: ['D-Skill', 'Golpe de poder 1.800 com recarga de 60 s. Nasce Especial e pode virar Físico na ficha. Aparece no slot "D" da barra de golpes.', 'combate'], ['Exp. Share', 'Item da Shop (50 DCoin) que passa 5% do XP de cada abate a um Digimon. Não cai de monstro.', 'itens'], ['Fragmento', 'Pedaço raro:
+    L608: ['Especial', 'Forma além da Mega, feita no Evoluir com duas Megas e Núcleo Digital.', 'alemega'], ['Fusão', 'O passo depois do Especial, feito com dois Especiais e Núcleos.', 'alemega'], ['Rerrol', 'Roleta que troca o Digimon (Rookie, Champion, Ultimate ou Mega) por outro do mesmo estágio, por DCoin
+    L694: <li><b>Drops</b>: só o <b>Doce Assombrado</b>. Aqui não caem chips, Evoluter, Proteção de Ovo, Energia de Ovo, raros nem Fragmento de Ovo UX.</li></ul>` },
+    L830: ['mochila', 'Itens, Itens Raros (com os Cartões de Speed), Auras, Roupas, Vínculo, Incubadora, Coleção e Oferenda.'], ['equipe', 'Troque o Digimon em campo e mexa no DigiBank.'], ['calculadora', 'Compare Digimon e simule um duelo no servidor.'],
+    L855: <li><b>Exp. Share</b>: cada Digimon que segura uma recebe 5% do XP de cada abate, esteja na equipe, no DigiBank ou na Coleção. Equipe pela Mochila › Itens Raros.</li>
+    L1007: resumo: ['Área acima do seu nível de Tamer fica trancada.', 'Cada região tem uma aura; a aura é só visual.', 'Regiões altas soltam mais itens raros.'], telas: ['mapa'],
+    L1015: ${r.raros ? `<em>raros ${vezes(r.raros)}</em>` : '<em>chips e Evoluter</em>'}<i>${ok ? '✓' : '🔒'}</i></div>`;
+    L1055: <li>Rende XP do Tamer, XP do Digimon ativo na saída e Bits. O VIP também leva itens normais (chip, Evoluter, Proteção de Ovo e Data), sem os raros. Cair ou deixar a aba de lado <b>não</b> treina.</li>
+    L1118: <li><b>Ticket Digital World</b> e <b>Colosseum Ticket</b> (o mais raro). Veja ${ir('especiais', 'Colosseum e Digital World', 'mistica')}.</li><li>Os quatro últimos são os Guardiões da Torre: só existem como boss.</li></ul>` },
+    L1146: <p>O baú vai para a <b>Mochila › Raros</b> e abre quando você quiser, no botão Abrir. Cada item é sorteado à parte, e as Energias saem de uma família sorteada.</p>
+    L1152: [`${icone('bau-bg-comum')}<b>Baú do Boss Global</b>`, '1 a 3 Energias de Ovo Instáveis', 'Energia Refinada (20%), 3 a 5 Poções Hyper (60%), 1 a 2 Revives (30%) e 2 a 4 Scanners Super (40%). Sem itens raros.']])}
+    L1178: return `<p>O <b>Colosseum Ticket</b> é o drop mais raro dos Bosses. Usado, ele abre o <b>Colosseum</b>: uma luta contra <b>um Lendário no seu nível de Tamer</b>, sorteado entre os Lendários do jogo, com <b>uma única chance</b> de captura.</p>
+    L1193: <p>Nasce no <b>Nv 100</b> e com piso, porque o ticket é raro demais para entregar um Digimon fraco:</p>
+    L1197: <p>Hoje são ${L.length}: ${L.map((e) => esc(e.nome)).join(', ')}.</p>` + nota('Use o ticket em Mochila › Itens Raros › Colosseum Ticket › Entrar.'); } },
+    L1203: resumo: ['A Ilha sai da Oficina do Prof. Kurata (10 Fragmentos de Chave).', 'A raridade é sorteada na fusão e decide a fatia de XP e as vagas.', 'Quem mora na Ilha precisa estar na equipe ou na Coleção para receber XP (no DigiBank, não).'], telas: ['casa'],
+    L1205: { id: 'tabela', titulo: 'Raridades', html: () => tabela(['Raridade', 'Chance', 'XP da hunt', 'Moradores'], RAR_ILHA.map(([id, , c, xp, v]) => [`<span class="selo-raridade r-${id}">${RAR_F[id]}</span>`, pct(c, 3), xp, v])) },
+    L1209: <li>O Registro de Ilhas mostra quantas Ilhas de cada raridade existem no servidor e quem abriu cada uma.</li></ul>` },
+    L1212: { id: 'speed', grupo: 'progresso', nome: 'Cartão de Speed', titulo: 'Cartão de Speed', icone: 'speed', lead: 'Item raro que, ativo, faz o Tamer e o Digimon andarem mais rápido na hunt: mais abates por hora.',
+    L1213: resumo: ['O Cartão de Speed é um item: fica na Mochila › Itens Raros.', 'Só um cartão fica ativo; as porcentagens não somam.', 'Sai da Oficina do Prof. Kurata (10 Fragmentos de Speed).'], telas: ['mochila'],
+    L1215: { id: 'usar', titulo: 'Como ativar', html: () => `<ol class="wk-passos"><li>Abra a <b>Mochila</b> (botão da bolsa) e entre em <b>Itens Raros</b>.</li>
+    L1216: <li>Os seus cartões aparecem em <b>Cartões de Speed</b>, cada um com a raridade, o serial e quanto acelera.</li>
+    L1219: { id: 'tabela', titulo: 'Raridades', html: () => tabela(['Raridade', 'Chance', 'Velocidade na hunt'], RAR_ILHA.map(([id, n, c, , , sp]) => [`<span class="selo-raridade r-${id}">${n}</span>`, pct(c, 3), sp])) },
+    L1221: <li>Vale também no Labirinto da Guild.</li><li>Com o cartão ativo, o Tamer aparece de bike na hunt, da cor da raridade.</li></ul>` },
+    L1222: { id: 'conseguir', titulo: 'Como conseguir', html: () => `<p>Junte <b>10 Fragmentos de Speed</b> e fale com o Prof. Kurata, na praça do Hospital; a raridade é sorteada. O fragmento cai nas regiões altas e também sai no Mercado. O cartão pronto também se compra e vende no Mercado (aba <b>Ilhas e Spee
+    L1223: ${nota('O Registro de Speed (menu Ilhas) mostra quantos cartões de cada raridade existem no servidor e quem abriu cada um.')}` },
+    L1253: { id: 'itens', grupo: 'economia', nome: 'Itens raros', titulo: 'Itens raros e de onde vêm', icone: 'exp-share', lead: 'Exp. Share, Cartões de Speed, fragmentos, tickets e outros itens da Mochila: para que servem e onde conseguir cada um.',
+    L1260: <li>Um item por Digimon e um Digimon por item: não acumula. Equipe em Mochila › Itens Raros ou na pasta Exp. Share do Cofre.</li>
+    L1267: { id: 'speed', titulo: 'Cartão de Speed', html: () => `<p>O <b>Cartão de Speed</b> também é item raro: fica em Mochila › Itens Raros, e é lá que você toca em <b>Ativar</b>. Ativo, o Tamer e o Digimon andam mais rápido na hunt. Veja ${ir('speed', 'Cartão de Speed')}.</p>` },
+    L1268: { id: 'tabela', titulo: 'Todos os itens raros', html: () => tabela(['Item', 'Para quê', 'De onde vem'], cat.itens.raros.map((r) => [`${icone(r.id)} <b>${esc(r.nome)}</b>`, esc(r.desc), esc(r.fonte)])) },
+    L1269: { id: 'fragmentos', titulo: 'Fragmentos e a Oficina', html: () => `<p>Fragmentos são pedaços raros: junte <b>10</b> do mesmo tipo e o Prof. Kurata troca por o item pronto (Ilha, Cartão de Speed, Chip UX, D-Skill, Chip AoE, Ovo UX ou Núcleo Digital). Veja ${ir('especiais', 'Oficina e Lendários', 'ofi
+    L1270: ${nota('Quanto mais alta a região, mais itens raros caem. Fragmentos de D-Skill e Chip AoE saem dos Bosses; o de Núcleo, do pódio do Boss Global.')}` },
+    L1294: { id: 'perfil', titulo: 'Nick e títulos', html: () => `<ul class="wk-lista"><li><b>Troca de Nick</b>: item da ${ir('economia', 'Shop')} (${fmt(cat.shop.itens.find((i) => i.id === 'troca-nick')?.preco || 0)} DCoin). Use em Mochila › Itens Raros. O nick novo tem de 3 a 16 letras, números ou _ e não po
+  /js/kurata.js  (13)
+    L13: // Mesmos números do servidor (extras.go raridadesCasa): chance, XP da Ilha, moradores, speed.
+    L17: { id: 'rara', ilha: 'Rara', speed: 'Raro', chance: 5, xp: 75, vagas: 1, veloc: 50, cor: '#38bdf8' },
+    L27: fala: 'Dez Fragmentos de Chave abrem o portal de uma Ilha. Que bioma vai sair, nem eu sei: a raridade é sorteada na hora.' },
+    L29: fala: 'Com 10 Fragmentos de Speed eu gravo um Cartão de Speed. Quanto mais raro, mais rápido você e o Digimon andam na hunt.' },
+    L72: if (c) saiu = { tipo: 'casa', raridade: c.raridade, serial: c.id };
+    L75: if (b) saiu = { tipo: 'bike', raridade: b.raridade, serial: b.id };
+    L110: let peca = `<div class="ku-peca${pronto ? ' pronta' : ''}"><div class="ku-pedestal">${arteDa(b)}</div><b>${esc(b.id === 'zmove' ? nomeItem(cat, itemDa(b)) : b.nome)}</b><small>${b.id === 'casa' || b.id === 'bike' ? 'raridade sorteada' : '1 peça'}</small></div>`;
+    L112: const r = RARIDADES.find((x) => x.id === s.raridade);
+    L135: const saiu = st.saiu?.bancada === b.id ? st.saiu.raridade : '';
+    L137: const n = minhas.filter((x) => x.raridade === r.id).length;
+    L161: const desc = b.id === 'casa' ? 'Quem mora na Ilha ganha uma fatia do XP da sua hunt. Pode ter quantas ilhas quiser; a raridade decide a fatia e os postos.'
+    L165: const ir = b.id === 'casa' ? ['ilhas', 'Ver minhas Ilhas'] : b.id === 'bike' ? ['raros', 'Ver na Mochila'] : b.id === 'zmove' || b.id === 'aoe' ? ['aplicar', 'Aplicar disco'] : null;
+    L233: if (el.dataset.ir === 'aplicar') { st.aba = 'aplicar'; st.saiu = null; ctx.rerender(); } else if (el.dataset.ir === 'raros') ctx.menus.abrirItensRaros(); else ctx.menus.abrirCasa(el.dataset.ir);
+  /js/ficha-especie.js  (1)
+    L211: <p class="fe-nota">Todo Digimon solta o chip do elemento dele, mais o segundo chip da área onde é caçado, e a partir do Rookie também o Evoluter. A Energia de Ovo é a da família dele (${esc(e.familia || '—')}) e sobe os Ovos Digitais. O Loot Boost aumenta a chance; nas regiões com aura caem também o
+  /js/chat-links.js  (1)
+    L19: const CATEGORIAS = [['scanners', 'Scanner'], ['pocoes', 'Poção'], ['revives', 'Revive'], ['evolucao', 'Evolução'], ['chips', 'Chip'], ['raros', 'Item raro'], ['ovos', 'Ovo'], ['zmoves', 'D-Skill'], ['datas', 'Energia de Ovo']];
+  /js/menus2.js  (39)
+    L7: // Incubadora, Coleção, Itens Raros, Roupas).
+    L163: // O Cartão de Speed é item: fica (e se ativa) em Mochila › Itens Raros; aqui só o Registro.
+    L165: const RAR_M = { comum: 'Comum', incomum: 'Incomum', rara: 'Raro', mitica: 'Mítico', lendaria: 'Lendário' }; // Cartão de Speed
+    L169: const nomePecaMk = (t, r = {}) => (t === 'bike' ? `Cartão de Speed ${RAR_M[r.raridade] || ''}` : `Ilha ${RAR[r.raridade] || ''}`);
+    L183: return `<article class="ilh-card ilh-${cs.raridade}">
+    L184: <div class="ilh-cena" style="background-image:url(/img/ilhas/${cs.raridade}.webp)">
+    L185: <span class="selo-raridade r-${cs.raridade}">${RAR[cs.raridade]}</span><span class="ilh-serial">#${String(cs.id).padStart(6, '0')}</span>
+    L189: <div class="ilh-nome"><h4>${esc(cs.nome)}</h4><small>${BIOMA_ILHA[cs.raridade]}</small></div>
+    L203: if (aba === 'bikes' || aba === 'speed') return abrirItensRaros();
+    L205: const pedirRegistro = () => enviar('registro.casas', { tipo: aba === 'reg-bike' ? 'bike' : 'casa', raridade: regRar });
+    L210: const regOk = reg && reg.tipo === tipoReg && reg.raridade === regRar;
+    L222: // raridades (a mesma de raridadesCasa no servidor, extras.go).
+    L234: <div class="ilv-passo"><i>3</i><b>Fale com o Prof. Kurata</b><span>Na praça do Hospital, junto do Jijimon. A raridade é sorteada.</span></div>
+    L243: <div class="ilh-registro">${!regOk ? '<p class="fraco" style="padding:14px">Carregando…</p>' : reg.itens.length ? reg.itens.map((it) => `<div class="ilh-linha ilh-${it.raridade}">
+    L291: const MQ_ABERTAS = new Set(['raridade', 'tier', 'estagio', 'potencia', 'atributo', 'elemento', 'preco', 'cat', 'familia', 'tierOvo', 'energia', 'peca', 'rarPeca']);
+    L395: const filtroPeca = () => ({ tipo: 'pecas', moeda: mkF.moeda, peca: mkF.pecaSel, raridades: mkF.rarPeca, ordem: mkF.ordemPeca, ...filtroComum(), potencias: '' });
+    L517: const luz = r.raridade === 'lendaria' || r.raridade === 'mitica' ? 'luz-ouro' : r.raridade === 'rara' ? 'luz-roxa' : 'luz-azul';
+    L521: const info = `<b class="mk-nome">${esc(nomePecaMk(a.tipo, r))}</b><div class="mk-tipos"><span class="mk-selo"><i class="ilh-ponto r-${esc(r.raridade || '')}"></i>${a.tipo === 'bike' ? 'Speed' : 'Ilha'}</span></div>
+    L573: h += secao('raridade', 'Raridade', `<div class="mq-sws">${sw('soShiny', `${MK_IC.x}Só UX`)}${sw('soLendario', `${MK_IC.coroa}Lendários`)}${sw('soZmove', `${MK_IC.dskill}Com D-Skill`)}${sw('soAoe', `${MK_IC.aoe}Com Chip AoE`)}${sw('soLiberados', `${MK_IC.relogio}Só liberados (sem retenção)`)}</div>`,
+    L584: h += secao('raridade', 'Raridade', `<div class="mq-sws">${sw('ovoX', `${MK_IC.x}Só Ovo UX`)}${sw('soLiberados', `${MK_IC.relogio}Só liberados (sem retenção)`)}</div>`, liga('ovoX', 'soLiberados'));
+    L594: h += secao('raridade', 'Retenção', `<div class="mq-sws">${sw('soLiberados', `${MK_IC.relogio}Só liberados (sem retenção)`)}</div>`, liga('soLiberados'));
+    L597: h += secao('raridade', 'Retenção', `<div class="mq-sws">${sw('soLiberados', `${MK_IC.relogio}Só liberados (sem retenção)`)}</div>`, liga('soLiberados'));
+    L703: <td class="mq-det"><span class="chip n"><i class="ilh-ponto r-${esc(r.raridade || '')}"></i>${a.tipo === 'bike' ? 'Speed' : 'Ilha'}</span></td><td class="mq-pr">${preco(a.moeda, a.preco)}</td><td class="mq-vd">${vendedor(a)}</td><td class="mq-ac">${acoesLinha(a)}</td></tr>`;
+    L762: const todos = [...cat.itens.chips, ...(cat.itens.raros || []).filter((i) => NEGOCIAVEL(i.id) && !i.id.startsWith('chip-')), ...(cat.itens.zmoves || []), ...(cat.itens.evolucao || []), ...(cat.itens.datas || [])].filter((i) => NEGOCIAVEL(i.id));
+    L1102: const coisa = st.tipo === 'item' ? st.item : st.tipo === 'diamantes' ? 'diamantes' : st.tipo === 'digimon' ? dig?.especie : EH_PECA(st.tipo) ? pecaSel?.raridade : ovoSel?.especie;
+    L1109: // Ilha / Speed: o menor anúncio da mesma raridade; a média sai das últimas vendas do servidor.
+    L1111: enviar('mercado.listar', { tipo: 'pecas', peca: st.tipo, raridades: coisa, moeda: st.moeda, ordem: 'barato' });
+    L1138: const escolha = EH_PECA(st.tipo) ? (pecas.length ? `<div class="na-tira">${pecas.map((p) => `<button class="na-opcao ${p.id === st.peca ? 'on' : ''}" data-an-peca="${p.id}" data-dica="${esc(p.nome)} ${seriePeca(p.id)}${p.ativa ? ' · ativo agora' : ''}${(p.digimons || []).length ? ` · ${p.digimons.le
+    L1262: const vendas = (m.lista || []).filter((v) => v.tipo === st.tipo && v.moeda === st.moeda && v.em >= desde && (!rar || v.resumo?.raridade === rar));
+    L1606: const rar = i.raridade ? ({ common: 'comum', rare: 'rara', special: 'epica', legendary: 'lendaria' })[i.raridade] : '';
+    L1612: <div class="corpo"><h4>${esc(i.nome)}</h4>${rar ? `<span><span class="selo-raridade r-${rar}">${esc(i.raridade)}</span></span>` : ''}<small>${esc(desc)}</small></div>
+    L2600: const raros = vend.filter((o) => o.data || o.shiny || o.protegido || o.potencia >= 4).length;
+    L2602: ctx.confirmar(`Vender ${fmt(vend.length)} ovo(s) por ${fmt(total)} bits?${raros ? `\n${fmt(raros)} deles têm +N, UX, Proteção ou são P4/P5.` : ''}${presos ? `\n${fmt(presos)} travado(s) ficam.` : ''}`,
+    L2609: const raros = z.filter((o) => o.data || o.shiny || o.protegido || o.potencia >= 4).length;
+    L2610: ctx.confirmar(`Vender ${fmt(z.length)} ovo(s)${escopoVenda() ? ` ${escopoVenda()}` : ''} por ${fmt(z.reduce((t, o) => t + precoOvo(o), 0))} bits?${raros ? `\n${fmt(raros)} deles têm +N, UX, Proteção ou são P4/P5.` : ''}${foraVenda.size ? `\nFora da venda: ${nomesFora()}.` : ''}`,
+    L2906: // Itens Raros é um bolso da Mochila (js/mochila.js); o que usa um item raro continua aqui.
+    L2907: function abrirItensRaros() { ctx.mochila.abrir('raros'); }
+    L2908: function usarItemRaro(u, it) {
+    L2976: abrirIndique, abrirNovidades, abrirEvoluir, abrirRefino, abrirOferenda, abrirChocadeira, abrirItensRaros, usarItemRaro, abrirRoupas };
+  /js/ambiente-motor.js  (2)
+    L15: //  - troca de mapa/clima em cruz (2,5 s), um compressor/limitador no fim e trovão raro (≥ 45 s).
+    L391: if (nome === 'trovao') { // raro, nunca em menos de 45 s
+  /js/arena-torre.js  (3)
+    L571: // o baú da primeira vitória, já aberto: o que saiu, com os raros em destaque
+    L573: const RAROS = /^(evoluter|fragmento-|peca-aoe)|-pura$/;
+    L575: <div class="tlu-bau-txt"><small>${esc(bau.nome)}</small><span class="tlu-bau-itens">${(bau.itens || []).map((x) => `<span class="tlu-bau-it${RAROS.test(x.item) ? ' raro' : ''}">${icone(x.item)}<b>${esc(x.txt || x.item)}</b></span>`).join('')}</span></div></div>` : '';
+
+======================================================================
+1b. Os tres itens citados pelo usuario, literalmente
+======================================================================
+  /js/digiidle/combat-action-vfx-catalog-v896.js  (1)
+    L5: /* V896 - VFX selecionados para Hit / Single / AoE.
+  /js/digiidle/digimon-combat-manifest-v895.js  (2)
+    L5: /* V897 - Hit + Single + AoE por raio real.
+    L7: AoE usa targetType=areaEnemies e aoeRadius; inimigos fora do raio não recebem dano. */
+  /js/digiidle/digimon-combat-actions-v895.js  (1)
+    L99: : "Skill AoE"),
+  /js/digiidle/visual-config-runtime-v1040.js  (1)
+    L62: // Optional AoE presentation mode.  The old per-step behavior remains the
+  /js/app.js  (16)
+    L36: import { instalarMochila } from './mochila.js?v=8-dskill-elem';
+    L38: import { instalarCalculadora, classesHf } from './calculadora.js?v=7-dskill1800';
+    L47: import { instalarKurata } from './kurata.js?v=8-dskill-elem';
+    L1539: ${d.zmove ? `<span class="chip" data-dica="D-Skill ${esc(d.zmove)} (${d.zcat === 'fisico' ? 'Físico' : 'Especial'}): poder 1800, recarga 60 s, acerta o alvo e quem encosta nele (3×3).">D</span>` : ''}${d.aoe ? '<span class="chip" data-dica="Chip AoE: os golpes acertam todo selvagem até 5 tiles (11×1
+    L2509: // Selo do D-Skill na ficha: "E: FOGO" (Especial) ou "F: FOGO" (Físico). No Digimon do próprio Tamer é um
+    L2515: const dica = `D-Skill ${el} · ${fis ? 'Físico' : 'Especial'}`;
+    L2525: const v = await perguntar({ titulo: `D-Skill ${cat.elemento(d.zmove).nome}`,
+    L2529: if (v && v !== (d.zcat === 'fisico' ? 'fisico' : 'especial')) enviar('dskill.categoria', { id: d.id, cat: v });
+    L2532: // O D-Skill como o servidor monta (zmove.go): poder 1800, recarga 60 s, na categoria
+    L2534: // O elemento é o da forma em uso: evoluiu para outro elemento, o D-Skill vai junto.
+    L2537: return { id: 'zmove', nome: `D-Skill ${cat.elemento(elem).nome}`, elemento: elem, poder: 1800, recargaMs: 60000,
+    L2541: // O D-Skill saiu: o slot dá um clarão.
+    L3707: raros.push(drop('token-boss', pct(0.05), 'Boss Token'), ...['fragmento-chave', 'fragmento-shiny', 'fragmento-bike'].map((it) => drop(it, pct(0.0005))));
+    L4029: ${d.local === 'equipe' && (cat.itens.zmoves.some((z) => z.elemento === e.elemento && (E.itens[z.id] || 0) > 0 && !d.zmove) || ((E.itens['disco-aoe'] || 0) > 0 && !d.aoe)) ? '<button class="bt-sec" id="fd-disco">💿 Aplicar disco</button>' : ''}</div></div>`;
+    L4037: ${e.lendario || d.zmove || d.aoe || au ? `<div class="fd-tags">${e.lendario ? '<span class="pill ouro">Bônus de lendário ×4</span>' : ''}${d.zmove ? seloZCat(d, !!alheio) : ''}${d.aoe ? '<span class="pill" style="background:#c2410c">Chip AoE</span>' : ''}${au ? `<span class="pill ax-pill" style="--a
+    L4080: const ops = [...cat.itens.zmoves.filter((z) => z.elemento === e.elemento && (E.itens[z.id] || 0) > 0 && !d.zmove).map((z) => z.id), ...((E.itens['disco-aoe'] || 0) > 0 && !d.aoe ? ['disco-aoe'] : [])];
+  /js/cena.js  (2)
+    L2137: if (combate && !e._lod && esp.animSkill && !(e._pedSkill > agoraP - 15000)) {
+    L2138: e._pedSkill = agoraP;
+  /js/menus.js  (1)
+    L311: ${chip('scanner-prismatico', scanners ? fmt(scanners) : 0, 'scanners')}${chip('token-boss', t['token-boss'] ? fmt(t['token-boss']) : 0, 'Boss Tokens')}</div>
+  /js/icone-tipo.js  (2)
+    L6: // tipo (web/icones/golpes/<elemento>-<basic|single|aoe|special>.png). O D-Skill usa o "special".
+    L13: const TIPO_GOLPE = { hit: 'basic', singleSkill: 'single', aoeSkill: 'aoe', zmove: 'special' };
+  /js/cofre.js  (1)
+    L131: <div class="mk-tipos">${tipos(es)}${d.zmove ? '<span class="mk-selo z">D</span>' : ''}${d.aoe ? '<span class="mk-selo aoe">AoE</span>' : ''}</div>
+  /js/mochila.js  (3)
+    L55: g = [['Baús', raros.filter(bau)], ['Tokens e fragmentos', raros.filter(peca)], ['Tickets e especiais', raros.filter((r) => !peca(r) && !bau(r))], ['D-Skills', skills],
+    L97: if (i.id.startsWith('zmove-')) return { texto: 'Aplicado num Digimon da equipe do mesmo elemento: golpe de poder 1800, recarga 60 s, acerta o alvo e quem encosta nele. Se ele evoluir para outro elemento, o D-Skill acompanha. Nasce Especial; na ficha dá para trocar para Físico.', fonte: 'Prof. Kurata
+    L113: if (i.id === 'disco-aoe' || i.id.startsWith('zmove-')) return ['Aplicar', 'disco'];
+  /js/calculadora.js  (2)
+    L153: // D-Skill do Comparar: do elemento da espécie, poder 1800. A categoria vale só
+    L155: const campoZ = (pre, cfg, off) => `<div class="calc-campo calc-campo-largo"><span class="calc-campo-topo"><span>D-Skill</span><em>poder 1800</em></span>
+  /js/boss.js  (4)
+    L165: const rotulo = !b.liberado ? `Precisa Tamer Nv ${fmt(b.tamerNivel)}` : tokens < ent ? 'Sem Boss Token' : 'Desafiar';
+    L191: <div class="bs-entrada ${tokens >= ent ? 'ok' : ''}">${icone('token-boss')}<span>Entrada: <b>${ent}× Boss Token</b></span><em>você tem ${fmt(tokens)}</em></div>
+    L198: <p class="bs-nota">Força da equipe = soma de mín(1, nível ÷ nível do boss); cada ponto que falta para 5 triplica o dano recebido. A luta dura ${(dados.duracao / 60000) | 0} min; perder (o time inteiro cair) custa 10% do XP do nível, e a entrada não volta. Boss Tokens caem nas regiões altas (1 em 2.0
+    L228: <span class="bs-pill ouro" data-dica="Boss Tokens: a entrada das arenas">${icone('token-boss')}<span><small>Boss Tokens</small><b>${fmt(dados.tokens)}</b></span></span>
+  /js/wiki.js  (25)
+    L603: ['Boss Global', 'Evento do servidor: todo mundo contra um boss gigante, com ranking de dano.', 'bossglobal'], ['Boss Token', 'Entrada da Arena dos Bosses.', 'bosses'],
+    L604: ['D-Skill', 'Golpe de poder 1.800 com recarga de 60 s. Nasce Especial e pode virar Físico na ficha. Aparece no slot "D" da barra de golpes.', 'combate'], ['Exp. Share', 'Item da Shop (50 DCoin) que passa 5% do XP de cada abate a um Digimon. Não cai de monstro.', 'itens'], ['Fragmento', 'Pedaço raro:
+    L732: const SELO = { nivel: 'Os 5 no nível do andar ou acima', atributos: 'Um de cada atributo: Vacina, Data e Vírus', dskill: 'Digimon com Chip D-Skill', aoe: 'Digimon com Chip AoE (golpe em área)', especies: '5 espécies diferentes', estagio: 'Os 5 no estágio do andar ou acima', nota: 'Digimon com nota m
+    L755: <li>Com o <b>Chip AoE</b>, o golpe pega também as casas vizinhas do alvo (frente, trás e lados), com ${num(T.areaVizinhos * 100, 0)}% do dano. A Investida nunca é em área.</li>
+    L764: <ol class="wk-passos">${T.selos.map((x) => `<li>${esc(SELO[x.tipo] || x.tipo)}${x.tipo === 'aoe' || x.tipo === 'dskill' ? ` (${x.qtd} no começo, +1 a cada ${x.maisACada} pisos)` : x.tipo === 'nota' ? ` (${x.qtd} com nota ${num(x.valor, 0)} ou mais, +1 ponto a cada ${x.maisACada} pisos)` : ''}</li>`)
+    L825: ['passe', 'Prêmio de login de 30 dias, grátis e Premium.'], ['ranks', 'Ranking de nível, captura, guild, views dos seus vídeos e mais.'], ['boss', 'A Arena dos Bosses (Boss Token).'],
+    L839: <li>A barra de golpes mostra a recarga de cada golpe. Com a D-Skill aprendida aparece o slot <b>D</b>, que pisca quando ela sai.</li></ul>` },
+    L935: <li>Cada forma guarda a recarga dos próprios golpes, e ela só anda enquanto aquela forma está em campo: trocar de Mega para Champion e voltar não zera nada. A D-Skill também guarda a recarga entre as formas.</li></ul>` },
+    L1025: <p>Nas regiões com aura também caem, vezes o multiplicador da região: <b>Boss Token</b> 0,05%, <b>Fragmento de Chave</b> e <b>Fragmento de Speed</b> 0,0005% cada, e o <b>Fragmento UX</b> 0,0005% nos mapas Nv 5000 em diante (0,00005% nos mapas abaixo). Selvagens do Nv 100 em diante soltam o <b>Fragme
+    L1041: { id: 'discos', titulo: 'D-Skill e Chip AoE', html: () => `<ul class="wk-lista"><li><b>D-Skill</b>: golpe de poder 1.800 com recarga de 60 s, do elemento que você escolher (e do mesmo elemento do Digimon). Se o Digimon evoluir (ou trocar de forma) para outro elemento, o D-Skill acompanha o elemento 
+    L1042: <li><b>Físico ou Especial</b>: o D-Skill nasce <b>Especial</b> (SP.ATK contra SP.DEF). Na ficha do seu Digimon, o selo vira um botão (<b>E: FOGO</b> ou <b>F: FOGO</b>) que abre a escolha, com o ATK e o SP.ATK dele lado a lado. Poder, recarga e área não mudam. Depois de trocar, a próxima troca daquel
+    L1043: <li><b>Chip AoE</b>: os golpes do Digimon acertam todo selvagem num quadrado 11×11 em volta dele. Só na hunt.</li><li>Os dois saem de 10 peças dos Bosses na ${ir('especiais', 'Oficina do Prof. Kurata', 'oficina')} e são permanentes.</li></ul>` },
+    L1056: <li>O ritmo vem do que o Digimon já caçou na área (5 min seguidos medem o ritmo real dele; trocar de Digimon ou de Chip AoE começa outra medida); sem medida, é uma estimativa pelo tempo de briga dele e pelo andar das áreas que ele já mediu. VIP, XP Boost, XP Digimon Boost e Loot Boost entram, só pel
+    L1113: { id: 'bosses', grupo: 'progresso', nome: 'Bosses', icone: 'menu-boss', lead: `${cat.bosses.length} bosses, do Nv ${fmt(cat.bosses[0].nivel)} ao ${fmt(cat.bosses[cat.bosses.length - 1].nivel)}. Cada entrada gasta 1 Boss Token.`,
+    L1114: resumo: ['O boss pede Tamer do mesmo nível dele.', 'Boss Token cai nas regiões com aura e vem no Passe.', 'A repetição automática cura e entra de novo sozinha.'], telas: ['boss'],
+    L1117: { id: 'premios', titulo: 'O que eles dão', html: () => `<ul class="wk-lista"><li><b>Evoluter</b>: de 10% a 36%, e até 4 de uma vez nos mais altos.</li><li><b>Núcleo Digital</b> (Especial e Fusão da Mega): de 3% a 12%.</li><li><b>Fragmento de D-Skill</b> ou <b>Peça de Chip AoE</b>, conforme o boss, d
+    L1148: [`${icone('bau-bg-ouro')}<b>Baú de Ouro</b>`, '1 Energia de Ovo Pura, 2 Refinadas e 2 Boss Tokens', 'Evoluter (35%), 1 a 2 Fragmentos de Núcleo (8%), Fragmento de D-Skill (1,5%), Peça de Chip AoE (1%) e Ticket Digital World (1%)'],
+    L1149: [`${icone('bau-bg-prata')}<b>Baú de Prata</b>`, '2 Energias de Ovo Refinadas e 1 Boss Token', 'Energia Pura (70%), Evoluter (22%), Fragmento de Núcleo (5%), Fragmento de D-Skill (0,7%), Peça de Chip AoE (0,5%) e Ticket Digital World (0,5%)'],
+    L1150: [`${icone('bau-bg-bronze')}<b>Baú de Bronze</b>`, '1 a 2 Energias de Ovo Refinadas e 1 Boss Token', 'Energia Pura (40%), Evoluter (12%), Fragmento de Núcleo (3%), Fragmento de D-Skill (0,3%), Peça de Chip AoE (0,25%) e Ticket Digital World (0,25%)'],
+    L1151: [`${icone('bau-bg-elite')}<b>Baú de Elite</b>`, '2 a 3 Energias de Ovo Instáveis e 1 Refinada', 'Boss Token (30%), Energia Pura (5%), Evoluter (2%), Fragmento de Núcleo (1%), Fragmento de D-Skill, Peça de Chip AoE e Ticket Digital World (0,05% cada)'],
+    L1173: ['fragmento-zmove', 'D-Skill', 'Golpe de poder 1.800 do elemento escolhido'], ['peca-aoe', 'Chip AoE', 'Golpes em área 11×11'], ['fragmento-ovo-shiny', 'Ovo UX', 'Choca em 7 dias, sempre UX'], ['fragmento-nucleo', 'Núcleo Digital', 'Especial e Fusão da Mega'],
+    L1269: { id: 'fragmentos', titulo: 'Fragmentos e a Oficina', html: () => `<p>Fragmentos são pedaços raros: junte <b>10</b> do mesmo tipo e o Prof. Kurata troca por o item pronto (Ilha, Cartão de Speed, Chip UX, D-Skill, Chip AoE, Ovo UX ou Núcleo Digital). Veja ${ir('especiais', 'Oficina e Lendários', 'ofi
+    L1270: ${nota('Quanto mais alta a região, mais itens raros caem. Fragmentos de D-Skill e Chip AoE saem dos Bosses; o de Núcleo, do pódio do Boss Global.')}` },
+    L1325: <p><b>Baú do boss</b>: abre na vitória para quem está no labirinto quando o boss cai, até <b>3 por dia</b> (horário de Brasília). Sempre 1 a 2 Energias de Ovo Refinadas, e chance de Energia Pura, Boss Token, Evoluter, Fragmento de D-Skill, Peça de Chip AoE e Ticket Digital World.</p>
+    L1339: ['Showdown', 'toda quarta, 21h', 'Nv 100', 'luta no Nv 150; sem UX, P5, Lendário, D-Skill e AoE', '15 / 8 / 4'],
+  /js/kurata.js  (12)
+    L9: // elemento (D-Skill) ou o que você já tem. Ao fundir, a peça nova aparece na forja: a tela guarda o
+    L30: { id: 'zmove', aba: 'D-Skill', frag: 'fragmento-zmove', nome: 'D-Skill', cor: '#c084fc',
+    L31: fala: 'Escolha o elemento e eu compilo o D-Skill. Ele só entra num Digimon do mesmo elemento, e é um por Digimon. Se ele evoluir para outro elemento, o D-Skill acompanha.' },
+    L32: { id: 'aoe', aba: 'Chip AoE', frag: 'peca-aoe', item: 'disco-aoe', nome: 'Chip AoE', cor: '#fb923c',
+    L53: const discos = () => [...cat.itens.zmoves.map((z) => z.id), 'disco-aoe'].filter((it) => tem(it) > 0);
+    L157: jaTem = n ? `<b>${fmt(n)}</b> D-Skill${n > 1 ? 's' : ''} na mochila, prontos para aplicar` : 'Nenhum D-Skill na mochila.';
+    L165: const ir = b.id === 'casa' ? ['ilhas', 'Ver minhas Ilhas'] : b.id === 'bike' ? ['raros', 'Ver na Mochila'] : b.id === 'zmove' || b.id === 'aoe' ? ['aplicar', 'Aplicar disco'] : null;
+    L191: }).join('') : `<div class="ku-vazio">${icone('disco-aoe')}<b>Nenhum disco na mochila.</b><small>Funda 10 Fragmentos de D-Skill ou 10 Peças de Chip AoE.</small>
+    L192: <div><button type="button" class="ku-link" data-aba="zmove">D-Skill ›</button><button type="button" class="ku-link" data-aba="aoe">Chip AoE ›</button></div></div>`;
+    L196: if (z) return d.zmove ? `já tem D-Skill ${cat.elemento(d.zmove).nome}` : e.elemento !== z.elemento ? `é ${cat.elemento(e.elemento).nome}` : '';
+    L197: return d.aoe ? 'já tem Chip AoE' : '';
+    L205: <span class="ku-selos">${d.zmove ? `<i class="z" data-dica="D-Skill ${esc(cat.elemento(d.zmove).nome)}">D</i>` : ''}${d.aoe ? '<i class="aoe" data-dica="Chip AoE">AoE</i>' : ''}</span></div>
+  /js/ficha-especie.js  (1)
+    L211: <p class="fe-nota">Todo Digimon solta o chip do elemento dele, mais o segundo chip da área onde é caçado, e a partir do Rookie também o Evoluter. A Energia de Ovo é a da família dele (${esc(e.familia || '—')}) e sobe os Ovos Digitais. O Loot Boost aumenta a chance; nas regiões com aura caem também o
+  /js/chat-links.js  (1)
+    L19: const CATEGORIAS = [['scanners', 'Scanner'], ['pocoes', 'Poção'], ['revives', 'Revive'], ['evolucao', 'Evolução'], ['chips', 'Chip'], ['raros', 'Item raro'], ['ovos', 'Ovo'], ['zmoves', 'D-Skill'], ['datas', 'Energia de Ovo']];
+  /js/torre.js  (3)
+    L96: <span class="tel-eq-topo">${d.zmove ? '<i class="tel-aoe">D-Skill</i>' : ''}${d.aoe ? '<i class="tel-aoe">AoE</i>' : ''}<i class="tel-fila">${fila(slot)}</i></span>
+    L288: <img ${SPRITE(e.id)} alt=""${fxRetrato(d, e)}><b>${nomeDe(d)}</b><small>Nv ${fmtC(d.nivel)}${d.zmove ? ' · D-Skill' : ''}${d.aoe ? ' · AoE' : ''}</small>
+    L328: <img ${SPRITE(e.id)} alt=""${fxRetrato(d, e)}><span class="p5-item-txt"><b>${nomeDe(d)}</b><small>Nv ${fmtC(d.nivel)} · ⚔ ${fmtC(d.poder)}${d.zmove ? ' · D-Skill' : ''}${d.aoe ? ' · AoE' : ''}</small>
+  /js/digiidle/motor-fx.js  (5)
+    L2598: // An AoE route owns its visual displacement until all admitted victims and
+    L2625: // A configured AoE impact step already lands on the real victims. Do not
+    L2871: // AoE events apply HP immediately, before the visual route finishes. A
+    L3146: // When a normal Ghost Dash sequence is used by an AoE action, keep its
+    L3150: // The single-target sequence remains unchanged; only the AoE routing expands
+  /js/menus2.js  (15)
+    L264: const NEGOCIAVEL = (k) => k.startsWith('chip-') || k.startsWith('fragmento-') || k.startsWith('zmove-') || k.startsWith('data-') || ['token-boss', 'peca-aoe', 'disco-aoe', 'mystic-ticket', 'safari-ticket', 'ovo-shiny', 'evoluter'].includes(k);
+    L266: ['todas', 'Todas', 'hud-mochila', () => true], ['chips', 'Chips', 'chip-fire', (k) => k.startsWith('chip-')], ['zmoves', 'D-Skills', 'zmove-fire', (k) => k.startsWith('zmove-')],
+    L267: ['fragmentos', 'Fragmentos', 'fragmento-chave', (k) => k.startsWith('fragmento-')], ['tm', 'Chip AoE', 'disco-aoe', (k) => k === 'peca-aoe' || k === 'disco-aoe'],
+    L268: ['boss', 'Boss Tokens', 'token-boss', (k) => k === 'token-boss'], ['tickets', 'Tickets', 'mystic-ticket', (k) => k.endsWith('-ticket')], ['ovos', 'Ovo UX', 'ovo-shiny', (k) => k === 'ovo-shiny'],
+    L275: const RARIDADE = [['soShiny', 'x', 'Só UX'], ['soP5', '', 'Apenas P5'], ['soLendario', 'coroa', 'Lendários'], ['soZmove', 'dskill', 'Possui D-Skill'], ['soAoe', 'aoe', 'Possui Chip AoE']];
+    L345: dskill: svgMk('<path d="M12 1.8l8.8 5.1v10.2L12 22.2l-8.8-5.1V6.9z" fill="#7c3aed" stroke="#2e1065" stroke-width="1.2" stroke-linejoin="round"/><path d="M12 4.4l6.5 3.8v7.6L12 19.6l-6.5-3.8V8.2z" fill="#8b5cf6"/><path d="M13.4 5.6L8.2 13h3.4l-1.3 5.6 5.9-7.9h-3.5z" fill="#f5f3ff"/>'),
+    L346: aoe: svgMk('<circle cx="12" cy="12" r="9.6" fill="none" stroke="#fdba74" stroke-width="1.6" stroke-dasharray="3.1 2.2"/><circle cx="12" cy="12" r="6.2" fill="#7c2d12" stroke="#f97316" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="#fed7aa"/>'),
+    L540: ? `<div class="mk-nome-l"><b class="mk-nome">${nomeAnuncio(a)}${seloAura(r, es)}</b>${chipTierNota(r.nota)}</div><div class="mk-tipos">${es ? ctx.tipoHtml(es) : ''}${a.zmove ? '<span class="mk-selo z">D</span>' : ''}${a.aoe ? '<span class="mk-selo aoe">AoE</span>' : ''}</div>
+    L573: h += secao('raridade', 'Raridade', `<div class="mq-sws">${sw('soShiny', `${MK_IC.x}Só UX`)}${sw('soLendario', `${MK_IC.coroa}Lendários`)}${sw('soZmove', `${MK_IC.dskill}Com D-Skill`)}${sw('soAoe', `${MK_IC.aoe}Com Chip AoE`)}${sw('soLiberados', `${MK_IC.relogio}Só liberados (sem retenção)`)}</div>`,
+    L628: for (const [k, rot] of [['soShiny', 'Só UX'], ['soLendario', 'Lendários'], ['soZmove', 'Com D-Skill'], ['soAoe', 'Com Chip AoE']]) if (mkF[k]) add([k], '', rot);
+    L686: <small>${es ? `${elIco(es.elemento)}${esc(el?.nome || es.elemento)} · ${esc(es.estagioNome || '')}` : ''}${a.zmove ? '<span class="mk-selo z">D</span>' : ''}${a.aoe ? '<span class="mk-selo aoe">AoE</span>' : ''}</small></span></td>
+    L982: <div class="mk-ficha-info"><h2>${prefixoX(r)}${esc(es?.nome)}${seloAura(r, es)}</h2><div class="mk-tipos">${es ? ctx.tipoHtml(es) : ''} <span class="tipo" style="background:#475569;color:#fff">${esc(es?.estagioNome || '')}</span>${a.zmove ? '<span class="mk-selo z">D-Skill</span>' : ''}${a.aoe ? '<s
+    L1318: // aura, selo) nem o que não se compra com DCoin (bits, Boss Token, Revive, Evoluter, Poção de EVP).
+    L1353: veterano: 'Núcleo Digital, 10 Boss Tokens, 24 h de boosts, Passe Premium de 30 dias, as Asas de Aço, a Marca do Veterano e o título Veterano.',
+    L2917: seletorDigimons({ titulo: nomeItem(cat, it), max: 1, filtro: (d) => d.local === 'equipe' && (z ? especie(d.especie).elemento === z.elemento && !d.zmove : !d.aoe),
+  /js/arena-torre.js  (2)
+    L98: <i class="tlu-vez"></i>${l === 0 && d?.aoe ? '<i class="tlu-aoe">AoE</i>' : ''}${k === chefe && l === 1 ? '<i class="tlu-coroa">♛</i>' : ''}
+    L573: const RAROS = /^(evoluter|fragmento-|peca-aoe)|-pura$/;
+  /js/torneio.js  (1)
+    L51: [r.semDiscos ? 'n' : 's', r.semDiscos ? 'Sem D-Skill/AoE' : 'D-Skill/AoE ok'],
+
+======================================================================
+1c. Catalogo de itens: onde a lista de itens e definida
+======================================================================
+  /js/app.js  (68)
+    L104: especies: [], porId: {}, golpes: {}, areas: [], areaPorId: {}, regioes: [], itens: {}, tipos: {}, fx: {}, hits: new Set(), skins: [],
+    L110: for (const lista of [this.itens.scanners, this.itens.pocoes, this.itens.revives, this.itens.evolucao || [], this.itens.chips, this.itens.raros || [], this.itens.ovos || [], this.itens.zmoves || [], this.itens.datas || [], this.itens.auras || [], this.itens.comidas || []]) {
+    L211: const arquivos = ['especies', 'golpes', 'areas', 'itens', 'tipos', 'fx', 'hits', 'skins', 'bosses', 'passe', 'shop', 'regioes', 'torre'];
+    L221: const [especies, golpes, areas, itens, tipos, fx, hits, skins, bosses, passe, shop, regioes, torre] = dados;
+    L222: Object.assign(cat, { especies, golpes, areas, itens, tipos, fx, hits: new Set(hits), skins, bosses, passe, shop, regioes, torre }); // torre: shared/torre.json (Wiki da Torre dos Elementos)
+    L888: const scanners = cat.itens.scanners;
+    L928: ? ['ok', `Pronto para treinar em ${esc(m.vaiParaNome)}`, `Clique em Entrar e pode fechar o jogo. Rende XP do Tamer, XP do Digimon ativo${m.scan ? ', Bits e ovos do scan' : ' e Bits'}. O VIP também leva itens normais, sem os raros.`, 'entrar', 'Entrar']
+    L989: <div class="offc-cura-linha"><span>Poções</span><div class="auto-opcoes" id="offc-pocoes">${curas(cat.itens.pocoes, m.pocoes)}</div></div>
+    L991: <div class="offc-cura-linha"><span>Revives</span><div class="auto-opcoes" id="offc-revives">${curas(cat.itens.revives, m.revives)}</div></div>
+    L1094: const ordem = cat.itens.scanners.map((s) => s.id);
+    L1104: const itensN = (o) => Object.values(o || {}).reduce((a, n) => a + n, 0);
+    L1105: const temItens = itensN(m.itens) > 0;
+    L1106: // O que o treino juntou: ovos (os misteriosos só no 100%) e os itens do VIP, numa faixa só.
+    L1107: const coleta = m.scanner || temItens ? `<div class="off-coleta">
+    L1110: ${temItens ? `<div class="off-itens"><small>Itens</small>${usadosOff(m.itens)}</div>` : ''}
+    L1131: ${temItens ? linha('Itens', `${R.fmt(itensN(m.itensGratis))} <small>(metade)</small>`, R.fmt(itensN(m.itens))) : ''}
+    L1138: ${m.vip ? '' : '<small class="off-vip">Com VIP: até 12 h, 70% grátis ou 100% por só 1 DCoin, e itens no treino.</small>'}
+    L1487: const ovosNaBolsa = ovosDigitais.length + (cat.itens.ovos || []).reduce((t, i) => t + (E.itens[i.id] || 0), 0);
+    L1494: // Cartão de Speed é item da Mochila › Itens Raros: acende lá quando nenhum está ativo.
+    L1501: boss: (cat.bosses || []).some((b) => E.nivel >= b.tamerNivel && Object.entries(b.entrada || {}).every(([it, q]) => (E.itens[it] || 0) >= q)),
+    L1814: $('#escape-qtd').textContent = R.fmtCompacto(E.itens['escape-rope'] || 0);
+    L1815: $('#escape-rope').classList.toggle('vazio', !(E.itens['escape-rope'] > 0));
+    L1841: const pronto = evo && ativo.nivel >= evo.nivel && (E.itens[evo.chip] || 0) > 0 && (E.itens.evoluter || 0) >= nEvo && (!ativo.shiny || (E.itens['chip-shiny'] || 0) > 0);
+    L1850: : alem ? `${(eMax.especiais || []).length ? 'Especial certeiro, ' : ''}Rerrol e Especial aleatório: duas Megas e Núcleo Digital (o Rerrol é por DCoin).` : evo ? `Precisa de Nv ${evo.nivel} (está no ${ativo.nivel}) e 1× ${nomeItem(cat, evo.chip)} (tem ${E.itens[evo.chip] || 0})${nEvo ? ` e ${nEvo}× E
+    L1973: const evoCfg = () => cat.itens.evoConfig || { evpMax: 100, evpMinimo: 20, dreno5s: {}, sucesso: {}, evoluter: {}, evoluterPorAura: 2 };
+    L2001: const qtd = E.itens[id] || 0;
+    L2015: mudarHtml($('#auto-scanner-opts'), cat.itens.scanners.map((s) => itemOp(s.id, a.scanners?.includes(s.id), (a.scanners || []).indexOf(s.id) + 1)).join(''));
+    L2018: mudarHtml($('#auto-revive-opts'), cat.itens.revives.map((s) => itemOp(s.id, a.revives.includes(s.id), a.revives.indexOf(s.id) + 1)).join(''));
+    L2019: mudarHtml($('#auto-pocao-opts'), cat.itens.pocoes.map((s) => itemOp(s.id, a.pocoes.includes(s.id), a.pocoes.indexOf(s.id) + 1)).join(''));
+    L2036: $('#auto-evp-opts').addEventListener('click', (e) => { if (e.target.closest('[data-item]') && !(E.itens['pocao-evp'] > 0)) abrirLoja('pocoes'); });
+    L2456: mudarHtml($('#caidos-bolas'), cat.itens.scanners.map((s) => {
+    L2457: const q = E.itens[s.id] || 0;
+    L2703: // Os itens do pódio: o ícone com a quantidade no canto; o nome no balão.
+    L2710: <span>${p.itens.map(item).join('')}</span></div>`).join('');
+    L2744: // Os itens vêm com o id (o ícone); um servidor antigo manda só o texto do baú.
+    L2745: const itens = g.itens || (g.bau || []).map((txt) => ({ txt }));
+    L2746: for (const it of itens) {
+    L2776: // em cartões com ícone (XP, Bits, o baú e os itens do pódio). O placar inteiro fica recolhido.
+    L2788: // Os itens vêm com o id (o ícone); um servidor antigo manda só o texto do baú.
+    L2789: const itens = g.itens || [...(g.bau || []), ...(g.top || [])].map((txt) => ({ txt }));
+    ... +28
+  /js/menus.js  (10)
+    L229: for (const it of cat.shop?.itens || []) {
+    L293: const lista = (itens, premium) => `<div class="ps-lista ${premium ? 'prem' : ''}">
+    L296: ${itens.map((x) => `<div class="ps-lin">${icone(x.item)}<span>${esc(nomePasse(x))}</span></div>`).join('')}</div>`;
+    L399: function boostsHtml(itens) {
+    L400: const ks = Object.keys(itens || {});
+    L402: const h = itens[ks[0]];
+    L408: const premioCurto = (f) => (!f ? '' : f.dcoin ? dcoinHtml(f.dcoin, 'mini') : f.itens ? boostsHtml(f.itens) : f.texto ? `<span class="rk-txt">${esc(f.texto)}</span>` : '');
+    L461: ${pr ? `<span class="rk-eu-pr">${minhaFaixa ? `leva agora: ${premioCurto(minhaFaixa)}${minhaFaixa.dcoin && minhaFaixa.itens ? boostsHtml(minhaFaixa.itens) : ''}` : eu ? 'fora dos prêmios' : ''}</span>` : ''}
+    L468: const podioRes = t.faixas.filter((f) => f.de <= 3 && f.de === f.ate).map((f) => `<span class="rk-res p${f.de}"><em>${f.de}º</em>${f.dcoin ? dcoinHtml(f.dcoin) : f.texto ? esc(f.texto) : boostsHtml(f.itens)}</span>`).join('');
+    L475: <span class="rk-faixa-pr">${f.dcoin ? dcoinHtml(f.dcoin) : ''}${boostsHtml(f.itens)}${f.texto ? `<span class="rk-txt">${esc(f.texto)}</span>` : ''}${t.porEscalado && f.dcoin ? '<small class="rk-cada">cada escalado</small>' : ''}</span>
+  /js/cofre.js  (4)
+    L50: const auras = () => cat.itens.auras || [];
+    L52: const naMochilaAura = (id) => E()?.itens?.[id] || 0;
+    L55: const naMochila = () => E()?.itens?.['exp-share'] || 0;
+    L363: // ------------------------------------------------------------ Exp. Share (Mochila → Itens Raros → Exp. Share)
+  /js/aura-fx.js  (1)
+    L5: // As auras da Shop (itens aura-*): o efeito animado em volta do Digimon que usa uma. A cena
+  /js/loja.js  (3)
+    L38: const evoCfg = () => cat.itens.evoConfig || { dropEvoluter: {}, evoluter: {}, evoluterPorAura: 2 };
+    L43: const temDe = (id) => E().itens?.[id] || 0;
+    L45: const produtos = (c) => [...(cat.itens[c] || []), ...(c === 'pocoes' ? cat.itens.evolucao || [] : [])].filter((i) => i.preco);
+  /js/mochila.js  (12)
+    L18: { id: 'raros', ico: 'token-boss', nome: 'Itens Raros', curto: 'Raros', desc: 'Baús, tokens, tickets, fragmentos, discos e Cartões de Speed', luz: '#fbbf24', vazio: 'Nenhum item raro ainda.' },
+    L33: const tem = (id) => E().itens?.[id] || 0;
+    L37: // Cada bolso devolve os grupos da grade: [{ nome, itens }], já sem o que você não tem.
+    L39: const e = E(), it = cat.itens;
+    L59: return g.map(([nome, itens]) => ({ nome, itens })).filter((x) => x.itens.length);
+    L75: const it = cat.itens, e = E();
+    L89: if (cat.itens.revives.includes(i)) return { efeito: `Volta com ${i.curaPct}% do HP`, texto: i.curaPct >= 100 ? 'Levanta o Digimon com a vida cheia.' : 'Levanta o Digimon na hora, com um pouco de vida.', fonte: 'Loja do Mudfrigimon' };
+    L90: if (cat.itens.pocoes.includes(i)) return { efeito: i.curaPct ? `Cura ${i.curaPct}% do HP` : `Cura ${fmt(i.cura)} HP`, texto: 'As Automações usam sozinhas quando a vida cai.', fonte: 'Loja do Mudfrigimon' };
+    L166: const auras = soma(cat.itens.auras || []), nOvos = ctx.ovos().length, selos = ctx.selos();
+    L187: const gs = grupos(cfg.id), itens = gs.flatMap((g) => g.itens);
+    L189: const atual = itens.find((i) => i.id === st.sel[cfg.id]) || itens[0];
+    L195: <section class="mo-col mo-meio">${gs.length ? gs.map((g) => `<div class="mo-grupo">${g.nome} <em>${g.itens.length}</em></div><div class="mo-grade">${g.itens.map((i) => slot(i, sel)).join('')}</div>`).join('') : `<div class="mo-vazio">Nada neste bolso ainda.</div>`}</section>
+  /js/halloween.js  (4)
+    L50: const saldo = (rol) => (rol.id === 'dcoin' ? E().diamantes : E().itens['doce-halloween'] || 0);
+    L187: const e = E(), doces = e.itens['doce-halloween'] || 0;
+    L188: const itens = info.loja.filter((i) => i.grupo === secao);
+    L196: <div class="lj-vitrine hw-v-itens">${seletor}<div class="vitrines">${itens.map((i, n) => {
+  /js/boss.js  (7)
+    L133: const tem = ctx.E()?.itens?.[r.item] || 0;
+    L134: return `<div class="bs-card rar-${cl}" style="--i:${i}" data-dica="${esc(cat.itens.raros?.find((x) => x.id === r.item)?.desc || nomeItem(cat, r.item))}">
+    L272: const itensMapa = (o) => Object.entries(o || {}).map(([id, q]) => `<span class="br-mini" data-dica="${esc(nomeItem(cat, id))}">${icone(id)}<b>×${fmt(q)}</b></span>`).join('');
+    L290: ${tile('t-pocao', 'Poções usadas', conta(pocoes, false), pocoes ? `<span class="br-minis">${itensMapa(p.pocoes)}</span>` : 'nenhuma', p.cura ? `curaram ${fmt(p.cura)} de HP` : '')}
+    L291: ${tile('t-revive', 'Revives usados', conta(revives, false), revives ? `<span class="br-minis">${itensMapa(p.revives)}</span>` : 'nenhum')}
+    L332: return `<div class="br-serie"><span class="br-serie-rot"><b>Repetição automática</b><small>${vit}/${lista.length} vitórias · ${Object.keys(drops).length ? `<span class="br-minis">${itensMapa(drops)}</span>` : 'sem drops'}</small></span>
+    L381: <div class="g-drop ${nDrops ? 'tem' : ''}"><small>Drops</small><b>${nDrops ? `${fmt(nDrops)} ${nDrops === 1 ? 'item' : 'itens'}` : 'nada desta vez'}</b></div>
+  /js/digidex.js  (2)
+    L368: const premioAl = (col) => `<span class="al-pr"><img src="${icoBonus(col.bonus)}" alt=""><span>${esc(col.bonus.nome)}</span><b class="al-pct" translate="no">${pctAl(col.bonus.pct)}</b></span>${col.itens.map((it) => `<span class="al-pr item"><img src="${icoItem(it)}" alt="">${esc(it.nome)}</span>`).jo
+    L441: <div class="al-premio"><div class="al-premio-itens"><span class="al-fita">${col.estado === 'resgatado' ? 'Recompensa' : 'Ao completar'}</span>${premioAl(col)}</div>${botaoAl(col)}</div></div>`;
+  /js/wiki.js  (42)
+    L205: const linhas = cat.itens.scanners.map((s) => { const c = R.chanceCaptura(preco, s.eficiencia, 0, boost); return [`${icone(s.id)} ${esc(s.nome)}`, vezes(s.eficiencia), `<b>${pct(c * 100)}</b>`, `≈ ${fmt(Math.ceil(1 / c))}`]; });
+    L604: ['D-Skill', 'Golpe de poder 1.800 com recarga de 60 s. Nasce Especial e pode virar Físico na ficha. Aparece no slot "D" da barra de golpes.', 'combate'], ['Exp. Share', 'Item da Shop (50 DCoin) que passa 5% do XP de cada abate a um Digimon. Não cai de monstro.', 'itens'], ['Fragmento', 'Pedaço raro:
+    L620: // Além da Mega (alem_mega.go; números em itens.evoConfig.alemMega). A potência, o DP, a qualidade e
+    L627: const precoNucleo = cat.shop.itens.find((i) => i.id === am.nucleo)?.preco || 0;
+    L680: const shop = (cat.shop?.itens || []).filter((i) => i.evento === 'halloween');
+    L728: const idItemBau = (id) => { const g = /^data:(.+)$/.exec(id); return g ? (cat.itens.datas || []).find((x) => x.id.endsWith('-' + g[1]))?.id || id : id; };
+    L776: b.itens.map((it) => [`${icone(idItemBau(it.item))} ${esc(nomeItemBau(it.item))}`, it.qtd[0] === it.qtd[1] ? fmt(it.qtd[0]) : `${fmt(it.qtd[0])}–${fmt(it.qtd[1])}`, pctBau(chanceBau(it, 1)), pctBau(chanceBau(it, Math.round(T.andares / 2))), pctBau(chanceBau(it, T.andares))]))}`).join('')}
+    L786: evo = cat.itens.evoConfig; ovoCfg = cat.itens.ovoConfig; antes = {};
+    L802: <li><b>Compre Scanners e poções</b> na ${ir('economia', 'Loja')}. Scanner Básico custa ${fmt(cat.itens.scanners[0].preco)} bits; Small Potion ${fmt(cat.itens.pocoes[0].preco)}.</li>
+    L830: ['mochila', 'Itens, Itens Raros (com os Cartões de Speed), Auras, Roupas, Vínculo, Incubadora, Coleção e Oferenda.'], ['equipe', 'Troque o Digimon em campo e mexa no DigiBank.'], ['calculadora', 'Compare Digimon e simule um duelo no servidor.'],
+    L855: <li><b>Exp. Share</b>: cada Digimon que segura uma recebe 5% do XP de cada abate, esteja na equipe, no DigiBank ou na Coleção. Equipe pela Mochila › Itens Raros.</li>
+    L873: ${tabela(['Aura', 'Bônus', 'DCoin'], (cat.itens.auras || []).map((a) => [`<b>${esc(a.nome)}</b>`, esc(Object.entries(a.bonus).length === 6 ? `+${Object.values(a.bonus)[0]}% em todos` : Object.entries(a.bonus).map(([k, v]) => `+${v}% ${R.ROTULO_STAT[k] || k}`).join(', ')), a.exclusiva ? 'Exclusiva do
+    L874: <p>O <b>Tamer</b> não usa aura: ele veste <b>asas</b> (Shop › Asas), só no visual. Compra única; fica liberada na conta e você troca em Mochila › Roupas. ${cat.shop.itens.filter((i) => i.asa).map((i) => `<span>${esc(i.nome)}</span> ${fmt(i.preco)}`).join(' · ')} DCoin.</p>` },
+    L927: <li>Se falhar, os itens são gastos e o Digimon continua igual. Tente de novo quando tiver os itens.</li></ul>` },
+    L966: const v = cat.itens.vinculoConfig || {};
+    L977: const v = cat.itens.vinculoConfig || { niveis: [], nomes: [], bonus: [] };
+    L983: const v = cat.itens.vinculoConfig || { drop: {} };
+    L985: const comidas = cat.itens.comidas || [];
+    L987: const naShop = cat.shop.itens.filter((i) => i.da?.some((d) => big.has(d.item)));
+    L1007: resumo: ['Área acima do seu nível de Tamer fica trancada.', 'Cada região tem uma aura; a aura é só visual.', 'Regiões altas soltam mais itens raros.'], telas: ['mapa'],
+    L1036: { id: 'cura', titulo: 'Poções e revives', html: () => `<div class="wk-2col"><div>${tabela(['Poção', 'Cura', 'Preço'], cat.itens.pocoes.map((p) => [`${icone(p.id)} ${esc(p.nome)}`, p.curaPct ? `${p.curaPct}% do HP` : `${fmt(p.cura)} HP`, `${fmt(p.preco)} bits`]))}</div>
+    L1037: <div>${tabela(['Revive', 'Levanta com', 'Preço'], cat.itens.revives.map((p) => [`${icone(p.id)} ${esc(p.nome)}`, `${p.curaPct}% do HP`, `${fmt(p.preco)} bits`]))}</div></div>` },
+    L1055: <li>Rende XP do Tamer, XP do Digimon ativo na saída e Bits. O VIP também leva itens normais (chip, Evoluter, Proteção de Ovo e Data), sem os raros. Cair ou deixar a aba de lado <b>não</b> treina.</li>
+    L1071: ${tabela(['Scanner', 'Eficiência', 'Onde'], cat.itens.scanners.map((s) => [`${icone(s.id)} ${esc(s.nome)}`, vezes(s.eficiencia), s.preco ? `Loja, ${fmt(s.preco)} bits` : 'Shop (pacotes por DCoin)']))}` },
+    L1105: { id: 'energia', titulo: 'Energia de Ovo', html: () => `<p>Cai dos selvagens, na família do derrotado (${[...new Set(cat.itens.datas.map((d) => d.familia))].map((f) => f[0].toUpperCase() + f.slice(1)).join(', ')}). Só sobe ovo da mesma família.</p>
+    L1152: [`${icone('bau-bg-comum')}<b>Baú do Boss Global</b>`, '1 a 3 Energias de Ovo Instáveis', 'Energia Refinada (20%), 3 a 5 Poções Hyper (60%), 1 a 2 Revives (30%) e 2 a 4 Scanners Super (40%). Sem itens raros.']])}
+    L1166: { id: 'tipos', titulo: 'Tipos de evento', html: () => tabela(['Evento', 'O que aumenta'], [['XP', 'XP do Tamer e dos Digimon'], ['Drop', 'Chance de drop de itens'], ['Bits', 'Bits por abate'], ['P4+', 'Chance de ovo P4 e P5 no scan'], ['Ovo UX', 'Chance de Ovo UX'], ['Scan', 'Chance de o scan dar ce
+    L1197: <p>Hoje são ${L.length}: ${L.map((e) => esc(e.nome)).join(', ')}.</p>` + nota('Use o ticket em Mochila › Itens Raros › Colosseum Ticket › Entrar.'); } },
+    L1213: resumo: ['O Cartão de Speed é um item: fica na Mochila › Itens Raros.', 'Só um cartão fica ativo; as porcentagens não somam.', 'Sai da Oficina do Prof. Kurata (10 Fragmentos de Speed).'], telas: ['mochila'],
+    L1215: { id: 'usar', titulo: 'Como ativar', html: () => `<ol class="wk-passos"><li>Abra a <b>Mochila</b> (botão da bolsa) e entre em <b>Itens Raros</b>.</li>
+    L1232: { id: 'vip', titulo: 'VIP e boosts', html: () => { const s = cat.shop.itens; const preco = (id) => s.find((x) => x.id === id)?.preco;
+    L1238: const esp = cat.shop.itens.filter((x) => x.secao === 'especiais');
+    L1253: { id: 'itens', grupo: 'economia', nome: 'Itens raros', titulo: 'Itens raros e de onde vêm', icone: 'exp-share', lead: 'Exp. Share, Cartões de Speed, fragmentos, tickets e outros itens da Mochila: para que servem e onde conseguir cada um.',
+    L1254: resumo: ['Exp. Share não cai de nenhum monstro: só se compra ou vem de brinde em pacote.', 'Fragmentos viram o item de verdade com o Prof. Kurata (10 por 1).', 'Muitos itens também se compram e vendem no Mercado.'], telas: ['shop', 'loja', 'rmt'],
+    L1257: const pacotes = cat.shop.itens.filter((x) => x.secao !== 'utilitarios' && (x.da || []).some((d) => d.item === 'exp-share'));
+    L1258: const preco = cat.shop.itens.find((x) => x.id === 'exp-share')?.preco;
+    L1260: <li>Um item por Digimon e um Digimon por item: não acumula. Equipe em Mochila › Itens Raros ou na pasta Exp. Share do Cofre.</li>
+    L1267: { id: 'speed', titulo: 'Cartão de Speed', html: () => `<p>O <b>Cartão de Speed</b> também é item raro: fica em Mochila › Itens Raros, e é lá que você toca em <b>Ativar</b>. Ativo, o Tamer e o Digimon andam mais rápido na hunt. Veja ${ir('speed', 'Cartão de Speed')}.</p>` },
+    L1268: { id: 'tabela', titulo: 'Todos os itens raros', html: () => tabela(['Item', 'Para quê', 'De onde vem'], cat.itens.raros.map((r) => [`${icone(r.id)} <b>${esc(r.nome)}</b>`, esc(r.desc), esc(r.fonte)])) },
+    L1270: ${nota('Quanto mais alta a região, mais itens raros caem. Fragmentos de D-Skill e Chip AoE saem dos Bosses; o de Núcleo, do pódio do Boss Global.')}` },
+    ... +2
+  /js/kurata.js  (9)
+    L51: const tem = (item) => E().itens[item] || 0;
+    L52: const zmoveDe = (elem) => cat.itens.zmoves.find((z) => z.elemento === elem);
+    L53: const discos = () => [...cat.itens.zmoves.map((z) => z.id), 'disco-aoe'].filter((it) => tem(it) > 0);
+    L59: elem: zmoveDe(especie(ativo?.especie)?.elemento)?.elemento || cat.itens.zmoves[0].elemento,
+    L156: const n = cat.itens.zmoves.reduce((s, z) => s + tem(z.id), 0);
+    L171: return `<div class="ku-painel"><h4>Escolha o elemento</h4><div class="ku-elems">${cat.itens.zmoves.map((z) => {
+    L185: const z = cat.itens.zmoves.find((x) => x.id === st.disco);
+    L187: const zz = cat.itens.zmoves.find((x) => x.id === it);
+    L233: if (el.dataset.ir === 'aplicar') { st.aba = 'aplicar'; st.saiu = null; ctx.rerender(); } else if (el.dataset.ir === 'raros') ctx.menus.abrirItensRaros(); else ctx.menus.abrirCasa(el.dataset.ir);
+  /js/ficha-especie.js  (5)
+    L128: const evo = cat.itens.evoConfig || {};
+    L137: const ch = cat.itens.ovoConfig?.dropData?.[chave];
+    L144: const pProt = cat.itens.ovoConfig?.dropProtecao?.[e.estagio];
+    L161: const melhorEf = Math.max(0, ...(cat.itens.scanners || []).map((x) => x.eficiencia));
+    L190: const scanners = cat.itens.scanners || [];
+  /js/pocket.js  (3)
+    L112: .pk-itens { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+    L322: const itens = achados.map(([id, n]) => `<div class="pk-it" title="${esc(cat?.item(id)?.nome || id)}"><img src="${abs(iconeSrc(id))}" alt=""><b>×${fmt(n)}</b></div>`).join('');
+    L329: ${itens ? `<div class="pk-itens">${itens}</div>` : `<p class="pk-vazio">${esc(t('Nenhum drop ainda.'))}</p>`}</div>`;
+  /js/chat-links.js  (6)
+    L31: const rotItem = (id) => CATEGORIAS.find(([l]) => (cat.itens[l] || []).some((x) => x.id === id))?.[1] || 'Item';
+    L57: const itens = E().itens || {};
+    L58: for (const [lista] of CATEGORIAS) for (const it of cat.itens?.[lista] || []) {
+    L59: if (!(itens[it.id] > 0) || out.some((x) => x.tipo === 'item' && x.ref.item === it.id)) continue;
+    L61: sub: `×${fmt(itens[it.id])}`, ico: icone(it.id), peso: 0 });
+    L171: const cfg = cat.itens.ovoConfig || {}, min = cfg.estagios?.[o.estagio]?.minutos, teto = cfg.tetoTamanho?.[o.data || 0];
+  /js/chat-midia.js  (9)
+    L83: const st = { aba: 'fig', figs: null, figsEm: 0, figsOn: true, gifsOn: true, q: '', pag: 1, itens: [], prox: false, carregando: false, erro: '', cache: new Map() };
+    L92: if (st.aba === 'gif' && !st.itens.length) buscar('', 1);
+    L109: if (!st.itens.length) buscar(busca.value, 1);
+    L125: if (pag === 1) { st.q = q; st.itens = []; st.prox = false; grade.scrollTop = 0; }
+    L140: st.cache.set(`${m.q}|${m.pag}`, { itens: m.itens || [], prox: !!m.prox });
+    L142: const vistos = new Set(st.itens.map((x) => x.id));
+    L143: st.itens.push(...(m.itens || []).filter((x) => !vistos.has(x.id)));
+    L163: const html = st.itens.map((g) => `<button type="button" class="cmid-item gif" data-gif="${esc(g.id)}" aria-label="${esc(g.n || 'GIF')}"><img src="${esc(g.u)}" alt="" loading="lazy" decoding="async" draggable="false"></button>`).join('');
+    L166: : !st.itens.length ? '<p class="cmid-vazio">Nenhum GIF encontrado.</p>'
+  /js/ovo-tier.js  (1)
+    L17: const cfgOvo = () => cat.itens.ovoConfig;
+  /js/ficha-tamer.js  (3)
+    L272: confirmar(`Excluir ${p.nick} para sempre? Somem o Tamer, todos os Digimon, itens, bits, DCoin e D-Dol. Não tem volta.`, async () => {
+    L275: }, { perigo: true, texto: 'Isto apaga o Tamer, todos os Digimon, itens, bits, DCoin e D-Dol. Não tem como desfazer.' });
+    L284: const preco = new Map(cat.shop.itens.filter((i) => i.skin).map((i) => [i.skin, i.preco]));
+  /js/novidades.js  (1)
+    L154: return `<section class="nv-bloco nv-caixa nv-lista">${b.titulo ? `<h3>${fmt(b.titulo)}</h3>` : ''}<ul>${(b.itens || []).filter((t) => String(t || '').trim())
+  /js/metas.js  (1)
+    L83: const chips = (vez?.itens || []).map((it) => `<span class="mt-chip"><img src="/icones/${esc(it.i)}.png" alt="">${esc(it.t)}</span>`).join('');
+  /js/vinculo.js  (4)
+    L6: // A saciedade (0 a 100%) cai sozinha em itens.vinculoConfig.fomeHoras; comida enche. Enquanto tem
+    L27: const cfg = () => cat.itens.vinculoConfig || { max: 1000, niveis: [0], nomes: ['Desconhecido'], bonus: [0], fomeHoras: 24 };
+    L28: const comidas = () => cat.itens.comidas || [];
+    L31: const tem = (id) => ctx.E()?.itens?.[id] || 0;
+  /js/torre.js  (1)
+    L113: const premio = (a.premio || []).map((p) => (p.item === 'bits' ? `${fmtC(p.qtd)} Bits` : `${fmt(p.qtd)}× ${esc(cat.itens?.porId?.[p.item]?.nome || p.item)}`)).join(' · ');
+  /js/asas-fx.js  (1)
+    L5: // As asas do Tamer (itens asa-* da Shop): um par de asas animado nas costas do Tamer. Só visual.
+  /js/menus2.js  (69)
+    L7: // Incubadora, Coleção, Itens Raros, Roupas).
+    L163: // O Cartão de Speed é item: fica (e se ativa) em Mochila › Itens Raros; aqui só o Registro.
+    L203: if (aba === 'bikes' || aba === 'speed') return abrirItensRaros();
+    L219: const frag = e.itens['fragmento-chave'] || 0;
+    L243: <div class="ilh-registro">${!regOk ? '<p class="fraco" style="padding:14px">Carregando…</p>' : reg.itens.length ? reg.itens.map((it) => `<div class="ilh-linha ilh-${it.raridade}">
+    L261: // coluna de filtros à esquerda e a vitrine à direita. Digimon em cards com página; itens num
+    L289: const MQ_TIPOS = [['tudo', 'Tudo', 'menu-rmt'], ['digimon', 'Digimon', 'menu-digidex'], ['ovo', 'Ovos', 'chocadeira'], ['item', 'Itens', 'hud-mochila'], ['pecas', 'Ilhas e Speed', 'ilha']];
+    L369: let lista = null, especies = null, itens = null, meus = null, favs = null, precos = null, cota = null, buscaT = 0, mudouT = 0, sujo = false;
+    L408: if (mkF.tipo === 'item') { enviar('mercado.itens'); if (mkF.itemSel) enviar('mercado.listar', { tipo: 'item', especie: mkF.itemSel, moeda: mkF.moedaItem }); return; }
+    L434: const arr = ofertas(), r = itens?.[item];
+    L478: 'mercado.itens': (m) => { itens = m.itens; ctx.rerender(); },
+    L761: const itensCatalogo = () => {
+    L762: const todos = [...cat.itens.chips, ...(cat.itens.raros || []).filter((i) => NEGOCIAVEL(i.id) && !i.id.startsWith('chip-')), ...(cat.itens.zmoves || []), ...(cat.itens.evolucao || []), ...(cat.itens.datas || [])].filter((i) => NEGOCIAVEL(i.id));
+    L766: return todos.filter((i) => filtroCat(i.id) && (!b || i.nome.toLowerCase().includes(b)) && (!els.length || els.some((el) => i.id.endsWith('-' + el))) && (!mkF.soEstoque || itens?.[i.id]?.unidades));
+    L771: const resumo = itens?.[item];
+    L788: const vitrineItens = () => {
+    L789: const arr = itensCatalogo();
+    L791: const r = itens?.[i.id];
+    L795: return barraVit(itens ? `<b>${fmt(arr.length)}</b> item(ns)` : '', null, '', false) + `<div class="mk-itens-corpo"><div class="mk-itens">${!itens ? vazioMk('carregando…') : arr.length ? arr.map(lin).join('') : vazioMk('Nenhum item nesta categoria.', 'funil')}</div>
+    L846: if (mkF.tipo === 'item') return vitrineItens();
+    L859: const rol = Object.fromEntries(['.mq-col-sc', '.mq-dir', '.mq-tab', '.mk-itens', '.mk-linhas'].map((s) => [s, $(s, c)?.scrollTop || 0]));
+    L943: 'mercado.itens': (m) => { itens = m.itens; ctx.rerender(); },
+    L1081: const itens = Object.entries(e.itens).filter(([k, q]) => q > 0 && NEGOCIAVEL(k));
+    L1082: if (st.tipo === 'item' && !itens.some(([k]) => k === st.item)) st.item = itens[0]?.[0] || '';
+    L1098: const maxQtd = st.tipo === 'item' ? e.itens[st.item] || 0 : st.tipo === 'diamantes' ? Math.min(e.diamantes, vendaveis ?? e.diamantes) : 1;
+    L1122: if (st.tipo === 'item' && st.item) { arte = icone(st.item); nome = nomeItem(cat, st.item); sub = `você tem ${fmt(e.itens[st.item] || 0)}`; canto = `×${fmt(st.qtd)}`; }
+    L1139: : st.tipo === 'item' ? (itens.length ? `<div class="na-tira">${itens.map(([k, q]) => `<button class="na-opcao ${k === st.item ? 'on' : ''}" data-an-item="${k}" data-dica="${esc(nomeItem(cat, k))}">${icone(k)}<small>${fmt(q)}</small></button>`).join('')}</div>` : '')
+    L1278: ['pacotes', 'Pacotes', 'token-boss', 'Kits com desconto'], ['utilitarios', 'Utilitários', 'exp-share', 'Exp. Share, vagas e itens'], ['outfits', 'Roupas', 'hud-perfil', 'Visuais do Tamer'],
+    L1294: function familiasShop(itens) {
+    L1296: for (const i of itens) {
+    L1317: // Quanto os itens de cada pacote custam na própria Shop, sem contar os exclusivos (título, roupa, asas,
+    L1328: const valorEsp = (i) => !temValorEsp(i) ? '' : `<div class="esp-valor"><i class="esp-valor-off">-${descontoEsp(i)}%</i><div><b>Mais de ${fmt(maisDeEsp(VALOR_ESP[i.especial]))} DCoin em itens</b><small><s>${fmt(VALOR_ESP[i.especial])}</s> pelo preço de ${fmt(i.preco)}, fora os exclusivos</small></div
+    L1333: const opcoesFund = () => (cat.shop.itens.find((i) => i.especial === 'fundador')?.escolha || []).map((p) => p.item);
+    L1335: // Ícone de uma linha do conteúdo: os itens usam o PNG; asas, auras, títulos e selos ganham um desenho próprio.
+    L1352: fundador: 'Título numerado, Asas Soberanas, Selo do Fundador, selo dourado no chat e os itens do Pacote Veterano. Nunca volta à venda.',
+    L1357: const it = cat.shop.itens.find((i) => i.especial === k);
+    L1363: return `<div class="sh-faixa esp-faixa esp-f-${k}${tem ? ' tem' : ''}"><div><em>${esc(it.nome)}</em><h3>${h3}</h3>${temValorEsp(it) ? `<span class="esp-faixa-valor"><i>-${descontoEsp(it)}%</i>Mais de ${fmt(maisDeEsp(VALOR_ESP[k]))} DCoin em itens</span>` : ''}<p>${TXT_ESP[k]}</p>
+    L1370: const it = cat.shop.itens.find((i) => i.especial === k);
+    L1378: ${temValorEsp(it) ? `<span class="sh-fita" data-dica="Em relação ao valor dos itens na Shop">−${descontoEsp(it)}%</span>` : ''}<span class="sh-qts">Exclusivo</span>
+    L1380: <div class="sh-t-txt"><h4>${esc(it.nome)}</h4><em class="sh-esp-sub">${sub}</em>${temValorEsp(it) ? `<span class="sh-esp-valor">Mais de ${fmt(maisDeEsp(VALOR_ESP[k]))} DCoin em itens</span>` : ''}<small>${TXT_ESP[k]}</small></div>
+    ... +29
+  /js/arena-torre.js  (1)
+    L575: <div class="tlu-bau-txt"><small>${esc(bau.nome)}</small><span class="tlu-bau-itens">${(bau.itens || []).map((x) => `<span class="tlu-bau-it${RAROS.test(x.item) ? ' raro' : ''}">${icone(x.item)}<b>${esc(x.txt || x.item)}</b></span>`).join('')}</span></div></div>` : '';
+  /js/oferenda.js  (2)
+    L33: const tem = (item) => E().itens[item] || 0;
+    L37: const ovosLivres = () => (ctx.ovos() || []).filter((o) => !o.travado && !o.preso && (cat.itens.datas || []).some((x) => x.id === dataDoOvo(o)));
+  /js/torneio.js  (2)
+    L27: const degraus = (itens, grande) => `<div class="tn-podio${grande ? ' grande' : ''}">${[2, 1, 3].map((pos) => {
+    L28: const it = itens.find((x) => x.pos === pos);
+
+======================================================================
+1d. Categoria / tipo / tag de item
+======================================================================
+  /js/app.js  (6)
+    L443: avisoConexao({ tipo: 'admin', titulo: d.titulo, txt: d.txt, botao: 'Reconectar', aoVoltar: conectar, discord: bloqueada });
+    L453: tipo: 'aba', titulo: 'Jogo aberto em outra aba',
+    L2120: <button type="button" class="m-ver" data-ver-anuncio="${a.id}" data-tipo="${esc(a.tipo)}" data-esp="${esc(a.especie || a.item || '')}" data-moeda="${esc(a.moeda || '')}">Ver anúncio ›</button></div></div>`;
+    L2434: function adicionarLog(txt, tipo = '') {
+    L3602: tipo: 'atualizacao', status: 'Nova versão', titulo: m.titulo, txt: m.txt, botao: 'Reiniciar o jogo',
+    L4074: const v = await perguntar({ titulo: 'Reduzir nível', texto: `Reduzir ${prefixoX(d)}${e.nome} para qual nível? (de ${e.tetoCaptura} a ${d.nivel - 1}; não tem como desfazer)`, valor: e.tetoCaptura, tipo: 'number', min: e.tetoCaptura, max: d.nivel - 1, ok: 'Continuar' });
+  /js/cena.js  (9)
+    L1194: if (c.aliado) atualizar('a', { ...c.aliado, tipo: 'aliado' });
+    L1195: atualizar('t', { ...c.tamer, tipo: 'tamer', skin: this.skinLocal, asa: this.asaLocal || '', auraT: this.auraTLocal || '', titulo: this.tituloLocal || '', tituloCor: this.tituloCorLocal || '', bike: c.tamer?.bike || '' });
+    L1196: for (const o of c.tamers || []) atualizar('o' + o.nick, { ...o, tipo: 'tamer', outro: true }); // o Tamer do outro lado (PvP) ou do grupo
+    L1197: for (const o of c.aliados || []) atualizar(o.id, { ...o, tipo: 'aliado', outro: true }); // Labirinto da Guild: os Digimon do grupo
+    L1198: for (const i of c.inimigos || []) atualizar('i' + i.id, { ...i, tipo: 'inimigo' });
+    L1201: atualizar('t', { ...c.tamer, tipo: 'tamer', skin: this.skinLocal, asa: this.asaLocal || '', auraT: this.auraTLocal || '', titulo: this.tituloLocal || '', tituloCor: this.tituloCorLocal || '', nick: this.nickLocal, local: true, bike: '' });
+    L1203: for (const o of outros) atualizar('o' + o.nick, { ...o, tipo: 'tamer', outro: true });
+    L1216: Object.assign(e, pet, { tipo: 'pet', dono });
+    L1745: if (this.mapaId === 'mainCity') for (const n of this.npcs) lista.push({ id: 'npc:' + n.id, e: { ...n, tipo: 'npc' }, x: n.x, y: n.y, caixa: [30, n.altura || 92] });
+  /js/clima-fx.js  (4)
+    L154: if (!mapaId || !(mapaId in REGIOES) || !REGIOES[mapaId]) return { tipo: 'limpo', forca: 0 };
+    L170: const c = temCeu(mapaId) ? climaDe(mapaId, ms) : { tipo: 'limpo', forca: 0 };
+    L171: const tipo = c.forca > 0.15 ? c.tipo : 'limpo';
+    L878: const clima = caverna ? { tipo: 'limpo', forca: 0 } : climaDe(id, ms);
+  /js/evolucao-fx.js  (1)
+    L196: .cine[data-tier="4"] .to b{filter:drop-shadow(0 0 22px var(--glow)) drop-shadow(0 0 48px color-mix(in srgb,var(--glow) 60%,transparent)) drop-shadow(0 4px 0 rgba(0,0,0,.65))}
+  /js/mochila.js  (1)
+    L223: const q = await perguntar({ titulo: 'Jogar fora', texto: `Quantos ${cat.item(it).nome} jogar fora? (você tem ${fmt(tem(it))})`, valor: 1, tipo: 'number', min: 1, max: tem(it) || 1, ok: 'Jogar fora' });
+  /js/digidex.js  (2)
+    L325: const ICO_CAT = { linhagem: 'hud-evolucao.png', aura: 'aura/aura-digital.svg', elemento: 'elementos/fogo.png', tipo: 'elementos/vacina.png', evolucao: 'evoluter.png', unica: 'nucleo-digital.png', especial: 'chip-shiny.png' };
+    L330: tipo: 'Todas as espécies Vaccine, Data ou Virus.',
+  /js/wiki.js  (37)
+    L41: const nota = (txt, tipo = '') => `<div class="wk-nota ${tipo}">${txt}</div>`;
+    L635: return { id: 'alemega', grupo: 'digimon', nome: 'Além da Mega', titulo: 'Além da Mega: Especial, Fusão e Rerrol', icone: 'nucleo-digital', arte: ['gallantmon', 'gallantmon-crimson-mode', 'omegamon'],
+    L681: return { id: 'halloween', grupo: 'progresso', nome: 'Noite das Abóboras', titulo: 'Evento: Noite das Abóboras', icone: 'abobora',
+    L733: return { id: 'torre', grupo: 'progresso', nome: 'Torre dos Elementos', titulo: 'Torre dos Elementos', icone: 'menu-torre',
+    L789: { id: 'inicio', grupo: 'comeco', nome: 'Primeiros passos', icone: 'menu-mapa', lead: 'O seu Digimon luta sozinho. Você escolhe onde ele caça, com quem, e o que fazer com o que cai.',
+    L820: { id: 'menus', grupo: 'comeco', nome: 'Menus e botões', icone: 'hud-config', lead: 'Para que serve cada botão da tela. Toque em um para abrir.',
+    L847: { id: 'niveis', grupo: 'digimon', nome: 'Níveis e XP', icone: 'boost-xp', lead: 'Dois níveis andam juntos: o do Tamer libera áreas e menus; o do Digimon cresce os stats.',
+    L860: { id: 'stats', grupo: 'digimon', nome: 'Stats, nota e poder', icone: 'hud-calculadora', lead: 'Dois Digimon da mesma espécie nunca são iguais: qualidade, DP, Potência e UX mudam tudo.',
+    L876: { id: 'status', grupo: 'digimon', nome: 'Os 6 status', titulo: 'Os 6 status: HP, ATK, DEF, SP.ATK, SP.DEF e SPD', icone: 'hud-calculadora', lead: 'Todo Digimon tem seis status. Cada um mexe numa parte da luta: vida, dano que dá, dano que aguenta e velocidade.',
+    L918: { id: 'evolucao', grupo: 'digimon', nome: 'Evolução e EVP', titulo: 'Evolução, formas e EVP', icone: 'hud-evolucao', arte: ['agumon', 'greymon', 'metalgreymon', 'wargreymon'], lead: 'Toda linha começa no Rookie e vai até o Mega. Depois de liberar uma forma, dá para trocar entre elas na hunt.',
+    L940: { id: 'linhagens', grupo: 'digimon', nome: 'Linhagens', titulo: 'Todas as linhagens', icone: 'menu-digidex', lead: 'Cada linha do jogo, do Rookie até além da Mega. As silhuetas pretas são Digimon que já existem e ainda vão chegar.',
+    L943: { id: 'oferenda', grupo: 'digimon', nome: 'Oferenda', titulo: 'Oferenda: Digimon viram chips, ovos viram Energia', icone: 'oferenda', lead: 'Os Digimon que sobram no DigiBank viram chips do elemento na roleta da Oferenda (Mochila › Oferenda). Os ovos que sobram na bolsa viram Energia de Ovo da famíl
+    L962: { id: 'vinculo', grupo: 'digimon', nome: 'Vínculo', titulo: 'Vínculo: a amizade com o seu Digimon', icone: 'comida-frango', lead: 'Cuide do seu Digimon com comida e o Vínculo entre vocês cresce. Cada nível dá um pouco de força em todos os stats.',
+    L994: { id: 'elementos', grupo: 'digimon', nome: 'Elementos', titulo: 'Elementos e atributos', icone: 'chip-fire', lead: 'O atributo pesa mais que o elemento. Na hunt e no Boss a vantagem ainda é amplificada.',
+    L1006: { id: 'mapa', grupo: 'caca', nome: 'Mapa e drops', titulo: 'Mapa, regiões e drops', icone: 'menu-mapa', lead: 'A Ilha File vai até o Nv 100. Depois vêm as regiões com aura, com os mesmos Digimon mais fortes.',
+    L1030: { id: 'combate', grupo: 'caca', nome: 'Combate e cura', icone: 'boost-dano', lead: 'O Digimon escolhe sozinho o golpe pronto que dá mais dano. Você cuida de poções, revives e da equipe.',
+    L1045: { id: 'offline', grupo: 'caca', nome: 'Treino Offline', icone: 'hud-auto', lead: 'Clique em Entrar e pode fechar o jogo: o time segue caçando sem você, até acabar o seu tempo do dia.',
+    L1065: { id: 'captura', grupo: 'caca', nome: 'Captura', titulo: 'Captura e Ovos Digitais', icone: 'scanner-basico', lead: 'O scanner não pega o Digimon: pega um Ovo Digital da linha dele.',
+    L1091: { id: 'ovos', grupo: 'caca', nome: 'Incubadora e ovos', titulo: 'Incubadora e Energia de Ovo', icone: 'chocadeira', lead: 'Antes de chocar, a Energia de Ovo sobe o ovo de +0 a +5. O +N decide o tamanho máximo.',
+    L1113: { id: 'bosses', grupo: 'progresso', nome: 'Bosses', icone: 'menu-boss', lead: `${cat.bosses.length} bosses, do Nv ${fmt(cat.bosses[0].nivel)} ao ${fmt(cat.bosses[cat.bosses.length - 1].nivel)}. Cada entrada gasta 1 Boss Token.`,
+    L1126: { id: 'bossglobal', grupo: 'progresso', nome: 'Boss Global', titulo: 'Boss Global', icone: 'nucleo-burst', lead: 'Um evento do servidor: todo mundo entra contra um boss gigante no altar, com tempo contado e ranking de dano.',
+    L1161: { id: 'eventos', grupo: 'progresso', nome: 'Eventos do servidor', icone: 'boost-xp', lead: 'Bônus que valem para todo mundo ao mesmo tempo, com hora para começar e acabar.',
+    L1168: { id: 'especiais', grupo: 'progresso', nome: 'Oficina e Lendários', titulo: 'Oficina, Lendários e Digital World', icone: 'mystic-ticket', lead: 'Fragmentos viram peças com o Prof. Kurata. Os tickets dos Bosses abrem as arenas especiais.',
+    L1202: { id: 'ilhas', grupo: 'progresso', nome: 'Ilhas', titulo: 'Ilhas', icone: 'menu-ilha', lead: 'Uma Ilha dá parte do XP da sua hunt a quem mora nela.',
+    L1212: { id: 'speed', grupo: 'progresso', nome: 'Cartão de Speed', titulo: 'Cartão de Speed', icone: 'speed', lead: 'Item raro que, ativo, faz o Tamer e o Digimon andarem mais rápido na hunt: mais abates por hora.',
+    L1226: { id: 'economia', grupo: 'economia', nome: 'Moedas e Shop', titulo: 'Moedas, Loja e Shop', icone: 'menu-shop', lead: 'Bits para o dia a dia, DCoin para a Shop e D-Dol para o Mercado.',
+    L1253: { id: 'itens', grupo: 'economia', nome: 'Itens raros', titulo: 'Itens raros e de onde vêm', icone: 'exp-share', lead: 'Exp. Share, Cartões de Speed, fragmentos, tickets e outros itens da Mochila: para que servem e onde conseguir cada um.',
+    L1272: { id: 'mercado', grupo: 'economia', nome: 'Mercado', titulo: 'Mercado da Comunidade', icone: 'menu-rmt', lead: 'Venda Digimon, ovos, itens, Ilhas e Cartões de Speed para outros Tamers, em Bits ou D-Dol.',
+    L1282: { id: 'social', grupo: 'social', nome: 'Chat e Guild', titulo: 'Chat, Amigos e Guild', icone: 'guild', lead: 'Converse, troque e jogue em grupo.',
+    L1297: { id: 'guerra', grupo: 'social', nome: 'Guerra de Guilds', icone: 'hud-guild', lead: 'Todo dia, às 19h de Brasília, as guilds se enfrentam em duelos ao vivo. A nota de cada uma vira GP.',
+    L1310: { id: 'labirinto', grupo: 'social', nome: 'Labirinto da Guild', icone: 'escape-rope', lead: 'A guild entra junta numa ponta do labirinto e limpa sala por sala até o boss, na outra ponta.',
+    L1328: { id: 'pvp', grupo: 'social', nome: 'PvP e Torneios', titulo: 'PvP, Santuários e Torneios', icone: 'menu-pvp', lead: 'As lutas entre Tamers comprimem o nível: um Nv 10.000 não atropela um Nv 500.',
+    L1343: { id: 'ranks', grupo: 'social', nome: 'Ranks e Criadores', icone: 'menu-ranks', lead: 'Os rankings do jogo e o Top Criadores, que premia quem faz vídeos do DigiIdle.',
+    L1351: { id: 'bonus', grupo: 'extras', nome: 'Bônus de XP', icone: 'hud-vip', lead: 'Todos os bônus se multiplicam. Veja o que está ligado na sua conta agora.',
+    L1367: { id: 'modos', grupo: 'extras', nome: 'Modos de tela', icone: 'hud-sessao', lead: 'Jogue do jeito que cabe no seu dia: a caça continua no servidor em qualquer modo.',
+    L1379: CAPS.push({ id: 'glossario', grupo: 'extras', nome: 'Glossário', icone: 'menu-wiki', lead: 'As palavras do jogo, de A a Z. Toque numa para ir ao capítulo.', resumo: [],
+    L1420: return GRUPOS.map(([id, nome, ic, curto]) => `<button type="button" class="wk-aba ${id === g ? 'on' : ''}" data-grupo="${id}" title="${nome}"><img src="/icones/${ic}.png" alt=""><span>${curto}</span></button>`).join('');
+  /js/kurata.js  (3)
+    L72: if (c) saiu = { tipo: 'casa', raridade: c.raridade, serial: c.id };
+    L75: if (b) saiu = { tipo: 'bike', raridade: b.raridade, serial: b.id };
+    L76: } else if (tem(w.item) > w.antes) saiu = { tipo: 'item', item: w.item };
+  /js/chat-links.js  (3)
+    L42: out.push({ tipo: 'digimon', ref: { tipo: 'digimon', id: d.id }, nome: prefixoX(d) + nomeDigi(d), token: compacto(nomeDigi(d)),
+    L51: out.push({ tipo: 'ovo', ref: { tipo: 'ovo', id: o.id }, nome: `Ovo ${rotuloOvo(o)}${o.shiny ? ' UX' : ''} · ${e.nome}`, token: `OvoDe${compacto(e.nome)}`,
+    L60: out.push({ tipo: 'item', ref: { tipo: 'item', item: it.id }, nome: it.nome, token: compacto(it.nome), chaves: [norm(it.nome)],
+  /js/ovo-tier.js  (1)
+    L32: // Ovo sem o sorteio (o servidor completa os antigos ao entrar) fica sem tier: "?".
+  /js/ficha-tamer.js  (1)
+    L71: return `<div class="ft-card${emCampo ? ' em-campo' : ''}" role="button" tabindex="0" data-grupo="${grupo}" data-idx="${idx}" data-dica="⚔ ${fmt(d.poder)} · clique para ver a ficha">
+  /js/seguranca.js  (5)
+    L29: const campoPIN = (id, rot) => ({ id, rot, tipo: 'text', ac: 'one-time-code', attrs: 'inputmode="numeric" maxlength="7" pattern="[0-9 ]*" class="seg-pin" placeholder="000000"' });
+    L109: campos: [{ id: 'fs-atual', rot: 'Senha atual', tipo: 'password', ac: 'current-password' }, { id: 'fs-nova', rot: 'Senha nova (8 a 72)', tipo: 'password', ac: 'new-password', attrs: 'minlength="8" maxlength="72"' }, { id: 'fs-conf', rot: 'Repita a senha nova', tipo: 'password', ac: 'new-password' }],
+    L131: campos: [{ id: 'fe-email', rot: 'E-mail novo', tipo: 'email', ac: 'email', attrs: 'maxlength="120"' }, { id: 'fe-senha', rot: 'Sua senha', tipo: 'password', ac: 'current-password' }],
+    L164: campos: [{ id: 'sk-senha', rot: 'Sua senha', tipo: 'password', ac: 'current-password' }],
+    L201: campos: pos.map((n) => ({ id: `sk-p${n}`, rot: `Palavra nº ${n + 1}`, tipo: 'text', attrs: 'autocapitalize="none" spellcheck="false" maxlength="12"' })),
+  /js/som-menu.js  (55)
+    L57: function tom(a, out, t, { f, f1 = f, glis = 0.06, dur = 0.12, pico = 1, tipo = 'triangle', ataque = 0.008, filtro = 0 }) {
+    L72: function chiado(a, out, t, { dur = 0.035, pico = 0.34, tipo = 'highpass', freq = 3500, q = 0.7 }) {
+    L83: const brilho = (a, out, t, pico = 0.14, dur = 0.07, f = 2480) => tom(a, out, t, { f, dur, pico, tipo: 'sine', ataque: 0.003 });
+    L91: const arpejo = (a, out, t, notas, passo, { dur = 0.14, pico = 0.7, ultimaDur = dur, tipo = 'triangle' } = {}) =>
+    L113: tom(a, o, t, { f: 260, f1: 210, glis: 0.07, dur: 0.08, pico: 0.45, tipo: 'square', filtro: 1400 });
+    L114: tom(a, o, t + 0.1, { f: 230, f1: 180, glis: 0.08, dur: 0.11, pico: 0.45, tipo: 'square', filtro: 1400 });
+    L124: capP1: { cls: 'ev', grupo: 'cap', p: 1, padrao: false, quando: 'Um pip curto e baixo.', esp: 1200, nome: 'Ovo P1 capturado', fn: (a, o, t) => {
+    L125: tom(a, o, t, { f: C6, dur: 0.09, pico: 0.35, tipo: 'sine' });
+    L128: capP2: { cls: 'ev', grupo: 'cap', p: 2, padrao: false, quando: 'Duas notas leves subindo.', esp: 1200, nome: 'Ovo P2 capturado', fn: (a, o, t) => {
+    L129: tom(a, o, t, { f: E6, dur: 0.08, pico: 0.4, tipo: 'sine' });
+    L130: tom(a, o, t + 0.07, { f: G6, dur: 0.16, pico: 0.42, tipo: 'sine' });
+    L133: capP3: { cls: 'ev', grupo: 'cap', p: 3, padrao: false, quando: 'Um arpejo de três notas.', esp: 1300, nome: 'Ovo P3 capturado', fn: (a, o, t) => {
+    L137: capP4: { cls: 'ev', grupo: 'cap', p: 4, quando: 'Arpejo de quatro notas com brilho.', esp: 1500, nome: 'Ovo P4 capturado', fn: (a, o, t) => {
+    L142: capP5: { cls: 'ev', grupo: 'cap', p: 5, quando: 'Subida rápida e acorde cintilante: o melhor ovo.', esp: 1800, nome: 'Ovo P5 capturado', fn: (a, o, t) => {
+    L145: for (const [f, p] of [[G6, 0.36], [C7, 0.3], [E7, 0.22]]) tom(a, o, t + 0.16, { f, dur: 0.6, pico: p, tipo: 'sine', ataque: 0.012 });
+    L157: chiado(a, o, t, { tipo: 'bandpass', freq: 1800, q: 2.5, pico: 0.9, dur: 0.03 });
+    L158: chiado(a, o, t + 0.07, { tipo: 'bandpass', freq: 2300, q: 2.5, pico: 0.8, dur: 0.04 });
+    L160: tom(a, o, t + 0.24, { f: G6, dur: 0.14, pico: 0.4, tipo: 'sine' });
+    L161: tom(a, o, t + 0.31, { f: C7, dur: 0.4, pico: 0.4, tipo: 'sine' });
+    L169: tom(a, o, s, { f, dur: 0.9, pico: p, tipo: 'sine', ataque: 0.005 });
+    L170: tom(a, o, s + 0.004, { f: f * 1.004, dur: 0.9, pico: p * 0.6, tipo: 'sine', ataque: 0.005 }); // batimento = cintilar
+    L179: tom(a, o, t + 0.27, { f: C6, dur: 0.5, pico: 0.3, tipo: 'square', filtro: 2500 });
+    L186: chiado(a, o, t, { tipo: 'lowpass', freq: 400, pico: 1, dur: 0.25 });
+    L187: tom(a, o, t, { f: 110, f1: 70, glis: 0.6, dur: 0.75, pico: 0.8, tipo: 'sawtooth', filtro: 700, ataque: 0.01 });
+    L188: tom(a, o, t + 0.05, { f: E5, dur: 0.18, pico: 0.45, tipo: 'square', filtro: 2200 });
+    L189: tom(a, o, t + 0.25, { f: 622, dur: 0.18, pico: 0.45, tipo: 'square', filtro: 2200 });
+    L190: tom(a, o, t + 0.45, { f: E5, dur: 0.4, pico: 0.4, tipo: 'square', filtro: 2200 });
+    L209: chiado(a, o, t, { tipo: 'bandpass', freq: 2600, q: 0.6, pico: 0.5, dur: 0.35 });
+    L213: tom(a, o, t + 0.28, { f, dur: 1.1, pico: p, tipo: 'sine', ataque: 0.02 });
+    L214: tom(a, o, t + 0.283, { f: f * 1.004, dur: 1.1, pico: p * 0.5, tipo: 'sine', ataque: 0.02 });
+    L247: tom(a, o, t + s, { f: notas[i % notas.length] * (x > 0.6 ? 2 : 1), dur: 0.06, pico: 0.08 + 0.12 * x, tipo: 'sine', ataque: 0.004 });
+    L254: chiado(a, o, t, { tipo: 'bandpass', freq: 3200, q: 3, pico: 0.9, dur: 0.05 });
+    L255: chiado(a, o, t + 0.06, { tipo: 'bandpass', freq: 2200, q: 3, pico: 0.7, dur: 0.06 });
+    L256: chiado(a, o, t + 0.13, { tipo: 'bandpass', freq: 4200, q: 4, pico: 0.5, dur: 0.12 });
+    L257: tom(a, o, t, { f: 180, f1: 55, glis: 0.5, dur: 0.6, pico: 0.6, tipo: 'sawtooth', filtro: 600, ataque: 0.005 });
+    L271: tom(a, o, t + 0.18, { f: C7 * k, dur: 0.5, pico: 0.22, tipo: 'sine', ataque: 0.01 });
+    L278: tom(a, o, t, { f: 180, f1: 420, glis: d, dur: d + 0.05, pico: 0.22, tipo: 'sawtooth', filtro: 900, ataque: 0.15 });
+    L281: tom(a, o, t + s, { f, f1: f * 1.6, glis: 0.04, dur: 0.05, pico: 0.1 + 0.12 * (s / d), tipo: 'sine', ataque: 0.004 });
+    L283: chiado(a, o, t, { tipo: 'bandpass', freq: 1200, q: 0.8, pico: 0.06, dur: d });
+    L288: chiado(a, o, t, { tipo: 'bandpass', freq: 2500, q: 0.7, pico: 0.3, dur: 0.45 });
+    ... +15
+  /js/ambiente.js  (1)
+    L84: const cl = mapa && c.clima ? deps.climaDe(mapa) : { tipo: 'limpo', forca: 0 };
+  /js/arena-pvp.js  (1)
+    L193: const c = { t: 'campo', tipo: 'hunt', mapa: MAPA, area: 'pvp', ts: Math.round(agora - inicio) + 1000, inimigos: [], tamers: [], alvo: null };
+  /js/menus2.js  (15)
+    L280: const mkF = { pecaSel: '', rarPeca: '', ordemPeca: '', tipo: 'tudo', vista: '', busca: '', moeda: '', elemento: '', ordem: '', especie: '', agregar: false, cat: 'todas', soEstoque: false, itemSel: '', moedaItem: 'bits',
+    L373: if (mkF.tipo === 'diamantes') mkF.tipo = 'tudo'; // DCoin saiu do Mercado
+    L384: const f = { tipo: 'digimon', busca: mkF.busca, moeda: mkF.moeda, elemento: mkF.elemento, ordem: mkF.ordem, especie: mkF.especie };
+    L393: const filtroTudo = () => ({ tipo: 'tudo', busca: mkF.busca, moeda: mkF.moeda, ordem: mkF.ordemTudo, ...filtroComum(), potencias: '' });
+    L394: const filtroOvo = () => ({ tipo: 'ovo', busca: mkF.busca, moeda: mkF.moeda, estagio: mkF.estagioOvo, familia: mkF.familiaOvo, soShiny: mkF.ovoX, maisMin: mkF.maisMin, tiers: mkF.tiers, ordem: mkF.ordemOvo, ...filtroComum() });
+    L395: const filtroPeca = () => ({ tipo: 'pecas', moeda: mkF.moeda, peca: mkF.pecaSel, raridades: mkF.rarPeca, ordem: mkF.ordemPeca, ...filtroComum(), potencias: '' });
+    L408: if (mkF.tipo === 'item') { enviar('mercado.itens'); if (mkF.itemSel) enviar('mercado.listar', { tipo: 'item', especie: mkF.itemSel, moeda: mkF.moedaItem }); return; }
+    L409: enviar('mercado.listar', { tipo: 'diamantes', especie: 'diamantes', moeda: mkF.moedaItem });
+    L811: if (EH_PECA(x.tipo)) return { cor: x.tipo === 'bike' ? '#facc15' : '#34d399', arte: `<span class="mq-arte item">${icoPeca(x.tipo)}</span>`, nome: esc(nomePecaMk(x.tipo, r)), tier: '', det: `${seriePeca(r.serial)} · ${detPeca(x.tipo, r)}` };
+    L812: return { cor: '#38bdf8', arte: `<span class="mq-arte item">${icone(x.item)}</span>`, nome: esc(x.item === 'diamantes' ? 'DCoin' : nomeItem(cat, x.item)), tier: '', det: x.item === 'diamantes' ? 'DCoin' : 'Item' };
+    L867: <nav class="mq-tipos">${MQ_TIPOS.map(([id, n, ic]) => `<button class="${!v && mkF.tipo === id ? 'on' : ''}" data-tipo="${id}"><img src="/icones/${ic}.png" alt="">${n}</button>`).join('')}</nav>
+    L1111: enviar('mercado.listar', { tipo: 'pecas', peca: st.tipo, raridades: coisa, moeda: st.moeda, ordem: 'barato' });
+    L1241: enviar('mercado.anunciar', st.tipo === 'digimon' ? { tipo: 'digimon', id: st.id, moeda: st.moeda, preco: st.preco, dias: st.dias }
+    L1242: : st.tipo === 'ovo' ? { tipo: 'ovo', id: st.ovo, moeda: st.moeda, preco: st.preco }
+    L1780: on('#g-doar', async () => { const q = await ctx.perguntar({ titulo: 'Doar DCoin', texto: `Quantos DCoin doar? (faltam ${g.meta - g.banco})`, valor: g.meta - g.banco, tipo: 'number', min: 1, max: Math.max(1, g.meta - g.banco), ok: 'Doar' }); if (q) enviar('guild.doar', { qtd: Math.floor(+q) }); });
+  /js/ambiente-motor.js  (8)
+    L100: function drone(inst, notas, vol, { tipo = 'triangle', corte = 500, taxa = 0.06 } = {}) {
+    L229: drone(i, [C3, G3], 0.01, { tipo: 'sine', corte: 900, taxa: 0.03 });
+    L246: drone(i, [C2, G2], 0.018, { tipo: 'sawtooth', corte: 180, taxa: 0.05 });
+    L254: drone(i, [C2, G2, C3], 0.02, { tipo: 'sine', corte: 400, taxa: 0.03 });
+    L261: drone(i, [C2, G2, C3], 0.045, { tipo: 'sawtooth', corte: 320, taxa: 0.08 });
+    L269: drone(i, [C2, G2, C3, E3], 0.05, { tipo: 'sawtooth', corte: 380, taxa: 0.1 });
+    L277: drone(i, [C2, C3], 0.03, { tipo: 'sine', corte: 300, taxa: 0.2 }); // zumbido das máquinas
+    L286: drone(i, [C2, D3 * 0.5 * 2, A2], 0.018, { tipo: 'triangle', corte: 300, taxa: 0.05 });
+  /js/arena-guerra.js  (1)
+    L248: const c = { t: 'campo', tipo: 'hunt', mapa: MAPA, area: 'guerra', ts: Math.round(agora - inicio) + 1000, inimigos: [], aliados: [], tamers: [], alvo: null };
+  /js/arena-torre.js  (1)
+    L461: const c = { t: 'campo', tipo: 'hunt', mapa: mapaId, area: 'torre', ts: Math.round(agora - inicio) + 1000, inimigos: [], aliados: [], tamers: [], alvo: null };
+
+======================================================================
+2a. Pacotes do MERCADO entre players
+======================================================================
+  /js/app.js  (2)
+    L665: case 'mercado.sorteio':
+    L1492: const temMorador = vagaLivre && [...(E.equipe || []), ...colecao].some((d) => !morando.has(d.id) && d.local !== 'mercado'
+  /js/loja.js  (5)
+    L30: const QTD_MAX = 1_000_000; // o teto do servidor por compra (market.comprar)
+    L31: const LOTE_IDS = 1000; // ids por market.vender: cabe folgado nos 16 KB da mensagem
+    L194: enviar('market.comprar', { item: i.id, qtd: q });
+    L273: for (let k = 0; k < ids.length; k += LOTE_IDS) enviar('market.vender', { ids: ids.slice(k, k + LOTE_IDS) });
+    L282: const vai = () => enviar('market.vender', { ids: [id] });
+  /js/calculadora.js  (2)
+    L299: mercado.className = `calc-mercado${ok ? ' ok' : ''}`;
+    L300: mercado.innerHTML = `${ico(ok ? 'check' : 'xis', 12)}<span>${textoMercado(ok)}</span>`;
+  /js/wiki.js  (4)
+    L612: ['D-Dol', 'A moeda do Mercado da Comunidade.', 'mercado'], ['Ilha', 'Quem mora nela recebe parte do XP da hunt.', 'ilhas'], ['Investida', 'O golpe básico quando nada está pronto.', 'combate'],
+    L707: <p><b>Roleta do Ovo Assombrado</b>: custa 20 DCoin o giro (180 os 10) e dá ovos P3 (85%), P4 (14%) e P5 (1%), com P4 ou melhor a cada 10 giros e P5 garantido no giro 100. Esses ovos, e quem nascer deles, não vão ao ${ir('mercado', 'Mercado')}.</p>` },
+    L740: <li>Em <b>Montar equipe</b>, ponha ${T.equipe} Digimon <b>do elemento da torre</b> na grade 3×3 (frente, meio e trás). Vale a forma mais alta liberada de cada um, e ninguém pode estar à venda no ${ir('mercado', 'Mercado')}.</li>
+    L1272: { id: 'mercado', grupo: 'economia', nome: 'Mercado', titulo: 'Mercado da Comunidade', icone: 'menu-rmt', lead: 'Venda Digimon, ovos, itens, Ilhas e Cartões de Speed para outros Tamers, em Bits ou D-Dol.',
+  /js/torre.js  (3)
+    L94: const fora = e.elemento !== st.sel || d.local === 'mercado';
+    L264: for (const c of t?.time || []) { const d = meus.get(c.id); if (d && d.local !== 'mercado') casas[c.slot] = d; }
+    L266: const doElemento = () => ctx.todosDigimons().filter((d) => d.local !== 'mercado' && especieDe(d)?.elemento === el);
+  /js/menus2.js  (39)
+    L153: filtro: (d) => d.local !== 'mercado' && especie(d.max || d.especie).elemento === el, // vale a última evolução (é ela que luta)
+    L398: if (v === 'meus' || v === 'vendas' || v === 'compras') return enviar('mercado.meus');
+    L399: if (v === 'favoritos') return enviar('mercado.favoritos');
+    L400: if (v === 'precos') return enviar('mercado.precos', {});
+    L402: if (mkF.agregar && !mkF.especie) return enviar('mercado.especies', filtroDigimon());
+    L403: return enviar('mercado.listar', { ...filtroDigimon(), pagina: mkF.pagina, destaque });
+    L405: if (mkF.tipo === 'tudo') return enviar('mercado.listar', { ...filtroTudo(), pagina: mkF.pagina, destaque });
+    L406: if (mkF.tipo === 'ovo') return enviar('mercado.listar', { ...filtroOvo(), pagina: mkF.pagina, destaque });
+    L407: if (mkF.tipo === 'pecas') return enviar('mercado.listar', { ...filtroPeca(), pagina: mkF.pagina, destaque });
+    L408: if (mkF.tipo === 'item') { enviar('mercado.itens'); if (mkF.itemSel) enviar('mercado.listar', { tipo: 'item', especie: mkF.itemSel, moeda: mkF.moedaItem }); return; }
+    L409: enviar('mercado.listar', { tipo: 'diamantes', especie: 'diamantes', moeda: mkF.moedaItem });
+    L474: $('#ofd-ok', c).onclick = () => { enviar('mercado.comprar', { id: a.id, qtd, preco: a.preco, moeda: a.moeda }); ctx.voltar(); setTimeout(pedir, 500); };
+    L478: 'mercado.itens': (m) => { itens = m.itens; ctx.rerender(); },
+    L479: 'mercado.mudou': () => { clearTimeout(mudouT); mudouT = setTimeout(() => { if (ctx.modalAtual() === folha) pedir(); }, 250); },
+    L932: $$('[data-fav]', c).forEach((b) => (b.onclick = () => { enviar('mercado.favoritar', { id: +b.dataset.fav, on: b.dataset.on === '1' }); setTimeout(() => { pedir(); if (mkF.vista !== 'favoritos') enviar('mercado.favoritos'); }, 300); }));
+    L935: $$('[data-falar]', c).forEach((b) => (b.onclick = () => { ctx.confirmar('Anunciar no chat Mundo e Comércio por 10.000.000 bits?', () => enviar('mercado.altofalante', { id: +b.dataset.falar })); }));
+    L936: $$('[data-cancelar]', c).forEach((b) => (b.onclick = () => { ctx.confirmar('Retirar este anúncio? O que estava à venda volta para você (a pensão já paga não volta).', () => { enviar('mercado.cancelar', { id: +b.dataset.cancelar }); setTimeout(pedir, 400); }); }));
+    L937: const mq = $('#mk-qtd', c); if (mq) mq.onclick = () => { const q = Math.floor(+$('#mk-qtd-n', c).value); if (q > 0) enviar('mercado.cotar', { item: mkF.tipo === 'diamantes' ? 'diamantes' : mkF.itemSel, moeda: mkF.moedaItem, qtd: q }); };
+    L938: const mo = $('#mk-qtd-ok', c); if (mo) mo.onclick = () => { enviar('mercado.comprarQtd', { item: cota.item, moeda: cota.moeda, qtd: cota.qtd, maxPreco: cota.maxPreco, total: cota.total }); cota = null; setTimeout(pedir, 800); ctx.rerender(); };
+    L942: 'mercado.especies': (m) => { especies = m; ctx.rerender(); },
+    L943: 'mercado.itens': (m) => { itens = m.itens; ctx.rerender(); },
+    L944: 'mercado.meus': (m) => { meus = m; ctx.rerender(); },
+    L945: 'mercado.favoritos': (m) => { favs = m; ctx.rerender(); },
+    L946: 'mercado.precos': (m) => { precos = m; ctx.rerender(); },
+    L947: 'mercado.cota': (m) => { cota = m.qtd > 0 ? m : null; if (!cota) toast('Nada à venda agora dentro disso.', true); ctx.rerender(); },
+    L952: 'mercado.mudou': () => {
+    L969: if (mkF.vista !== 'favoritos') enviar('mercado.favoritos');
+    L1004: enviar('mercado.comprar', { id: a.id, qtd: 1, preco: a.preco, moeda: a.moeda }); setTimeout(depois, 500);
+    L1011: enviar('mercado.comprar', { id: a.id, qtd: 1, preco: a.preco, moeda: a.moeda }); setTimeout(depois, 500);
+    L1018: enviar('mercado.comprar', { id: a.id, qtd: 1, preco: a.preco, moeda: a.moeda }); setTimeout(depois, 500);
+    L1034: $('#cq-ok', c).onclick = () => { enviar('mercado.comprar', { id: a.id, qtd, preco: a.preco, moeda: a.moeda }); ctx.voltar(); setTimeout(depois, 500); };
+    L1052: enviar('mercado.editar', { id: a.id, preco: p !== a.preco ? p : 0, dias: d });
+    L1111: enviar('mercado.listar', { tipo: 'pecas', peca: st.tipo, raridades: coisa, moeda: st.moeda, ordem: 'barato' });
+    L1112: pendP++; enviar('mercado.precos', {});
+    L1114: enviar('mercado.listar', porUnidade ? { tipo: st.tipo, especie: coisa, moeda: st.moeda } : { tipo: st.tipo, especie: coisa, moeda: st.moeda, ordem: 'barato' });
+    L1115: if (!porUnidade) { pendP++; enviar('mercado.precos', { especie: coisa }); }
+    L1241: enviar('mercado.anunciar', st.tipo === 'digimon' ? { tipo: 'digimon', id: st.id, moeda: st.moeda, preco: st.preco, dias: st.dias }
+    L1257: 'mercado.precos': (m) => {
+    L2134: const candidatas = ctx.todosDigimons().filter((x) => x.id !== d.id && doEstagio(x) && x.local !== 'equipe' && x.local !== 'mercado' && !x.travado && !shares.includes(x.id))
+  /js/pvp5.js  (2)
+    L75: if (d && d.local !== 'mercado') casas[c.slot] = d;
+    L197: const todos = () => ctx.todosDigimons().filter((d) => d.local !== 'mercado' && especieDe(d));
+
+======================================================================
+2b. Comprar / vender / anunciar / listagem
+======================================================================
+  (nada)
+
+======================================================================
+2c. Venda de ovos (para distinguir do mercado de itens)
+======================================================================
+  /js/cofre.js  (2)
+    L45: venda: { f: novoFiltro(), tipoAberto: false, filtrosAberto: false, limite: LOTE, menu: 0 },
+    L187: // `depois` roda a cada regrade (a Loja refaz a faixa do "vender todo" com o recorte novo).
+  /js/wiki.js  (3)
+    L761: <li>Se um Digimon evoluir para outro elemento, for vendido ou for para o Mercado, ele sai da equipe e a torre pede para completar de novo.</li>
+    L824: ['digidex', 'Todas as espécies, o que você já viu e chocou, e o Top Hatch.'], ['mapa', 'Áreas de caça, regiões e o Hunt Analyser.'], ['loja', 'Scanners, poções, revives e a venda de Digimon e ovos.'],
+    L1272: { id: 'mercado', grupo: 'economia', nome: 'Mercado', titulo: 'Mercado da Comunidade', icone: 'menu-rmt', lead: 'Venda Digimon, ovos, itens, Ilhas e Cartões de Speed para outros Tamers, em Bits ou D-Dol.',
+  /js/filtro-ovos.js  (1)
+    L6: // "VENDER TODOS" da Incubadora (o que entra na venda) e pelo Histórico de ovos (o que aparece).
+  /js/menus2.js  (27)
+    L503: ${!meu ? `<button class="mk-fav ${a.fav ? 'on' : ''}" data-fav="${a.id}" data-on="${a.fav ? 0 : 1}" data-dica="${a.fav ? 'Tirar dos favoritos' : 'Guardar nos favoritos'}">${MK_IC.estrela}${a.favs ? `<small>${a.favs}</small>` : ''}</button>` : a.favs ? `<span class="mk-fav fixo">${MK_IC.estrela}<smal
+    L583: // Todo ovo nasce Rookie hoje (481 de 481 à venda em 2026-11-10): o filtro de estágio saiu; a família vem primeiro.
+    L722: ? `${th('Ovo', '', ch, 'mq-th-dg')}${th('Nv', 'nivel', ch)}${th('Pot.', 'potencia', ch)}${th('+N', 'mais', ch)}${th('T.Máx', '', ch)}${th('Preço', 'preco', ch)}${th('Vendedor', '', ch)}${th('★', 'favs', ch)}${th('', '', ch)}`
+    L757: const barra = barraVit(lista && lista.tipo === 'ovo' ? `<b>${fmt(lista.total)}</b> ovo(s) à venda` : '', ORDENS_OVO_MK, 'ordemOvo');
+    L759: return barra + vitrine(lista.lista, 'ovo', 'Nenhum ovo à venda com esses filtros.', 'Nenhum Ovo Digital anunciado ainda. Venda um da sua bolsa!');
+    L842: if (v === 'favoritos') return cabVista('favorito', 'Meus favoritos', 'Os Digimon e ovos que você guardou ★ (vendidos e retirados somem em 3 dias)') + (!favs ? vazioMk('carregando…') : grade(favs.lista.map((a) => ({ ...a, fav: true })), 'Nenhum favorito. Toque na ★ de um Digimon ou ovo à venda.', 'fa
+    L950: // Venda, compra (também a do sorteio) ou pensão vencida: pede a tela de novo, sem F5. Com
+    L1057: // Novo anúncio (na-*, css/anuncio.css): a vitrine com toldo mostra o que vai à venda, o preço
+    L1094: // UX (Digimon ou ovo) só vende por D-Dol.
+    L2373: // de baixo trava ou vende todas de uma vez. Todo ovo novo é Rookie: o filtro é por família.
+    L2375: // O filtro de venda do VENDER TODOS (filtro-ovos.js): o que fica de fora, guardado no aparelho.
+    L2376: const FILTRO_VENDA = 'ovos-venda-fora';
+    L2446: const zerados = () => visiveis().filter((o) => !o.travado && passaFiltro(o, letraOvo(o), foraVenda));
+    L2447: const escopoVenda = () => [filtroOvos.potencia ? `P${filtroOvos.potencia}` : '', filtroOvos.familia ? FAMILIA_NOME[filtroOvos.familia] || filtroOvos.familia : '', termo() ? `com “${filtroOvos.busca.trim()}”` : ''].filter(Boolean).join(' ');
+    L2449: const dicaVenda = () => `Vende na Loja ${escopoVenda() ? `os ovos ${escopoVenda()}` : 'todos os ovos da bolsa'} que passam no filtro de venda (⚙).${foraVenda.size ? `\nFora da venda: ${nomesFora()}.` : ''}\nOvos com cadeado nunca são vendidos.`;
+    L2496: <td class="cd-c-ac"><button class="cd-chocar" data-ov-chocar="${o.id}" ${cheia ? `disabled data-dica="${dicaCheia}"` : ''}>${cheia ? 'Sem vaga' : 'Chocar'}</button><button class="cd-melh${pode ? ' pode' : ''}" data-ov-data="${o.id}" ${max ? 'disabled' : ''} data-dica="${esc(dicaMelhorar)}">${max ? `
+    L2524: // A barra de baixo: com ovos marcados, trava/vende todos; sem nenhum, só o "VENDER TODOS".
+    L2527: const v0 = `<span class="cd-vtodos"><button class="cd-vfiltro${foraVenda.size ? ' on' : ''}" data-venda-filtro data-dica="Filtro de venda: escolha quais ovos o VENDER TODOS pode vender${foraVenda.size ? `\nFora: ${esc(nomesFora())}` : ''}"><img src="/icones/hud-config.png" alt="Filtro de venda"></bu
+    L2529: if (!sel.length) return `<span class="cd-acao-dica">Marque ovos na lista para travar ou vender vários de uma vez.</span><span class="cd-sp"></span>${v0}`;
+    L2531: const total = vend.reduce((t, o) => t + precoOvo(o), 0);
+    L2536: <button class="cd-bt vender" data-marc-vender ${vend.length ? '' : 'disabled data-dica="Os marcados estão travados"'}>${ICO_BITS_OVO}Vender ${vend.length === sel.length ? '' : `${fmt(vend.length)} `}por ${fmtC(total)}</button>
+    L2599: const total = vend.reduce((t, o) => t + precoOvo(o), 0);
+    L2602: ctx.confirmar(`Vender ${fmt(vend.length)} ovo(s) por ${fmt(total)} bits?${raros ? `\n${fmt(raros)} deles têm +N, UX, Proteção ou são P4/P5.` : ''}${presos ? `\n${fmt(presos)} travado(s) ficam.` : ''}`,
+    L2603: () => enviar('ovo.vender', { ids: vend.map((o) => o.id) }));
+    L2610: ctx.confirmar(`Vender ${fmt(z.length)} ovo(s)${escopoVenda() ? ` ${escopoVenda()}` : ''} por ${fmt(z.reduce((t, o) => t + precoOvo(o), 0))} bits?${raros ? `\n${fmt(raros)} deles têm +N, UX, Proteção ou são P4/P5.` : ''}${foraVenda.size ? `\nFora da venda: ${nomesFora()}.` : ''}`,
+    L2611: () => enviar('ovo.vender', { ids: z.map((o) => o.id) }));
+    L2616: texto: 'Desmarque o que o VENDER TODOS não deve vender. Ovos com cadeado nunca são vendidos. Fica salvo neste aparelho.',
+
+======================================================================
+2d. Todos os t: do cliente (nomes de pacote)
+======================================================================
+  0px  Beast  DigiBank  EAST  Mercado  Offline  Online  Plant  UX  WEST  abobora  arvore  bandpass  basic  campo  clima  cogumelo  combat_dark_hit  combat_earth_hit  combat_electric_hit  combat_fire_hit  combat_holy_hit  combat_ice_hit  combat_magic_hit  combat_metal_hit  combat_nature_hit  combat_neutral_hit  combat_poison_hit  combat_water_hit  combat_wind_hit  da  highpass  holy  lanterna  lapide  linhagem  lowpass  luz  ok  rodada  scanners  todas
+
+======================================================================
+2e. Mensagens de log/toast de compra e venda
+======================================================================
+  /js/app.js  (2)
+    L1772: // Buffs da guild: o Boost do banco (comprado) e o prêmio do ranking da Guerra.
+    L3514: if (!itens.length) { toast(m.txt || `Comprou ${m.nome}.`); return; }
+  /js/menus.js  (1)
+    L332: <li>O Passe Premium é comprado à parte: ter VIP não dá o Premium, e comprando depois, você resgata o Premium dos dias que já pegou neste ciclo.</li></ul></div>`);
+  /js/cofre.js  (1)
+    L386: <p class="xs-nota">Digimon com Exp. Share não pode ser vendido, anunciado nem oferendado. Remova o item antes.${nMo ? '' : ' Sem nenhuma na mochila: compre na Shop ou remova de outro Digimon.'}</p>
+  /js/amigos.js  (8)
+    L10: //     chamei) e Meus Produtos (compradores que me chamaram).
+    L197: : 'Ninguém chamou você ainda. Quando um comprador mandar DM num anúncio seu, a conversa aparece aqui.'}</p>`;
+    L298: const comprador = !listaCom('produtos').some((o) => mesmaNeg(neg, o));
+    L302: <div class="am-meta"><b>Negociação #${neg.anuncio}</b><span>${comprador ? 'Você está falando com o vendedor' : 'Um comprador quer o seu anúncio'}</span></div></div>
+    L308: <span class="am-oferta-quem">${comprador ? 'Vendedor' : 'Comprador'}: <b>${esc(x.nick)}</b>${x.online != null ? ` · ${x.online ? 'online' : 'offline'}` : ''}</span></div>
+    L309: <button type="button" class="am-enviar am-oferta-bt" data-mercado><span aria-hidden="true">↗</span> ${comprador ? 'Abrir no Mercado' : 'Ver meu anúncio'}</button></div>` : ''}
+    L313: : `<p class="am-thread-vazio">${comprador ? 'Mande a primeira mensagem para o vendedor.' : 'Sem mensagens.'}</p>`}</div>
+    L314: <p class="am-nota"><span class="am-nota-ico">!</span><span>É para combinar: a compra continua sendo pelo anúncio, com a trava de preço e a comissão. A conversa some quando o anúncio é vendido ou retirado. Vender por fora do Mercado é proibido.</span></p>
+  /js/discord-boost.js  (1)
+    L10: // Fundador (discord_cargo.go): quem comprou o Pacote Fundador e vincula o Discord recebe o cargo de
+  /js/wiki.js  (6)
+    L761: <li>Se um Digimon evoluir para outro elemento, for vendido ou for para o Mercado, ele sai da equipe e a torre pede para completar de novo.</li>
+    L1042: <li><b>Físico ou Especial</b>: o D-Skill nasce <b>Especial</b> (SP.ATK contra SP.DEF). Na ficha do seu Digimon, o selo vira um botão (<b>E: FOGO</b> ou <b>F: FOGO</b>) que abre a escolha, com o ATK e o SP.ATK dele lado a lado. Poder, recarga e área não mudam. Depois de trocar, a próxima troca daquel
+    L1235: <p>Boost comprado (ou ganho em pacote, Passe e prêmio) vai para a <b>Mochila › Boosts</b>: ative quando quiser, e ele soma ao tempo que ainda falta. O VIP soma na hora. <b>Exibição de Digimon</b> (3 DCoin por dia) faz o seu Digimon em uso andar atrás de você na cidade; sem ela, o VIP mostra só o Roo
+    L1279: <li>Ilha e Cartão de Speed vão inteiros, com o número de série, sem pensão nem prazo. A Ilha chega vazia (quem morava nela perde o posto); se o cartão vendido era o ativo, o mais rápido que sobrar assume.</li></ul>` },
+    L1337: { id: 'ginasio', titulo: 'Santuários dos Espíritos', html: () => `<p>Um Santuário por elemento, cada um com o Espírito Lendário dele (o Físico é o Coliseu Digital). Registre uma equipe de até 5 Digimon do elemento, pode repetir a espécie. Vale a última evolução de cada um: é ela que luta e é o eleme
+    L1349: ${nota('Concorre quem somar 100 views ou mais na temporada. Os vídeos são conferidos antes do pagamento, e view comprado desclassifica.', 'aviso')}` },
+  /js/pagamento.js  (1)
+    L354: 'Você pode desistir em até <b>7 dias</b>: devolvemos só o valor do DCoin comprado que <b>ainda não foi gasto</b>.',
+  /js/menus2.js  (24)
+    L363: ['ilha', 'Ilha e Cartão de Speed vão inteiros, com o número de série, sem pensão nem prazo; a Ilha chega vazia e, se o cartão vendido era o ativo, o mais rápido que sobrar assume.'],
+    L461: ${media ? `<p class="ofd-media">Média vendida em 7 dias: ${preco(mkF.moedaItem, Math.round(media.media))} cada · ${fmt(media.qtd)} vendido(s)</p>` : ''}
+    L503: ${!meu ? `<button class="mk-fav ${a.fav ? 'on' : ''}" data-fav="${a.id}" data-on="${a.fav ? 0 : 1}" data-dica="${a.fav ? 'Tirar dos favoritos' : 'Guardar nos favoritos'}">${MK_IC.estrela}${a.favs ? `<small>${a.favs}</small>` : ''}</button>` : a.favs ? `<span class="mk-fav fixo">${MK_IC.estrela}<smal
+    L520: <span class="mk-dias">${seriePeca(r.serial)}</span>${fechado ? `<span class="mk-fechado">${a.estado === 'vendido' ? 'Vendido' : 'Retirado'}</span>` : ''}</div>`;
+    L538: ${a.expira ? `<span class="mk-dias" data-dica="A pensão acaba em ${dataHora(a.expira)}">${MK_IC.ampulheta}${diasCurto(a.expira - agora())}</span>` : ''}${fechado ? `<span class="mk-fechado">${a.estado === 'vendido' ? 'Vendido' : 'Retirado'}</span>` : ''}</div>`;
+    L675: if (a.estado && a.estado !== 'aberto') return `<span class="mk-fechado mq-fechado">${a.estado === 'vendido' ? 'Vendido' : 'Retirado'}</span>`;
+    L677: return `<button class="mk-bt-comprar" data-comprar="${a.id}" ${retido ? 'disabled data-dica="Retido: todo anúncio espera 2 min antes de poder ser comprado"' : ''}>${retido ? `<span class="mk-retido">${MK_IC.relogio}<span data-libera="${a.libera}" data-curto="1">${mmss(a.libera - agora())}</span></sp
+    L777: <p class="mk-media">${media ? `Preço médio vendido nos últimos 7 dias: ${preco(mkF.moedaItem, Math.round(media.media))} ${un} · ${fmt(media.qtd)} vendido(s)` : 'Nenhuma venda nesta moeda nos últimos 7 dias.'}</p>
+    L815: // modo: 'precos' (vendedor e comprador), 'vendi' (comprador) ou 'comprei' (vendedor).
+    L820: const pessoas = modo === 'precos' ? `<td class="mq-vd">${quem(x.vendedor, 'v')}</td><td class="mq-seta">${MK_IC.seta}</td><td class="mq-vd">${quem(x.comprador, 'c')}</td>`
+    L830: if (!h.length) return vazioMk(vendi ? 'Você ainda não vendeu nada.' : 'Você ainda não comprou nada.', vendi ? 'vendas' : 'compras');
+    L842: if (v === 'favoritos') return cabVista('favorito', 'Meus favoritos', 'Os Digimon e ovos que você guardou ★ (vendidos e retirados somem em 3 dias)') + (!favs ? vazioMk('carregando…') : grade(favs.lista.map((a) => ({ ...a, fav: true })), 'Nenhum favorito. Toque na ★ de um Digimon ou ovo à venda.', 'fa
+    L843: if (v === 'vendas') return cabVista('vendas', 'Histórico de vendas', 'O que você vendeu no Mercado') + historico(true);
+    L844: if (v === 'compras') return cabVista('compras', 'Histórico de compras', 'O que você comprou no Mercado') + historico(false);
+    L845: if (v === 'precos') return cabVista('precos', 'Preços do servidor', 'As últimas vendas do Mercado inteiro: quem vendeu, quem comprou e por quanto') + tabelaPrecos();
+    L1148: const refs = !ref ? '' : `<div class="na-refs">${cartaoRef('Menor anúncio', '', ref.menor)}${cartaoRef('Média vendida', ref.media ? `7 dias · ${fmt(ref.mediaQtd)} ${porUnidade ? 'un.' : 'vendido(s)'}` : '7 dias', ref.media)}</div>`;
+    L1162: <div class="na-linha"><span>Comissão do Mercado <small data-na="pct"></small> <i class="na-info" data-dica="${st.moeda === 'gemas' && st.tipo === 'digimon' ? 'Digimon em D-Dol paga por faixas: 13% até 500, 10% de 500 a 5.000 e 7,5% acima.' : 'Sai do valor da venda: o comprador paga o preço cheio.'}"
+    L1185: <div class="na-aviso">${ICO_AMPULHETA}<p>Este anúncio fica <b>retido por 2 min</b>, para evitar transferências de bots e macros: aparece na hora para toda a comunidade, mas só pode ser comprado depois dos 2 min. ${aviso}</p></div>
+    L1400: 'scanner-prismatico': 'O scanner mais forte do jogo, para capturar Digimon com muito mais chance. Não é vendido à parte.',
+    L1818: else indicou = '<p class="ind-nota">Você já comprou DCoin: o código de quem te indicou não pode mais ser informado.</p>';
+    L2435: for (const id of [...marc]) if (!porId.has(id)) marc.delete(id); // vendido, chocado ou sumido
+    L2449: const dicaVenda = () => `Vende na Loja ${escopoVenda() ? `os ovos ${escopoVenda()}` : 'todos os ovos da bolsa'} que passam no filtro de venda (⚙).${foraVenda.size ? `\nFora da venda: ${nomesFora()}.` : ''}\nOvos com cadeado nunca são vendidos.`;
+    L2496: <td class="cd-c-ac"><button class="cd-chocar" data-ov-chocar="${o.id}" ${cheia ? `disabled data-dica="${dicaCheia}"` : ''}>${cheia ? 'Sem vaga' : 'Chocar'}</button><button class="cd-melh${pode ? ' pode' : ''}" data-ov-data="${o.id}" ${max ? 'disabled' : ''} data-dica="${esc(dicaMelhorar)}">${max ? `
+    L2616: texto: 'Desmarque o que o VENDER TODOS não deve vender. Ovos com cadeado nunca são vendidos. Fica salvo neste aparelho.',
+  /js/pvp5.js  (2)
+    L69: // As casas de uma composição; quem foi vendido ou está no Mercado fica de fora (a vaga aparece aberta).
+    L92: ${comp.completa ? `<small class="p5-comp-info">⚔ ${fmtC(poder)} no total</small>` : '<small class="p5-comp-info falta">Incompleta: falta Digimon (vendido ou no Mercado)</small>'}
+  /js/oferenda.js  (1)
+    L58: // Quem sumiu (vendido, chocado, anunciado) sai da escolha.
+
+======================================================================
+3a. Campos do ovo no historico
+======================================================================
+  /js/overlay.js  (6)
+    L11: - o que existe: entidades por tipo, auras, asas, shiny, efeitos do motor, números, quedas, folhas/imagens em memória;
+    L205: if (e.shiny || e.brilho) nShiny++;
+    L210: entidades: cena.ents.size, porTipo: por, deOutrosTamers: nOutros, comAuraShop: top(aura, 8), comAuraTamer: nAuraT, comAsa: nAsa, shiny: nShiny, comBike: nBike, especies: top(esp, 10),
+    L252: var d = (e && (e.esp || e.tipo)) + (e && e.outro ? " outro" : "") + (e && e.auraItem ? " aura:" + e.auraItem : "") + (e && e.auraT ? " auraT" : "") + (e && e.asa ? " asa" : "") + (e && (e.shiny || e.brilho) ? " shiny" : "");
+    L293: L.push("  aura Shop " + (c.comAuraShop.join(" ") || "0") + " · aura Tamer " + c.comAuraTamer + " · asas " + c.comAsa + " · shiny " + c.shiny + " · bike " + c.comBike);
+    L376: cena: { mapa: c.mapa, ents: c.entidades, tipos: c.porTipo, outros: c.deOutrosTamers, auras: c.comAuraShop, auraT: c.comAuraTamer, asas: c.comAsa, shiny: c.shiny, esp: c.especies, fxMotor: s.efeitosDoMotor, numeros: c.numerosFlutuando, quedas: c.quedas, clima: c.clima },
+  /js/app.js  (86)
+    L58: import { iniciarRetratosX } from './shiny.js?v=4';
+    L110: for (const lista of [this.itens.scanners, this.itens.pocoes, this.itens.revives, this.itens.evolucao || [], this.itens.chips, this.itens.raros || [], this.itens.ovos || [], this.itens.zmoves || [], this.itens.datas || [], this.itens.auras || [], this.itens.comidas || []]) {
+    L127: let ovosDigitais = []; // a bolsa de Ovos Digitais (o que o scanner pega)
+    L134: let historico = [];
+    L147: let scannerSel = localStorage.getItem('scanner') || 'scanner-basico';
+    L557: historico = m.historico || [];
+    L616: // O "é seu!" espera o scanner terminar o scan na cena, como no DigiIdle.
+    L620: tocarSom(`capP${Math.min(5, Math.max(1, +m.ovo?.potencia || 1))}`); // um som por Potência (Configurações › Sons)
+    L621: historico.unshift(m.historico);
+    L622: historico = historico.slice(0, 60);
+    L625: toast(`Ovo ${rotuloOvo(o)}${o.shiny ? ' UX' : ''}${o.potencia ? ` P${o.potencia}` : ''} de ${cat.especie(o.especie)?.nome || cat.especie(m.esp)?.nome} é seu! Choque na Incubadora.`);
+    L641: case 'chat.historico': chat.msgs[m.canal] = m.msgs || []; if (m.canal === chat.canal) renderChat(); break;
+    L645: case 'shiny': popupShiny(m); break;
+    L888: const scanners = cat.itens.scanners;
+    L917: // Os scanners do scan, na ordem de uso (o servidor antigo manda só um, em "scanner").
+    L918: const scanSel = m.scanners || (m.scanner ? [m.scanner] : []);
+    L941: <img src="/icones/ovo-shiny.png" alt="">
+    L995: <h3><img src="/icones/scanner-plus.png" alt="">Scan de ovos${m.vip ? '' : ' <span class="offc-selo vip">VIP</span>'}</h3>
+    L999: <div class="offc-scanners ${m.scan && m.vip ? '' : 'off'}" id="offc-scanners">${curas(scanners, scanSel)}</div>
+    L1000: <p class="offc-dica">Marque quantos quiser: gasta os scanners da mochila na ordem marcada (acabou um, passa para o próximo). Ovos P4, P5 e UX chegam misteriosos e só vêm no resgate 100%.</p>
+    L1023: const salvar = (mud) => enviar('offline.config', { hunt: m.hunt, scan: m.scan, scanners: scanSel, pocoes: m.pocoes, revives: m.revives, limiar: m.limiar, ...mud });
+    L1054: if (e.target.checked && !scanSel.length) { e.target.checked = false; toast('Escolha um scanner primeiro.', true); return; }
+    L1057: // Marca/desmarca um scanner; sem nenhum marcado, o scan desliga junto.
+    L1058: $('#offc-scanners', c).onclick = (e) => {
+    L1064: salvar({ scanners: lista, ...(lista.length ? {} : { scan: false }) });
+    L1090: // Os scanners gastos no resgate: um só fica como antes ("Nome · N scan(s)"); vários viram ícone ×N.
+    L1093: if (por.length <= 1) return `${icone(m.scanner)}<span>${esc(cat.item(m.scanner)?.nome || 'Scanner')} · ${R.fmt(m.scans)} scan(s)</span>`;
+    L1094: const ordem = cat.itens.scanners.map((s) => s.id);
+    L1107: const coleta = m.scanner || temItens ? `<div class="off-coleta">
+    L1108: ${m.scanner ? `<div class="off-coleta-cab">${scansOff(m)}${m.boost ? '<em>Boost Offline</em>' : ''}${m.bolsaCheia ? '<em class="aviso">Bolsa de Ovos cheia</em>' : ''}</div>
+    L1130: ${m.scanner ? linha('Ovos', R.fmt(ovos.length), `${R.fmt(ovos.length + m.misteriosos)}${m.misteriosos ? ` <small class="off-mist-txt">+${m.misteriosos} ?</small>` : ''}`) : ''}
+    L1155: const nomeOvo = (o) => `${esc(cat.especie(o.especie)?.nome || '')}${o.shiny ? ' UX' : ''} · P${o.potencia}`;
+    L1532: const p = ['I', 'II', 'III', 'IV', 'V'][d.potencia - 1];
+    L1533: const bonus = [0, 5, 10, 25, 100][d.potencia - 1];
+    L1535: <span class="chip p p${d.potencia}" data-dica="Potência ${p} — este Digimon tem +${bonus}% em todos os atributos.">P${d.potencia}</span>
+    L1841: const pronto = evo && ativo.nivel >= evo.nivel && (E.itens[evo.chip] || 0) > 0 && (E.itens.evoluter || 0) >= nEvo && (!ativo.shiny || (E.itens['chip-shiny'] || 0) > 0);
+    L1850: : alem ? `${(eMax.especiais || []).length ? 'Especial certeiro, ' : ''}Rerrol e Especial aleatório: duas Megas e Núcleo Digital (o Rerrol é por DCoin).` : evo ? `Precisa de Nv ${evo.nivel} (está no ${ativo.nivel}) e 1× ${nomeItem(cat, evo.chip)} (tem ${E.itens[evo.chip] || 0})${nEvo ? ` e ${nEvo}× E
+    L1863: const dica = `poder ${R.fmt(d.poder)} · qualidade ${R.qual(d.qualidade)} · P${d.potencia} · ${cat.elemento(e.elemento).nome}\nclique para colocar em campo · botão direito: ficha`;
+    L1877: if ((E.guildTag || '') !== (chat.tagVista || '')) { chat.tagVista = E.guildTag || ''; renderAbasChat(); if (E.guildTag) enviar('chat.historico', { canal: 'guild' }); }
+    L2006: $('#auto-scanner-captura').checked = a.scannerCaptura;
+    ... +46
+  /js/cena.js  (15)
+    L26: import { canvasX, corJoiaDe } from './shiny.js?v=4';
+    L393: // Com `retrato`, pede a folha pintada de UX (shiny.js), guardada à parte como "x|src".
+    L1055: this.sumidos = new Map(); // corpos que acabaram de sair do campo (o scanner tira o corpo na hora)
+    L1179: e.antes = { esp: e.esp, tam: e.tam, tier: e.tier, shiny: e.shiny, aura: e.aura, dir: e.dir, dir8: e.dir8, em: agora };
+    L1257: // Resposta do scanner (mensagem "captura"): o Tamer joga o scanner no corpo e a animação
+    L1264: return this.capturas.lancar({ id, ent: { ...ent }, tamer: this.ents.get('t'), scanner: m.scanner, ok: m.ok });
+    L1268: // do corpo. `fica`: o corpo continua em campo (o selvagem caído, que o scanner pega) e cai ali
+    L1293: this.quedas.push({ tipo: e.tipo, esp: base.esp, tam: base.tam, tier: base.tier, shiny: base.shiny, aura: base.aura, x: e.x, y: e.y, queda, fantasma: true });
+    L2191: // O corpo no chão como a cena desenha (o último quadro da queda), para o scanner fotografar:
+    L2357: const brilho = !e.corpo && e.shiny;
+    L2358: // O UX desenha a folha pintada com a joia da espécie (shiny.js); até ela chegar, o filtro antigo.
+    L2419: // Atrás do corpo: o halo da aura (ou o dourado do shiny, quando ele não tem aura).
+    L2463: if (OV) { OV.parte('  ↳ shiny: reflexo', performance.now() - tp); tp = performance.now(); }
+    L2467: if (OV) { OV.parte('  ↳ shiny: estrelas', performance.now() - tp); tp = performance.now(); }
+    L2779: this._rotulo(g, (e.shiny ? 'UX - ' : '') + esp.nome + ' Nv' + e.nv, sx, topo - 6, id === 'a' ? '#a5f3fc' : '#ffffff');
+  /js/regras.js  (24)
+    L52: function multNascenca(p, shiny, lendario = false) {
+    L54: if (shiny) m *= MULT_SHINY;
+    L59: function somaNascimento(bases, ivs, q, p, shiny) {
+    L60: const mult = multNascenca(p, shiny);
+    L65: function score(bases, ivs, q, p, shiny) {
+    L67: const s = Math.max(min, Math.min(max, somaNascimento(bases, ivs, q, p, shiny)));
+    L72: export function poder(bases, iv, q, p, shiny, nivel, lendario = false) {
+    L73: const v = Math.max(1, Math.round(nivel * 10 * score(bases, comoIvs(iv), q, p, shiny)));
+    L77: export function nota(bases, ivs, q, p, shiny) {
+    L80: const s = Math.max(lo, Math.min(hi, score(bases, comoIvs(ivs), q, p, shiny)));
+    L90: export function eixosNota(bases, ivs, q, p, shiny) {
+    L91: const atual = Math.log(somaNascimento(bases, ivs, q, p, shiny));
+    L94: iv: ganho(somaNascimento(bases, ivsDeSoma(6), q, p, shiny)), qualidade: ganho(somaNascimento(bases, ivs, Q_MIN, p, shiny)),
+    L95: potencia: ganho(somaNascimento(bases, ivs, q, 1, shiny)), shiny: ganho(somaNascimento(bases, ivs, q, p, false)),
+    L97: const tot = d.iv + d.qualidade + d.potencia + d.shiny || 1;
+    L98: return { iv: d.iv / tot, qualidade: d.qualidade / tot, potencia: d.potencia / tot, shiny: d.shiny / tot };
+    L101: export function fatiasStat(bases, ivs, q, p, shiny) {
+    L102: const mult = multNascenca(p, shiny);
+    L113: export function statsNoNivel(bases, ivs, nivel, q, p, shiny, lendario = false) {
+    L114: const mult = multNascenca(p, shiny, lendario);
+    L120: export const potencialSpeed = (s) => Math.min(7, Math.max(0, s <= 120 ? s / 20 : 6 + (s - 120) / 40));
+    L121: export const recargaComSpeed = (ms, speedBase, ivSpd) => Math.round(ms * (1 - (potencialSpeed(speedBase) * limitarIv(ivSpd) / 32) / 100));
+    L125: export function forcaGinasio(esp, golpes, ivs, q, p, shiny, nivel) {
+    L128: const st = statsNoNivel(esp.bases, ivs, nv, q, p, shiny, !!esp.lendario);
+  /js/mobile.js  (4)
+    L42: // Embaixo à esquerda da cena: o log e a caixa de scanner numa coluna só. O log cresce para cima e a
+    L43: // caixa de scanner fica parada no pé (assim os botões dela não pulam a cada linha nova do log).
+    L52: // Fechada, o botão mostra quantos Digimon estão no chão esperando o scanner.
+    L57: bt.innerHTML = '<img src="/icones/scanner-ultra.png" alt=""><b class="hidden"></b>';
+  /js/ui.js  (8)
+    L22: // Atributos do <img> de um retrato: shiny (paleta + brilho dourado) e aura (halo da região).
+    L25: const fx = [d?.shiny ? 'shiny' : '', a ? 'aura' : ''].filter(Boolean).join(' ');
+    L28: // Prefixo do nome de um Digimon shiny: "UX - Agumon".
+    L29: export const prefixoX = (d) => (d?.shiny ? 'UX - ' : '');
+    L44: const BOOST_ICONE = { xp: 'boost-xp', xpdigi: 'boost-dano', loot: 'boost-loot', captura: 'boost-defesa', shiny: 'fragmento-shiny' };
+    L45: const BOOST_NOME = { xp: 'XP Boost', xpdigi: 'XP Boost Digimon', loot: 'Loot Boost', captura: 'Capture Boost', shiny: 'UX Lure' };
+    L82: return `<span class="ovo-ico ovo-e${k}${grande ? ' grande' : ''}${o?.shiny ? ' ovo-x' : ''}" data-dica="Ovo ${rotuloOvo(o)}${o?.shiny ? ' UX' : ''} · +${o?.data || 0}${o?.potencia ? ` · P${o.potencia}` : ''}">
+    L84: <b class="ovo-faixa">${rotuloOvo(o)}</b>${o?.data ? `<b class="ovo-mais">+${o.data}</b>` : ''}${o?.shiny ? '<b class="ovo-xs">UX</b>' : ''}${o?.protegido ? '<b class="ovo-prot">🛡</b>' : ''}${o?.potencia ? `<b class="ovo-pot p${o.potencia}">P${o.potencia}</b>` : ''}</span>`;
+  /js/menus.js  (10)
+    L47: 'dp+': (d) => -d.ivTotal, 'dp-': (d) => d.ivTotal, 'qual-': (d) => d.qualidade, 'pot-': (d) => d.potencia * 1e12 + d.poder, recente: (d) => -(d.capturadoEm || 0),
+    L49: const raro = (d, e) => d.shiny || d.potencia === 5 || e?.lendario || (d.refino || []).some((r) => r > 0);
+    L158: const luz = d.shiny ? ' luz-x' : e.lendario ? ' luz-ouro' : '';
+    L163: ${d.potencia ? `<span class="pv-chips"><span class="chip p p${d.potencia}">P${d.potencia}</span>${d.ivTotal != null ? `<span class="chip iv">DP ${d.ivTotal}</span>` : ''}${d.nota != null ? `<span class="chip n">${d.inestimavel ? 'GLITCH' : 'N ' + R.num3(d.nota)}</span>` : ''}</span>` : ''}
+    L180: const luz = d.shiny ? ' luz-x' : e.lendario ? ' luz-ouro' : '';
+    L188: ${d.potencia ? `<span class="pv-chips"><span class="chip p p${d.potencia}">P${d.potencia}</span>${d.ivTotal != null ? `<span class="chip iv">DP ${d.ivTotal}</span>` : ''}${d.nota != null ? `<span class="chip n">${d.inestimavel ? 'GLITCH' : 'N ' + R.num3(d.nota)}</span>` : ''}</span>` : ''}
+    L299: const scanners = (t['scanner-ultra'] || 0) + (t['scanner-prismatico'] || 0);
+    L309: <div class="ps-chips">${chip('fragmento-shiny', fmt(t['fragmento-shiny'] || 0), nomeItem(cat, 'fragmento-shiny'))}${chip('vip-dias', t['vip-dias'] ? t['vip-dias'] + 'd' : 0, 'de VIP')}
+    L311: ${chip('scanner-prismatico', scanners ? fmt(scanners) : 0, 'scanners')}${chip('token-boss', t['token-boss'] ? fmt(t['token-boss']) : 0, 'Boss Tokens')}</div>
+    L395: const BOOST_ICO = { xp: ['boost-xp', 'XP Boost'], xpdigi: ['boost-dano', 'XP Boost Digimon'], captura: ['boost-defesa', 'Capture Boost'], shiny: ['fragmento-shiny', 'UX Lure'] };
+  /js/evolucao-fx.js  (6)
+    L10: // (shiny) com a mesma paleta dos retratos da UI.
+    L254: // paleta de joia dos retratos da UI (shiny.js).
+    L255: async function carregarRetrato(especie, shiny) {
+    L258: return await Promise.race([quadroParado(especie, shiny), new Promise((_, falha) => setTimeout(() => falha(new Error('timeout')), 2500))]);
+    L273: const [imgDe, imgAlvo] = await Promise.all([carregarRetrato(pedido.de.especie, pedido.shiny), carregarRetrato(pedido.para.especie, pedido.shiny)]);
+    L496: // pedido: { de: {nome, especie, estagio}, para: {nome, especie, estagio, estagioNome}, shiny }
+  /js/cofre.js  (12)
+    L23: const ICONES_PASTA = ['colecao', 'chip-shiny', 'token-boss', 'moeda-diamantes', 'exp-share', 'chip-fire', 'chip-water', 'chip-ice', 'chip-wood', 'chip-wind',
+    L34: const novoFiltro = () => ({ busca: '', elem: '', attr: '', shiny: false, pot: 0, qual: 0, iv: [1, 1, 1, 1, 1, 1], ordem: 'nivel' });
+    L35: const filtroLigado = (f) => !!(f.busca || f.elem || f.attr || f.shiny || f.pot || f.qual || f.iv.some((v) => v > 1));
+    L70: if (f.shiny && !d.shiny) return false;
+    L71: if (f.pot && d.potencia < f.pot) return false;
+    L78: pot: (d) => d.potencia * 1e12 + d.poder, recente: (d) => d.capturadoEm,
+    L87: const chips4 = (d) => `<div class="mk-chips"><span class="chip p p${d.potencia}">P${d.potencia}</span><span class="chip iv">DP ${d.ivTotal}</span><span class="chip q">Q ${R.qual(d.qualidade)}</span><span class="chip n">N ${d.lendario ? '∞' : R.num3(d.nota)}</span></div>`;
+    L94: const luz = d.shiny ? 'luz-arco' : es?.lendario ? 'luz-ouro' : '';
+    L169: <button class="mk-acao ${f.shiny ? 'on cf-x' : ''}" data-shiny data-dica="Só os UX">✨ UX</button>
+    L194: $('[data-shiny]', c).onclick = () => { t.f.shiny = !t.f.shiny; t.limite = LOTE; ctx.rerender(); };
+    L313: <div class="cf-regras">${linha('le', r.lendario, 'Lendário/Mítico')}${linha('sh', r.shiny, 'UX')}
+    L320: enviar('colecao.regras', { lendario: $('#ac-le', c).checked, shiny: $('#ac-sh', c).checked, potOn: $('#ac-p', c).checked, potMin: +$('#ac-pv', c).value,
+  /js/loja.js  (10)
+    L18: { id: 'scanners', ico: 'scanner-basico', luz: 'ciano', nome: 'Scanners', sub: 'Para capturar', fala: 'Scanner bom fecha captura difícil. Leve uns a mais: a hunt é longa!' },
+    L25: 'scanner-basico': 'ciano', 'scanner-plus': 'vermelha', 'scanner-super': 'roxa', 'scanner-ultra': 'ouro', 'scanner-prismatico': 'arco',
+    L29: const TRANCADO = { scanners: 'scanner-prismatico', pocoes: 'evoluter' };
+    L40: const st = { aba: 'comprar', cat: 'scanners', sel: {}, qtd: new Map(), chave: '' };
+    L86: const dcoin = id === 'scanner-prismatico';
+    L103: const dcoin = id === 'scanner-prismatico';
+    L224: const valioso = (d) => d.shiny || d.potencia >= 5 || cat.especie(d.especie)?.lendario;
+    L225: const regrasAtivas = () => { const r = E().autoColecao || {}; return [r.lendario, r.shiny, r.potOn, r.qualOn, r.ivOn, r.notaOn].filter(Boolean).length; };
+    L269: const x = lote.filter((d) => d.shiny).length, p5 = lote.filter((d) => d.potencia >= 5).length;
+    L334: // aba: 'comprar' | 'vender' | uma categoria ('scanners', 'pocoes', 'revives'; 'evolucao' é pocoes).
+  /js/mochila.js  (6)
+    L42: if (bolso === 'tamer') g = [['Scanners', com(it.scanners)], ['Poções', com(it.pocoes)], ['Revives', com(it.revives)], ['Evolução', com(it.evolucao || [])]];
+    L43: if (bolso === 'chips') g = [['Elementos', com(it.chips)], ['Especiais', com([cat.item('chip-shiny')])]];
+    L76: if (bolso === 'tamer') return soma([...it.scanners, ...it.pocoes, ...it.revives, ...(it.evolucao || [])]);
+    L77: if (bolso === 'chips') return soma([...it.chips, { id: 'chip-shiny' }]);
+    L111: if (i.id === 'ovo-shiny') return ['Chocar', 'chocar'];
+    L172: { id: 'chocadeira', ico: 'chocadeira', nome: 'Incubadora', q: `${ovos}/${1 + (e.chocadeira?.vagas || 0)}`, dica: ['Choque os Ovos Digitais do scanner', `${ovos} chocando`, `${nOvos} na bolsa`], ponto: selos.chocadeira },
+  /js/halloween.js  (3)
+    L222: const historico = [];
+    L318: historico.unshift(r);
+    L319: q('[data-hist]').innerHTML = historico.slice(0, 12).map(chipHist).join('');
+  /js/calculadora.js  (41)
+    L7: //   · Calcular Digimon: a nota N= de 0 a 10, de onde ela vem, o peso de cada stat, o potencial na
+    L52: const novoLado = () => ({ esp: null, nv: NIVEL_COMPARAR, ivs: R.ivsDeSoma(99), q: 1.1, p: 1, shiny: false, z: '', busca: '' });
+    L54: const st = { aba: 'nota', esp: null, ivs: R.ivsDeSoma(99), q: 1.1, p: 1, shiny: false, busca: '', origem: null, comp: { a: novoLado(), b: novoLado() } };
+    L87: const arteDe = (e, shiny, px) => (e
+    L88: ? `<img ${SPRITE(e.id)} alt="" style="width:${px}px;height:${px}px"${shiny ? ' data-fx="shiny"' : ''}>`
+    L128: const passaMercado = (e, cfg, nota) => !!e?.lendario || cfg.shiny || cfg.p >= 5 || nota >= NOTA_MERCADO - 1e-9;
+    L151: <button type="button" id="${pre}-x" class="calc-shiny${cfg.shiny ? ' on' : ''}" aria-pressed="${cfg.shiny}"${off ? ' disabled' : ''}>✨ UX</button></div>`;
+    L204: if (x) x.onclick = () => { cfg.shiny = !cfg.shiny; x.classList.toggle('on', cfg.shiny); x.setAttribute('aria-pressed', cfg.shiny); aoMudar(true); };
+    L242: ${o ? `<p class="calc-origem">${ico('copia')}<span>Números da ficha de <b>${o.shiny ? 'UX - ' : ''}${esc(o.nome)} Nv${fmt(o.nivel)}</b>${o.refino?.some(Boolean) ? ' (com o refino dele)' : ''}.</span></p>` : ''}
+    L251: <div class="calc-palco-col">${holofote({ id: 'calc-palco', tom: 'vazio', classe: `calc-palco${st.shiny && e ? ' hf-shiny' : ''}`, arte: arteDe(e, st.shiny, 112), rodape: placa })}</div>
+    L254: <section class="calc-cartao calc-potencial hidden" id="calc-potencial"></section>
+    L278: $('.hf-arte', palco).innerHTML = arteDe(e, st.shiny, 112);
+    L279: palco.classList.toggle('hf-shiny', st.shiny);
+    L280: const card = $('#calc-potencial', host);
+    L286: const n = R.nota(bases, st.ivs, st.q, st.p, st.shiny);
+    L304: const ex = R.eixosNota(bases, st.ivs, st.q, st.p, st.shiny);
+    L305: $('#calc-eixos', host).innerHTML = barra('DP (soma)', ex.iv) + barra('Qualidade', ex.qualidade) + barra('Potência', ex.potencia) + barra('UX', ex.shiny);
+    L306: const fatias = R.fatiasStat(bases, st.ivs, st.q, st.p, st.shiny);
+    L312: // O potencial na forma final: este MESMO nascimento medido na régua da Mega da linha.
+    L314: const el = $('#calc-potencial', host);
+    L317: const chave = `${e.id}:${st.shiny}`;
+    L322: <span class="calc-pot-card-arte"><img ${SPRITE(a.id)} alt=""${st.shiny ? ' data-fx="shiny"' : ''}></span>
+    L323: <span class="calc-pot-card-txt"><b class="calc-pot-card-nome">${esc(a.nome)}</b><span class="calc-pot-card-nota"></span><em class="calc-potencial-mercado"></em></span></button>`).join('')}</div>`;
+    L329: const n = R.nota(a.bases, st.ivs, st.q, st.p, st.shiny), f = R.faixaDe(n);
+    L333: const m = $('.calc-potencial-mercado', card);
+    L334: m.className = `calc-potencial-mercado${ok ? ' ok' : ''}`;
+    L345: const mult = multP * (st.shiny ? R.MULT_SHINY : 1) * (e.lendario ? R.MULT_LENDARIO : 1);
+    L348: const poder = R.poder(bases, st.ivs, st.q, st.p, st.shiny, nv, e.lendario);
+    L351: const forca = R.forcaGinasio(esp, golpes, st.ivs, st.q, st.p, st.shiny, nvGin);
+    L352: const hp = R.hpCombate(R.statsNoNivel(bases, st.ivs, nv, st.q, st.p, st.shiny, e.lendario)[0]);
+    L356: ${tile('Multiplicador de stats', multTxt(mult), `Potência ${multTxt(multP)}${st.shiny ? ` · UX ×${R.MULT_SHINY}` : ''}${e.lendario ? ` · Lendário ×${R.MULT_LENDARIO}` : ''}`)}
+    L365: const palco = (l) => holofote({ id: `cmp-${l}-palco`, classe: `calc-comp-palco lado-${l}`, arte: arteDe(especie(st.comp[l].esp), st.comp[l].shiny, 92),
+    L389: if (mudouArte) { $('.hf-arte', palco).innerHTML = arteDe(e, cfg.shiny, 92); }
+    L390: palco.classList.toggle('hf-shiny', !!(e && cfg.shiny));
+    L392: const n = R.nota(e.bases, cfg.ivs, cfg.q, cfg.p, cfg.shiny);
+    L394: placa.innerHTML = `<b class="calc-comp-placa-nome">${cfg.shiny ? 'UX - ' : ''}${esc(e.nome)}</b><span class="calc-comp-placa-linha"><em class="calc-comp-placa-nv">Nv${fmt(cfg.nv)}</em>
+    L420: const pacote = (c) => ({ esp: c.esp, nv: c.nv, ivs: c.ivs, q: c.q, p: c.p, shiny: c.shiny, z: c.z || '' });
+    L469: return `<div class="calc-comp-det lado-${l}${venc === l ? ' vence' : ''}"><span class="calc-comp-det-topo"><span class="calc-comp-letra">${l.toUpperCase()}</span><b>${cfg.shiny ? 'UX - ' : ''}${esc(e.nome)}</b></span>
+    L513: $('#calc-limpar', c).onclick = () => { Object.assign(st, { esp: null, ivs: R.ivsDeSoma(99), q: 1.1, p: 1, shiny: false, busca: '', origem: null }); ctx.rerender(); };
+    L532: aba: 'nota', esp: e.id, ivs: [...d.ivs], q: Number(d.qualidade) || 1, p: Number(d.potencia) || 1, shiny: !!d.shiny, busca: '',
+    ... +1
+  /js/amigos.js  (5)
+    L69: if (x.tipo === 'ovo') return `Ovo ${rotuloOvo(r)}${r.shiny ? ' UX' : ''} de ${cat.especie(r.especie)?.nome || r.especie} +${r.data || 0}`;
+    L303: ${x.tipo ? `<div class="am-oferta${x.resumo?.shiny ? ' shiny' : ''}"><span class="am-oferta-arte">${arteOferta(x, 56)}</span>
+    L361: enviar('chat.historico', { canal: 'guild' });
+    L476: 'chat.historico': (m) => { if (m.canal === 'guild' && ui.sel === 'guild') depois(pintarPainel); },
+    L493: if (ui.sel === 'guild') enviar('chat.historico', { canal: 'guild' });
+  /js/guild.js  (1)
+    L209: const cardDigi = (d) => `<div class="gd-digi${d.shiny ? ' shiny' : ''}"><img ${SPRITE(d.especie)} alt="" loading="lazy"><small>Nv ${fmt(d.nivel)}</small><b>${IC.espadas}${fmt(d.poderGuerra)}</b></div>`;
+  /js/boss.js  (1)
+    L307: <span class="br-membro-txt"><b>${x.shiny ? '<span class="br-x">UX</span>' : ''}${esc(e?.nome || x.esp)}</b><small>Nv ${fmt(x.nivel)} · ${fmt(x.golpes)} golpes${x.caiu ? ' · caiu' : ''}</small>
+  /js/digidex.js  (9)
+    L7: // com scanner no lugar da bola); e, pelos botões do topo, os UX e os P5 do servidor.
+    L259: ['🏆', 'O prêmio', '<em>1º: 10 DCoin</em> + Capture Boost e UX Lure por 6 h + o selo de scanner no chat · <em>2º</em>: Capture Boost e UX Lure por 6 h · <em>3º</em>: os dois por 3 h. Só a metade de cima do placar recebe (com 3 Tamers, pagam os 2 primeiros). Sai na virada de domingo; offline, o prêmi
+    L263: ['👑', 'Selo no chat', 'O 1º lugar da semana usa o selo de scanner ao lado do nick no chat — e perde o selo para quem o ultrapassar.'],
+    L266: <div class="th-icone"><img src="/icones/scanner-basico.png" alt=""></div>
+    L301: }).join('')}</div>` : '<div class="th-vazio"><img src="/icones/scanner-basico.png" alt="">Nenhuma espécie scanneada nesta semana.</div>'}</div>`;
+    L325: const ICO_CAT = { linhagem: 'hud-evolucao.png', aura: 'aura/aura-digital.svg', elemento: 'elementos/fogo.png', tipo: 'elementos/vacina.png', evolucao: 'evoluter.png', unica: 'nucleo-digital.png', especial: 'chip-shiny.png' };
+    L464: <button type="button" class="dx-aba${aba === 'hatch' ? ' ativa' : ''}" data-aba="hatch"><img src="/icones/scanner-basico.png" alt="">Top Hatch <span class="dx-aba-pill" data-pill>${pillTH}</span></button></div>
+    L549: return `<div class="rs-card${d.shiny ? ' x' : ''}"><div class="rs-palco"><span class="rs-selo">${tipo === 'x' ? '✨ UX' : 'P5'}</span><img ${SPRITE(e.id)} alt="" loading="lazy"></div>
+    L550: <b class="rs-nome">${d.shiny ? 'UX - ' : ''}${esc(d.apelido || e.nome)}</b><span>${ctx.tipoHtml(e)}</span><span class="rs-nv">Nv ${fmt(d.nivel)}</span>
+  /js/wiki.js  (24)
+    L205: const linhas = cat.itens.scanners.map((s) => { const c = R.chanceCaptura(preco, s.eficiencia, 0, boost); return [`${icone(s.id)} ${esc(s.nome)}`, vezes(s.eficiencia), `<b>${pct(c * 100)}</b>`, `≈ ${fmt(Math.ceil(1 / c))}`]; });
+    L266: const t = tierOvo({ especie: v('esp').value, ivs, u: [Math.random(), Math.random()], potencia: pFixa || sortP(), shiny: x }, data);
+    L366: // dele pesa 0,3× o anterior (potenciaHerdada, em alem_mega.go). Mudou lá, muda aqui.
+    L556: const PARTES_TUTORIAL = [['hud-digivice', 'Seu inicial'], ['menu-mapa', 'O mapa certo'], ['scanner-basico', 'Scan e poções'], ['ovo', 'Os ovos'], ['chocadeira', 'Incubadora'],
+    L597: const GRUPOS = [['comeco', 'Começo', 'menu-mapa', 'Começo'], ['digimon', 'Seu Digimon', 'hud-evolucao', 'Digimon'], ['caca', 'Caça e captura', 'scanner-basico', 'Caça'], ['progresso', 'Progresso', 'menu-boss', 'Progresso'], ['economia', 'Economia', 'menu-shop', 'Economia'], ['social', 'Social e PvP'
+    L615: ['Incubadora', 'Onde o ovo choca (antes se chamava Chocadeira).', 'ovos'], ['Ovo Digital', 'O que o scanner pega.', 'captura'], ['Potência (P1–P5)', 'Multiplica os stats: P5 dobra.', 'stats'],
+    L704: <p>A Roleta do Ovo Doce dá ovos <b>P3</b> (92%) e <b>P4</b> (8%) dos Digimon do evento, com o Tier sorteado, e garante um P4 a cada 20 giros. O ovo sai do Rookie da linha, como no ${ir('captura', 'scanner', 'ovo')}.</p>` },
+    L796: ['scanner-basico', 'Escanear', 'O corpo fica 30 s no chão. Um scan por corpo; se der certo, vem um Ovo Digital.', 'captura'],
+    L802: <li><b>Compre Scanners e poções</b> na ${ir('economia', 'Loja')}. Scanner Básico custa ${fmt(cat.itens.scanners[0].preco)} bits; Small Potion ${fmt(cat.itens.pocoes[0].preco)}.</li>
+    L805: <li><b>Fique de olho nos corpos.</b> Com o scanner escolhido, toque no corpo (ou ligue o scan automático do VIP).</li></ol>` },
+    L904: ${tabela(['SPD base da espécie', 'Desconto máximo na recarga'], [20, 60, 100, 120, 160, 200].map((b) => [fmt(b), pct(R.potencialSpeed(b), 2)]))}
+    L1062: <li><b>Scan offline</b> (só VIP): cada abate deixa um corpo e os scanners marcados tentam nele, na ordem marcada (acabou um, passa para o próximo), até acabarem todos ou encher a bolsa de Ovos Digitais.</li>
+    L1065: { id: 'captura', grupo: 'caca', nome: 'Captura', titulo: 'Captura e Ovos Digitais', icone: 'scanner-basico', lead: 'O scanner não pega o Digimon: pega um Ovo Digital da linha dele.',
+    L1071: ${tabela(['Scanner', 'Eficiência', 'Onde'], cat.itens.scanners.map((s) => [`${icone(s.id)} ${esc(s.nome)}`, vezes(s.eficiencia), s.preco ? `Loja, ${fmt(s.preco)} bits` : 'Shop (pacotes por DCoin)']))}` },
+    L1072: { id: 'ovo', titulo: 'Que ovo sai', html: () => `<p>O scanner sempre dá o ovo do <b>Rookie da linha</b> do Digimon escaneado. Escaneou um Greymon, um MetalGreymon ou um WarGreymon? Sai o Ovo Agumon. Não há mais sorteio de degrau: ovo de Champion, Ultimate ou Mega só existe se você já tinha um guarda
+    L1172: ['fragmento-chave', 'Ilha', 'XP extra para quem mora nela'], ['fragmento-bike', 'Cartão de Speed', 'Andar mais rápido na hunt'], ['fragmento-shiny', 'Chip UX', 'Evoluir um Digimon UX'],
+    L1173: ['fragmento-zmove', 'D-Skill', 'Golpe de poder 1.800 do elemento escolhido'], ['peca-aoe', 'Chip AoE', 'Golpes em área 11×11'], ['fragmento-ovo-shiny', 'Ovo UX', 'Choca em 7 dias, sempre UX'], ['fragmento-nucleo', 'Núcleo Digital', 'Especial e Fusão da Mega'],
+    L1177: const sc = [['scanner-basico', 0.1], ['scanner-plus', 0.2], ['scanner-super', 0.3], ['scanner-ultra', 0.4], ['scanner-prismatico', 0.5]];
+    L1180: <ul class="wk-lista"><li>Entra-se do Hospital Digital, fora de combate e da fila do PvP, com a equipe de pé e pelo menos <b>um scanner</b> na mochila.</li>
+    L1186: <h4>Um scanner, uma chance</h4>
+    L1187: <p>Derrubado, o Lendário fica no chão e a tela pede o scanner. A chance é uma tabela por scanner, igual para todo Lendário.</p>` +
+    L1189: `<ul class="wk-lista"><li>Você tem <b>25 segundos</b> para escolher. Passado o tempo, o jogo usa sozinho o melhor scanner que você tiver.</li>
+    L1229: { id: 'moedas', titulo: 'As três moedas', html: () => `<div class="wk-moedas"><div><img src="/icones/moeda-bits.png" alt=""><b>Bits</b><small>Caem de todo abate. Compram scanners, poções e revives na Loja. A Loja também paga em Bits pelo que você vende.</small></div>
+    L1363: { id: 'outros', titulo: 'Os outros multiplicadores', html: () => `<ul class="wk-lista"><li><b>Loot Boost</b>: +40% nos Bits extras e na chance dos drops.</li><li><b>Capture Boost</b>: dobra a chance do scanner.</li>
+  /js/kurata.js  (2)
+    L34: { id: 'shiny', aba: 'Chip UX', frag: 'fragmento-shiny', item: 'chip-shiny', nome: 'Chip UX', cor: '#fde047',
+    L36: { id: 'ovo-shiny', aba: 'Ovo UX', frag: 'fragmento-ovo-shiny', item: 'ovo-shiny', nome: 'Ovo UX', cor: '#facc15',
+  /js/ficha-especie.js  (8)
+    L161: const melhorEf = Math.max(0, ...(cat.itens.scanners || []).map((x) => x.eficiencia));
+    L167: ${placa('Derrotas por captura', melhorCh ? `~${fmt(Math.ceil(1 / melhorCh))}` : '—', { icone: 'olho', sub: melhorCh ? `com o melhor scanner (${pctFino(melhorCh)})` : 'só por evolução' })}</div>`;
+    L190: const scanners = cat.itens.scanners || [];
+    L194: <tbody>${scanners.map((s) => {
+    L199: <p class="fe-nota">O scanner só vai no Digimon DERROTADO, e é uma tentativa por corpo — ou seja, a chance por scan é a chance por encontro. "Derrotas (média)" é quantos você precisa derrubar até um ficar no scanner.</p>`;
+    L201: <tbody>${scanners.map((s) => {
+    L205: <p class="fe-nota">O brilho é sorteado a cada scan, antes de saber se o scanner fecha — um UX que escapa vai embora com o corpo. Qualidade, DP e potência só rolam se a captura der certo. A última coluna é a captura comum × a chance de UX.</p>`;
+    L235: ${holofote({ tom: 'shiny', classe: 'hf-shiny', arte: `<img ${SPRITE(e.id)} alt="" data-fx="shiny">`, rodape: '<span class="fe-palco-rot x">✨ Forma UX</span>' })}
+  /js/pocket.js  (11)
+    L296: const vistos = s.shinyVistos || 0, pegos = s.shinyPegos || 0;
+    L304: ${tile('#fde047', 'UX', `${fmt(pegos)}<u> / ${fmt(vistos)}</u>`, false, vistos ? esc(t('{0}% dos vistos', Math.round(pegos / vistos * 100))) : esc(t('nenhum visto ainda')), ico('chip-shiny'))}
+    L311: const vistos = s.shinyVistos || 0, pegos = s.shinyPegos || 0;
+    L313: const hist = (h.historico() || []).slice(0, 6);
+    L317: : c.potencia ? `<span class="pk-tier p p${c.potencia}">P${c.potencia}</span>` : '';
+    L318: const dica = `${c.shiny ? 'UX ' : ''}${nomeEsp(c.especie)} · ${t('Nv')} ${c.nivel}${letra && letra !== '?' ? ` · Tier ${letra}` : ''}${c.potencia ? ` · P${c.potencia}` : ''}`;
+    L319: return `<div class="pk-ovo${c.shiny ? ' ux' : ''}" title="${esc(dica)}">${sprite(c.especie)}${selo}</div>`;
+    L340: const dica = `${d.shiny ? 'UX ' : ''}${d.apelido || esp?.nome || d.especie} · ${t('Nv')} ${fmt(d.nivel)} · ${Math.floor(f * 100)}%${on ? ` · ${t('em uso')}` : shares.has(d.id) ? ' · Exp. Share' : ''}`;
+    L341: return `<div class="pk-m${on ? ' on' : ''}${d.shiny ? ' ux' : ''}" title="${esc(dica)}"><div class="pk-f">${sprite(d.especie)}${el ? `<img class="pk-es" src="${abs(el)}" alt="">` : ''}</div>
+    L349: ficha = `<div class="pk-cx pk-bloco"><div class="pk-cab"><span class="pk-mini">${esc((a.shiny ? 'UX ' : '') + (a.apelido || nomeEsp(a.especie)))}</span><span class="pk-mini" style="color:var(--texto2)">${esc(t('Nota {0}', dec(a.nota)))}${a.potencia ? ` · P${a.potencia}` : ''}</span></div>
+    L423: k('nomeDigi').textContent = (ativo.shiny ? 'UX - ' : '') + (ativo.apelido || nomeEsp(ativo.especie));
+  /js/chat-links.js  (12)
+    L19: const CATEGORIAS = [['scanners', 'Scanner'], ['pocoes', 'Poção'], ['revives', 'Revive'], ['evolucao', 'Evolução'], ['chips', 'Chip'], ['raros', 'Item raro'], ['ovos', 'Ovo'], ['zmoves', 'D-Skill'], ['datas', 'Energia de Ovo']];
+    L43: chaves: [norm(nomeDigi(d)), norm(e.nome), d.shiny ? norm('x' + e.nome) : ''].filter(Boolean),
+    L44: sub: `Nv ${fmt(d.nivel)} · P${d.potencia} · ${d.id === ativo ? 'Em campo' : LOCAL[d.local] || ''}`,
+    L51: out.push({ tipo: 'ovo', ref: { tipo: 'ovo', id: o.id }, nome: `Ovo ${rotuloOvo(o)}${o.shiny ? ' UX' : ''} · ${e.nome}`, token: `OvoDe${compacto(e.nome)}`,
+    L53: sub: `+${o.data || 0}${o.potencia ? ` · P${o.potencia}` : ''} · Nv ${fmt(o.nivel)}`,
+    L55: peso: -(o.data || 0) * 10 - (o.potencia || 0) - (o.shiny ? 100 : 0) });
+    L106: const dica = `${prefixoX(d)}${nomeDigi(d)} · Nv ${fmt(d.nivel)} · P${d.potencia} · nota ${String(d.nota ?? '').replace('.', I18N.decimal)}\nclique: ver a ficha deste Digimon`;
+    L107: return `<button type="button" class="clink digimon${d.shiny ? ' x' : ''}" ${ref} data-dica="${esc(dica)}"><img ${SPRITE(e.id)} alt=""${fxRetrato(d, e)}><span class="cl-nome">${esc(prefixoX(d) + nomeDigi(d))}</span><b>Nv ${fmt(d.nivel)}</b></button>`;
+    L115: const extra = `<b class="cl-mais">+${o.data || 0}</b>${o.potencia ? `<b class="cl-pot p${o.potencia}">P${o.potencia}</b>` : ''}${t ? `<b class="cl-tier t${t}">${t}</b>` : ''}${o.shiny ? '<b class="cl-x">X</b>' : ''}`;
+    L173: <div><b>Ovo ${rotuloOvo(o)}${o.shiny ? ' UX' : ''} +${o.data || 0}${o.potencia ? ` <span class="chip p p${o.potencia}">P${o.potencia}</span>` : ''}</b><small>${esc(e.nome)}${seloAura(o, e)}</small></div></div>
+    L175: ${linha('Nasce', `${o.shiny ? 'UX - ' : ''}${esc(e.nome)} (${esc(e.estagioNome || e.estagio)})`)}
+    L177: ${linha('Potência', o.potencia ? `P${o.potencia}` : null)}
+  /js/ovo-tier.js  (2)
+    L9: // pelo Histórico de ovos (app.js). `o` é qualquer coisa com especie, ivs, u, potencia e shiny.
+    L36: return R.nota(bases, o.ivs, qSorte(data, o.u), o.potencia || 3, !!o.shiny);
+  /js/filtro-ovos.js  (2)
+    L16: if (o.potencia) k.push('p' + o.potencia);
+    L18: if (o.shiny) k.push('x');
+  /js/shiny.js  (5)
+    L7: // Serve os retratos <img data-fx~="shiny"> (troca o src por uma cópia pintada), as folhas
+    L224: // Retratos no DOM: o <img data-fx~="shiny"> troca de src pela cópia pintada (cache por arquivo).
+    L252: if (el.matches('img[data-fx~="shiny"]')) tratar(el);
+    L253: for (const img of el.querySelectorAll('img[data-fx~="shiny"]')) tratar(img);
+    L258: if (m.type === 'attributes') { if (m.target.matches?.('img[data-fx~="shiny"]')) tratar(m.target); } else for (const n of m.addedNodes) ver(n);
+  /js/ficha-tamer.js  (3)
+    L43: <span class="${faixa(d.potencia - 1)}">P${d.potencia}</span>
+    L72: <span class="ft-palco">${d.shiny ? '<i class="ft-shiny" data-dica="UX">✨</i>' : ''}<img ${SPRITE(e.id)} alt=""${fxRetrato(d, e)}>
+    L127: ${col ? `<h3>Coleção</h3><div class="ft-blocos tres">${bloco(fmt(col.shinyVistos), 'UX vistos')}${bloco(fmt(col.shinies), 'UX na conta')}${bloco(fmt(col.p5), 'P5 na conta')}</div>`
+  /js/arena-pvp.js  (1)
+    L206: const dados = { x: a.x + (b.x - a.x) * q, y: a.y + (b.y - a.y) * q, dir: v ? 'WEST' : 'EAST', esp: d.esp, nv: d.nv, hp: Math.max(0, hp[r][f.k]), hpMax: L.hp[f.k], shiny: !!d.shiny, aura: d.aura || 0, auraItem: d.auraItem || '' };
+  /js/guia.js  (4)
+    L37: <button type="button" class="gu-scanner" id="gu-scanner"><img src="/icones/scanner-basico.png" alt=""><span>Scanner</span></button>
+    L42: $('#gu-scanner', card).onclick = () => {
+    L57: texto: 'Cada abate paga <b class="gu-bits"><img src="/icones/moeda-bits.png" alt="">Bits</b>. Na Loja compre scanners melhores, poções e revives, e venda o que sobrar no DigiBank.',
+    L59: .map((s, k) => `<span style="--k:${k}"><img src="/icones/scanner-${s}.png" alt=""></span>`).join('<i>›</i>')}</div><small class="gu-nota">Scanner melhor = mais chance de captura.</small>`,
+  /js/pagamento.js  (3)
+    L579: }, { largura: 'compacto', ouvir: { 'pagamento.historico': (m) => { lista = m.pedidos; ctx.rerender(); } } });
+    L580: enviar('pagamento.historico');
+    L741: historico: abrirHistorico,
+  /js/captura-fx.js  (30)
+    L7: // Tamer arremessa o scanner, ele cai no chão junto do Digimon e o feixe sai da tela do
+    L8: // aparelho. O corpo vira partículas que entram no scanner; deu certo, o scanner volta
+    L17: // Fases do DigiIdle (CAPTURE_*), contadas a partir do pouso do scanner.
+    L27: const VOLTA_INICIO = 0.5, VOLTA = 0.45; // sucesso: o scanner volta para a mão do Tamer
+    L29: // Cor do feixe de cada scanner (a do aparelho); o Prismático é o arco-íris do DigiIdle.
+    L31: 'scanner-basico': '#4fcfff',
+    L32: 'scanner-plus': '#f04f3c',
+    L33: 'scanner-super': '#cf82ff',
+    L34: 'scanner-ultra': '#ffc83d',
+    L35: 'scanner-prismatico': '#ff405f',
+    L37: const ARCO_IRIS = new Set(['scanner-prismatico']);
+    L50: // pintada na cor do scanner e uma camada para a grade e a linha de scan. `caido`: o último quadro
+    L138: // que apaga o corpo de baixo para cima, e todas vão para dentro do scanner.
+    L174: lancar({ id, ent, tamer, scanner, ok }) {
+    L177: const cor = CORES[scanner] || CORES['scanner-basico'];
+    L185: // O scanner cai na frente do Digimon, do lado de quem jogou.
+    L192: id, scanner, ok: Boolean(ok), cor, arcoIris: ARCO_IRIS.has(scanner),
+    L194: x: ent.x, y: ent.y, dir: ent.dir || 'SOUTH', shiny: ent.shiny,
+    L225: const disp = this._scannerNaTela(fx);
+    L229: this._scanner(g, fx, disp, tl);
+    L259: // Posição, altura, giro e escala do scanner: voando, quicando, parado ou voltando.
+    L260: _scannerNaTela(fx) {
+    L286: // Falhou: o scanner treme, solta faíscas e apaga.
+    L314: _scanner(g, fx, s, tl) {
+    L316: const img = this.imagem('/icones/' + fx.scanner + '.png');
+    L384: // Halo da cor do scanner.
+    L473: // O feixe da tela do scanner até o meio do Digimon (drawCaptureBeam, com a origem no
+    L522: // O corpo se desfaz em quadradinhos que fazem uma curva e entram no scanner.
+    L549: // Clarão no scanner quando ele fecha.
+    L578: // Faíscas vermelhas saindo do scanner que falhou.
+  /js/parado.js  (4)
+    L8: // quadros, então o CSS dos retratos (tamanho, object-fit, aura, shiny) continua valendo para o
+    L11: // O UX usa a tira pintada com a joia da espécie (shiny.js), a mesma referência da folha da cena,
+    L13: import { canvasX, corJoia } from './shiny.js?v=4';
+    L57: const ehX = (img) => (img.dataset.fx || '').split(' ').includes('shiny');
+  /js/menus2.js  (87)
+    L264: const NEGOCIAVEL = (k) => k.startsWith('chip-') || k.startsWith('fragmento-') || k.startsWith('zmove-') || k.startsWith('data-') || ['token-boss', 'peca-aoe', 'disco-aoe', 'mystic-ticket', 'safari-ticket', 'ovo-shiny', 'evoluter'].includes(k);
+    L268: ['boss', 'Boss Tokens', 'token-boss', (k) => k === 'token-boss'], ['tickets', 'Tickets', 'mystic-ticket', (k) => k.endsWith('-ticket')], ['ovos', 'Ovo UX', 'ovo-shiny', (k) => k === 'ovo-shiny'],
+    L272: const ORDENS_OVO_MK = [['', 'Adicionados recentemente'], ['barato', 'Mais baratos'], ['caro', 'Mais caros'], ['mais', 'Maior +N'], ['potencia', 'Maior potência'], ['nivel', 'Maior nível'], ['favs', 'Mais favoritados']];
+    L284: estagios: '', atributos: '', potencias: '', precoMin: '', precoMax: '', cabeSaldo: false, soLiberados: false, vis: 'lista' };
+    L291: const MQ_ABERTAS = new Set(['raridade', 'tier', 'estagio', 'potencia', 'atributo', 'elemento', 'preco', 'cat', 'familia', 'tierOvo', 'energia', 'peca', 'rarPeca']);
+    L392: const filtroComum = () => ({ potencias: mkF.potencias, precoMin: num(mkF.precoMin), precoMax: num(mkF.precoMax), cabeSaldo: mkF.cabeSaldo, soLiberados: mkF.soLiberados });
+    L393: const filtroTudo = () => ({ tipo: 'tudo', busca: mkF.busca, moeda: mkF.moeda, ordem: mkF.ordemTudo, ...filtroComum(), potencias: '' });
+    L395: const filtroPeca = () => ({ tipo: 'pecas', moeda: mkF.moeda, peca: mkF.pecaSel, raridades: mkF.rarPeca, ordem: mkF.ordemPeca, ...filtroComum(), potencias: '' });
+    L487: const chips4 = (r) => `<div class="mk-chips"><span class="chip p p${r.potencia}">P${r.potencia}</span><span class="chip iv">DP ${r.ivTotal}</span><span class="chip q">Q ${R.qual(r.qualidade)}</span><span class="chip n">N ${R.num3(r.nota)}</span></div>`;
+    L502: const arte = `<div class="mk-arte mk-arte-ovo ${r.shiny ? 'luz-arco' : 'luz-roxa'}">${retido && !fechado ? retidoHtml(a, 'mk-tag-retido') : ''}
+    L506: <div class="mk-chips">${r.potencia ? `<span class="chip p p${r.potencia}">P${r.potencia}</span>` : ''}<span class="chip iv" data-dica="Energia de Ovo: o +N limita o tamanho">+${r.data || 0}</span><span class="chip q" data-dica="Tamanho máximo ao chocar">T.Máx ${fmtTam(tetoOvo(r.data))}</span></div>
+    L534: const luz = a.tipo !== 'digimon' ? 'luz-azul' : r.shiny ? 'luz-arco' : es?.lendario ? 'luz-ouro' : '';
+    L575: h += secao('potencia', 'Potência', `<div class="mq-seg pot">${[1, 2, 3, 4, 5].map((p) => op('potencias', p, `P${p}`, `p${p}`)).join('')}</div>`, liga('potencias'));
+    L586: h += secao('potencia', 'Potência', `<div class="mq-seg pot">${[1, 2, 3, 4, 5].map((p) => op('potencias', p, `P${p}`, `p${p}`)).join('')}</div>`, liga('potencias'));
+    L624: if (mkF.potencias) add(['potencias'], 'Potência', nomesLista(mkF.potencias, { 1: 'P1', 2: 'P2', 3: 'P3', 4: 'P4', 5: 'P5' }));
+    L635: if (mkF.potencias) add(['potencias'], 'Potência', nomesLista(mkF.potencias, { 1: 'P1', 2: 'P2', 3: 'P3', 4: 'P4', 5: 'P5' }));
+    L684: return `<tr class="mq-l${a.id === destaque ? ' destaque' : ''}${r.shiny ? ' lx' : ''}" style="--c:${el?.cor || '#22d3ee'}">
+    L687: <td class="mq-n" data-r="Nv">${fmt(r.nivel)}</td><td class="mq-p"><span class="chip p p${r.potencia}">P${r.potencia}</span></td><td class="mq-n" data-r="DP">${r.ivTotal}</td><td class="mq-n" data-r="Q">${R.qual(r.qualidade)}</td>
+    L692: return `<tr class="mq-l${a.id === destaque ? ' destaque' : ''}${r.shiny ? ' lx' : ''}" style="--c:#c084fc">
+    L694: <small>${r.shiny ? 'Ovo UX · ' : ''}<img class="mq-eli" src="/icones/data-${esc(r.familia || '')}.png" alt="">${FAMILIA_NOME[r.familia] || esc(r.familia || '')}${r.de && r.de !== r.especie ? ` · de ${esc(especie(r.de)?.nome || r.de)}` : ''}${r.protegido ? `<span class="mk-selo escudo" data-dica="Tem
+    L695: <td class="mq-n" data-r="Nv">${fmt(r.nivel)}</td><td class="mq-p">${r.potencia ? `<span class="chip p p${r.potencia}">P${r.potencia}</span>` : '–'}</td>
+    L708: const det = a.tipo === 'digimon' ? `<span class="chip p p${r.potencia}">P${r.potencia}</span><span class="chip iv">DP ${r.ivTotal}</span>`
+    L709: : `${r.potencia ? `<span class="chip p p${r.potencia}">P${r.potencia}</span>` : ''}<span class="chip iv">+${r.data || 0}</span>`;
+    L711: return `<tr class="mq-l${a.id === destaque ? ' destaque' : ''}"><td class="mq-td-dg">${arte}<span class="mq-dg-txt"><span class="mq-nl"><b>${a.tipo === 'digimon' ? nomeAnuncio(a) : esc(es.nome)}</b>${tier}</span><small>${a.tipo === 'digimon' ? 'Digimon' : r.shiny ? 'Ovo UX' : 'Ovo'} · Nv ${fmt(r.niv
+    L722: ? `${th('Ovo', '', ch, 'mq-th-dg')}${th('Nv', 'nivel', ch)}${th('Pot.', 'potencia', ch)}${th('+N', 'mais', ch)}${th('T.Máx', '', ch)}${th('Preço', 'preco', ch)}${th('Vendedor', '', ch)}${th('★', 'favs', ch)}${th('', '', ch)}`
+    L804: det: `<span class="chip p p${r.potencia}">P${r.potencia}</span>Nv ${fmt(r.nivel)} · DP ${r.ivTotal} · N ${R.num3(r.nota)}` };
+    L809: det: `${r.potencia ? `<span class="chip p p${r.potencia}">P${r.potencia}</span>` : ''}<span class="chip iv">+${r.data || 0}</span>${r.shiny ? 'Ovo UX' : 'Ovo'} · Nv ${fmt(r.nivel)}${r.protegido ? `<span class="mk-selo escudo" data-dica="Tem Proteção de Ovo">${MK_IC.escudo}</span>` : ''}` };
+    L822: return `<tr class="mq-l${x.resumo?.shiny ? ' lx' : ''}" style="--c:${n.cor}"><td class="mq-td-dg">${n.arte}<span class="mq-dg-txt"><span class="mq-nl"><b>${n.nome}</b>${n.tier}</span><small>${n.det}</small></span></td>
+    L827: const historico = (vendi) => {
+    L829: const h = meus.historico.filter((x) => !!x.vendi === vendi);
+    L843: if (v === 'vendas') return cabVista('vendas', 'Histórico de vendas', 'O que você vendeu no Mercado') + historico(true);
+    L844: if (v === 'compras') return cabVista('compras', 'Histórico de compras', 'O que você comprou no Mercado') + historico(false);
+    L981: c.innerHTML = `<div class="mk-ficha"><div class="mk-ficha-arte ${r.shiny ? 'luz-arco' : es?.lendario ? 'luz-ouro' : ''}">${`<img ${SPRITE(es?.id)} alt=""${fxRetrato(r, es)}>`}</div>
+    L984: <div class="ficha-selos"><div class="selo pot"><small>POTÊNCIA</small>P${r.potencia}</div><div class="selo qual"><small>QUALIDADE</small>${R.qual(r.qualidade)}</div><div class="selo iv"><small>DP SOMADO</small>${r.ivTotal}/192</div><div class="selo neutro"><small>NOTA</small>${R.num3(r.nota)}</div><
+    L1003: ctx.confirmar(`Comprar ${nomeOvo(r)} de ${especieOvo(r).nome} +${r.data || 0}${r.potencia ? ` P${r.potencia}` : ''} de ${a.nick} por ${fmt(a.preco)} ${nomeMoeda(a.moeda)}? Ele vai para a sua bolsa de ovos.`, () => {
+    L1095: const soGemas = (st.tipo === 'digimon' && dig?.shiny) || (st.tipo === 'ovo' && ovoSel?.shiny);
+    L1126: sub = `P${dig.potencia} · DP ${dig.ivTotal ?? '–'} · Nota ${R.num3(dig.nota)}`; canto = `Nv ${fmt(dig.nivel)}`;
+    L1128: else if (st.tipo === 'ovo' && ovoSel) { arte = iconeOvo(ovoSel, { grande: true }); nome = `${nomeOvo(ovoSel)} de ${especieOvo(ovoSel).nome}`; sub = `${letraOvo(ovoSel) !== '?' ? `Tier ${letraOvo(ovoSel)} · ` : ''}+${ovoSel.data || 0}${ovoSel.potencia ? ` · P${ovoSel.potencia}` : ''} · Nv ${fmt(ovoSe
+    L1130: const vitrine = `<div class="na-vitrine ${dig?.shiny || ovoSel?.shiny ? 'x' : ''}"><div class="na-toldo"></div>
+    L1277: ['halloween', 'Halloween', 'abobora', 'Só durante o evento'], ['tudo', 'Destaques', 'menu-shop', 'O melhor de cada seção'], ['especiais', 'Especiais', 'hud-vip', 'Uma compra por conta, com visual exclusivo'], ['vip', 'VIP', 'hud-vip', 'XP, auto-scanner e mais'], ['boosts', 'Boosts', 'boost-xp', 'Qua
+    ... +47
+  /js/arena-guerra.js  (1)
+    L260: const dados = { x: p.x, y: p.y, dir: olha ? 'EAST' : 'WEST', esp: d.esp, nv: d.nv, hp: hp[r][k], hpMax: L.hp[k], shiny: !!d.shiny, aura: d.aura || 0, auraItem: d.auraItem || '', dono: d.dono || '', meu: !!d.dono && d.dono === meuNick };
+  /js/arena-torre.js  (1)
+    L482: const dados = { x: p.x + dv.x, y: p.y + dv.y, dir: olha ? 'EAST' : 'WEST', dir8: olha ? 'SE' : 'NW', esp: d.esp, nv: d.nv, hp: Math.max(0, hp[l][k]), hpMax: L[l].hp[k], shiny: !!d.shiny, aura: d.aura || 0, auraItem: d.auraItem || '' };
+  /js/oferenda.js  (16)
+    L23: const grauDataOvo = (o) => (o.shiny || o.data >= 4 ? 'pura' : o.data >= 2 ? 'refinada' : 'instavel');
+    L32: const nomeChip = (item) => (item === 'chip-shiny' ? 'Chip UX' : nomeItem(cat, item));
+    L35: const nomeOvo = (o) => `Ovo ${rotuloOvo(o)}${o.shiny ? ' UX' : ''}`;
+    L43: const shiny = item === 'chip-shiny';
+    L44: return { item, esp, d, ovo, shiny, cor: shiny ? '#f5b82e' : cat.elemento(e?.elemento).cor, elem: cat.elemento(e?.elemento).nome };
+    L48: return fatia(d.shiny ? 'chip-shiny' : e.chip, e.id, d);
+    L82: return `<div data-k="${k}" class="of-fatia${f.vazia ? ' vazia' : ''}${f.shiny ? ' x' : ''}${k === ganhou ? ' ganhou' : ''}" style="--m:${meio}deg">
+    L109: return `<div class="of-res ganho${f.shiny ? ' x' : ''}${entrada()}" style="--cor:${f.cor}"><span class="of-res-ico">${icone(f.item)}</span>
+    L120: const avisos = [o.shiny && '<span class="of-av x">UX</span>', o.data > 0 && `<span class="of-av rf">+${o.data}</span>`, o.potencia === 5 && '<span class="of-av p5">P5</span>'].filter(Boolean).join('');
+    L123: <span class="of-casa-txt"><b>${esc(nomeOvo(o))}${o.estagio ? ` · ${esc(e?.nome || '')}` : ''}</b><small>Nv ${fmt(o.nivel)} · +${o.data || 0}${o.potencia ? ` · P${o.potencia}` : ''}${t !== '?' ? ` · Tier ${t}` : ''}</small>${avisos ? `<span class="of-avisos">${avisos}</span>` : ''}</span>
+    L132: const avisos = [d.shiny && '<span class="of-av x">UX</span>', d.potencia === 5 && '<span class="of-av p5">P5</span>', d.local === 'colecao' && '<span class="of-av col">★ Coleção</span>',
+    L136: <span class="of-casa-txt"><b>${prefixoX(d)}${esc(e.nome)}</b><small>Nv ${fmt(d.nivel)} · P${d.potencia} · N ${R.num3(d.nota)}</small>${avisos ? `<span class="of-avisos">${avisos}</span>` : ''}</span>
+    L137: <span class="of-casa-paga" data-dica="${esc(nomeChip(f.item))} · você tem ${fmt(tem(f.item))}">${icone(f.item)}<small>${esc(f.shiny ? 'Chip UX' : f.elem)}</small></span>
+    L150: <div class="of-chances">${[...por.values()].sort((a, b) => b.p - a.p).map(({ f, p }) => linha(icone(f.item), esc(nomeChip(f.item)), p, f.cor, `tem ${fmt(tem(f.item))}`, f.shiny ? 'x' : '')).join('')}
+    L208: const sh = escolhidos.filter((d) => d.shiny).length + ovos.filter((o) => o.shiny).length;
+    L260: const ordens = { fraco: (a, b) => (!!a.shiny - !!b.shiny) || (a.data || 0) - (b.data || 0) || ORDEM_T.indexOf(letraOvo(b)) - ORDEM_T.indexOf(letraOvo(a)) || b.id - a.id,
+  /js/torneio.js  (1)
+    L208: seletorDigimons({ titulo: `Equipe · ${t.nome}`, filtro: (d) => !(r.semShiny && d.shiny) && !(r.semP5 && d.potencia === 5),
+
+======================================================================
+3b. O drop: como o texto do abate e montado
+======================================================================
+  /js/digiidle/skill-vfx-catalog-v385.js  (1)
+    L4891: "skillName": "Metal Drop",
+  /js/app.js  (19)
+    L1566: // Os eventos do servidor ativos (XP, Drop, Bits, P4+, Ovo UX, Scan); servidor antigo manda só o de XP.
+    L2992: <section class="ss-bloco ss-b-achados"><h4>ACHADOS</h4>${achados ? `<div class="ss-chips">${achados}</div>` : '<p class="sessao-vazio">Nenhum drop ainda.</p>'}</section>
+    L3354: // Na repetição automática as telas de drop se empilham, e um botão fecha todas.
+    L3363: const drops = Object.entries(s.drops || {}).map(([it, q]) => `${q}× ${esc(nomeItem(cat, it))}`).join(' · ') || 'nada caiu';
+    L3366: <h3 style="justify-content:center">${esc(cat.especie(s.boss)?.nome)}</h3><p><b>${s.vitorias}</b> vitória(s) em <b>${s.lutas}</b> luta(s)</p><p>${drops}</p>
+    L3685: // A Energia de Ovo da família do selvagem, com a chance do estágio dele (ovoConfig.dropData).
+    L3687: const ch = cat.itens.ovoConfig?.dropData?.[ESTAGIO_OVO[e.estagio] || 'mega'];
+    L3691: return ch[i] > 0 && cat.item(id) ? `<div class="ha-drop">${iconeItem(id)}<span>${esc(cat.item(id).nome)}</span><b>${String(ch[i]).replace('.', I18N.decimal)}%</b></div>` : '';
+    L3699: const drop = (it, v, nome) => `<div class="ha-drop">${iconeItem(it)}<span>${esc(nome || cat.item(it).nome)}</span><b>${v}</b></div>`;
+    L3702: const evoluter = evoCfg().dropEvoluter?.[e.estagio];
+    L3703: const protecao = cat.itens.ovoConfig?.dropProtecao?.[e.estagio];
+    L3707: raros.push(drop('token-boss', pct(0.05), 'Boss Token'), ...['fragmento-chave', 'fragmento-shiny', 'fragmento-bike'].map((it) => drop(it, pct(0.0005))));
+    L3709: if (area.nivel >= 100) raros.push(drop('fragmento-ovo-shiny', '0,00375%'));
+    L3718: <div class="ha-sec"><div class="ha-sec-tit">Drops</div>
+    L3719: ${drop(e.chip, pctTxt(e.chanceChip))}
+    L3720: ${area.chipExtra ? drop(area.chipExtra, pctTxt(e.chanceChip)) : ''}
+    L3721: ${evoluter ? drop('evoluter', pctTxt(evoluter), 'Evoluter') : ''}
+    L3723: ${protecao ? drop('protecao-ovo', pctTxt(protecao)) : ''}
+    L3724: ${(cat.itens.vinculoConfig?.drop?.[e.estagio] || []).map((v, i) => (v > 0 && cat.itens.comidas?.[i] ? drop(cat.itens.comidas[i].id, pctTxt(v)) : '')).join('')}
+  /js/cena.js  (7)
+    L163: const quadroPronto = (img, sx, sy, sw, sh) => !(img instanceof Fatiada) || img.pronta(sx + sw / 2, sy + sh / 2);
+    L164: const refPronto = (r) => !r?.ref || quadroPronto(r.img, r.sx, r.sy, r.sw, r.sh);
+    L183: if (performance.now() > prazoHalo || !quadroPronto(img, sx, sy, fw, fh)) return null;
+    L227: if (performance.now() > prazoHalo || !quadroPronto(img, sx, sy, fw, fh)) return null;
+    L265: if (novosComp >= 2 || !quadroPronto(fx.img, fx.sx, fx.sy, fx.fw, fx.fh)) return null;
+    L2274: const linha = V.quadroParadoAndando(e, skin.frames, skin.quadrosParado, agoraT);
+    L2331: let linha = e.corpo ? 0 : corpo.parado ? V.quadroParadoAndando(e, frames, corpo.parado, agora) : e.amostras ? V.quadroDe(e, frames) : (e.mov && frames > 1 ? 1 + (Math.floor(agora / 150) % (frames - 1)) : 0);
+  /js/persona.js  (1)
+    L294: o.cssSupports = {}; for (const s of ["backdrop-filter: blur(1px)", "container-type: size", "anchor-name: --a", "text-wrap: balance", "color: oklch(0.5 0.1 100)", "view-transition-name: a", "field-sizing: content", "scrollbar-gutter: stable", "aspect-ratio: 1", "inset: 0", "interpolate-size: allow-ke
+  /js/regras.js  (1)
+    L12: // O ovo dropado nasce com 60% do nível da área (arredondado, mínimo 1), sem teto. Igual a regras.NivelDoOvo no servidor.
+  /js/ui.js  (1)
+    L73: // Rótulo de um ovo: o Rookie leva o nome do Digimon (Patamon); os de cima, já dropados, o estágio.
+  /js/evolucao-fx.js  (4)
+    L11: import { quadroParado } from './parado.js?v=2';
+    L193: filter:drop-shadow(0 0 16px var(--glow)) drop-shadow(0 4px 0 rgba(0,0,0,.65))}
+    L196: .cine[data-tier="4"] .to b{filter:drop-shadow(0 0 22px var(--glow)) drop-shadow(0 0 48px color-mix(in srgb,var(--glow) 60%,transparent)) drop-shadow(0 4px 0 rgba(0,0,0,.65))}
+    L258: return await Promise.race([quadroParado(especie, shiny), new Promise((_, falha) => setTimeout(() => falha(new Error('timeout')), 2500))]);
+  /js/loja.js  (4)
+    L38: const evoCfg = () => cat.itens.evoConfig || { dropEvoluter: {}, evoluter: {}, evoluterPorAura: 2 };
+    L90: <span class="lo-item-preco tranca ${dcoin ? 'dcoin' : 'drop'}">${dcoin ? 'DCoin' : 'Drop'}</span>
+    L104: const d = evoCfg().dropEvoluter || {}, ev = evoCfg().evoluter || {};
+    L110: return `<section class="lo-balcao trancado" data-balcao="${id}">${palco(id, `<span class="lo-fita-palco ${dcoin ? 'dcoin' : 'drop'}">${dcoin ? 'DCoin' : 'Drop'}</span>`)}
+  /js/halloween.js  (1)
+    L156: <div class="hw-painel hw-nivel"><h4>O mapa acompanha o seu nível</h4><p>Os inimigos sempre têm o mesmo nível do seu Tamer. Serve para quem começou ontem e para quem está na Yggdrasil. O XP é a metade do de um mapa normal do seu nível, os Bits são os mesmos e o único drop é o doce.</p>
+  /js/boss.js  (7)
+    L317: const q = m.drops?.[r.item] || 0;
+    L330: const drops = {};
+    L331: lista.forEach((x) => Object.entries(x.drops || {}).forEach(([k, q]) => (drops[k] = (drops[k] || 0) + q)));
+    L332: return `<div class="br-serie"><span class="br-serie-rot"><b>Repetição automática</b><small>${vit}/${lista.length} vitórias · ${Object.keys(drops).length ? `<span class="br-minis">${itensMapa(drops)}</span>` : 'sem drops'}</small></span>
+    L362: const nDrops = Object.values(m.drops || {}).reduce((a, q) => a + q, 0);
+    L381: <div class="g-drop ${nDrops ? 'tem' : ''}"><small>Drops</small><b>${nDrops ? `${fmt(nDrops)} ${nDrops === 1 ? 'item' : 'itens'}` : 'nada desta vez'}</b></div>
+    L387: ${(m.recompensas || []).length ? `<section class="br-sec"><h4>Recompensas <em>${nDrops ? 'as acesas caíram nesta luta' : 'nenhuma caiu desta vez — a chance vale por vitória'}</em></h4><div class="bs-grade br-grade">${recompensasHtml(m)}</div></section>` : ''}
+  /js/digidex.js  (3)
+    L337: const icoBonus = (b) => `/icones/${b.tipo === 'xp' ? 'boost-xp.png' : b.tipo === 'drop' ? 'boost-loot.png' : b.tipo === 'def' ? 'boost-defesa.png'
+    L343: if (i === 7) return 'filter:drop-shadow(2px 0 0 #ff2a6d) drop-shadow(-2px 0 0 #05d9e8) drop-shadow(0 0 5px #ff2a6d)';
+    L344: return `filter:drop-shadow(0 0 2px ${a.cor}) drop-shadow(0 0 5px ${a.cor}) drop-shadow(0 0 9px ${a.cor2})`;
+  /js/wiki.js  (19)
+    L683: resumo: ['Toque em Evento no menu e em Entrar no mapa.', 'Os inimigos têm o seu nível: metade do XP de um mapa normal, os mesmos Bits.', 'O único drop é o doce, que cai como o chip e vira buffs, Datas, título e ovos com a Witchmon na praça.'],
+    L691: { id: 'nivel', titulo: 'Nível, XP e drops', html: () => `<ul class="wk-lista">
+    L694: <li><b>Drops</b>: só o <b>Doce Assombrado</b>. Aqui não caem chips, Evoluter, Proteção de Ovo, Energia de Ovo, raros nem Fragmento de Ovo UX.</li></ul>` },
+    L795: ['boost-dano', 'Derrubar', 'Cada abate dá XP ao Tamer e ao Digimon, Bits e às vezes um drop.', 'combate'],
+    L838: <li>O <b>Hunt Analyser</b> no Mapa mostra XP, Bits e drops por hora da área.</li>
+    L926: <li><b>Evoluter</b>: Ultimate ${evo.evoluter.ultimate}, Mega ${evo.evoluter.mega}, mais ${evo.evoluterPorAura} por nível de aura. Só cai: selvagens (Rookie ${pct(evo.dropEvoluter.rookie)} a Mega ${pct(evo.dropEvoluter.mega)}) e Bosses (10% a 36%).</li>
+    L983: const v = cat.itens.vinculoConfig || { drop: {} };
+    L988: return `${tabela(['Comida', 'Saciedade', 'Onde'], comidas.map((f, i) => [`${icone(f.id)} <b>${esc(f.nome)}</b>`, `+${f.saciedade}%`, i < 4 ? 'Drop' : 'Shop']))}
+    L990: ${tabela(['Estágio', ...comidas.slice(0, 4).map((f) => esc(f.nome))], est.map(([k, n]) => [n, ...comidas.slice(0, 4).map((_, i) => (v.drop[k]?.[i] ? pct(v.drop[k][i]) : '—'))]))}
+    L991: <p>As comidas <b>BIG</b> só saem na ${ir('economia', 'Shop')} e valem mais que qualquer drop (a Raspadinha BIG enche um dia inteiro): ${naShop.map((i) => `<span>${esc(i.nome)}</span> ${fmt(i.preco)}`).join(' · ')} DCoin.</p>`;
+    L1006: { id: 'mapa', grupo: 'caca', nome: 'Mapa e drops', titulo: 'Mapa, regiões e drops', icone: 'menu-mapa', lead: 'A Ilha File vai até o Nv 100. Depois vêm as regiões com aura, com os mesmos Digimon mais fortes.',
+    L1019: { id: 'drops', titulo: 'O que cai dos selvagens', html: () => {
+    L1021: const en = (k) => ovoCfg.dropData[k].map((c, i) => (c ? `<span>${QUAL_DATA[i][1]}</span> ${pct(c)}` : '')).filter(Boolean).join(' · ');
+    L1022: return `${tabela(['Estágio', 'Chip do elemento', 'Evoluter', 'Energia de Ovo', 'Proteção de Ovo'], est.map(([k, n]) => [n, k === 'rookie' || k === 'champion' ? '0,35%' : '0,5%', pct(evo.dropEvoluter[k]), en(k), pct(ovoCfg.dropProtecao?.[k] || 0)]))}
+    L1026: ${nota('O Loot Boost (+40%) e o bônus de loot do ranking da guild aumentam os Bits e a chance de todos os drops.', 'ok')}`;
+    L1166: { id: 'tipos', titulo: 'Tipos de evento', html: () => tabela(['Evento', 'O que aumenta'], [['XP', 'XP do Tamer e dos Digimon'], ['Drop', 'Chance de drop de itens'], ['Bits', 'Bits por abate'], ['P4+', 'Chance de ovo P4 e P5 no scan'], ['Ovo UX', 'Chance de Ovo UX'], ['Scan', 'Chance de o scan dar ce
+    L1178: return `<p>O <b>Colosseum Ticket</b> é o drop mais raro dos Bosses. Usado, ele abre o <b>Colosseum</b>: uma luta contra <b>um Lendário no seu nível de Tamer</b>, sorteado entre os Lendários do jogo, com <b>uma única chance</b> de captura.</p>
+    L1265: ${nota('Não existe drop de monstro, boss, evento ou Oferenda que dê Exp. Share. Ele também não entra no Mercado: tire-o do Digimon antes de anunciar e compre o seu na Shop.', 'aviso')}`;
+    L1363: { id: 'outros', titulo: 'Os outros multiplicadores', html: () => `<ul class="wk-lista"><li><b>Loot Boost</b>: +40% nos Bits extras e na chance dos drops.</li><li><b>Capture Boost</b>: dobra a chance do scanner.</li>
+  /js/ficha-especie.js  (9)
+    L8: // potências, o UX, os drops, as duas tabelas de captura e onde encontrar.
+    L126: function linhasDrop(e) {
+    L134: const pEvo = evo.dropEvoluter?.[e.estagio];
+    L137: const ch = cat.itens.ovoConfig?.dropData?.[chave];
+    L144: const pProt = cat.itens.ovoConfig?.dropProtecao?.[e.estagio];
+    L207: const drops = linhasDrop(e);
+    L208: const tabDrops = `<table class="fe-tabela"><thead><tr><th>Item</th><th>Chance</th><th>Quantidade</th></tr></thead>
+    L209: <tbody>${drops.length ? drops.map(([id, nome, p, q]) => `<tr><td class="fe-item">${icone(id)}${esc(nome)}</td><td class="fe-forte">${pctFino(p)}</td><td>${q}</td></tr>`).join('')
+    L260: ${cartao('Drops', tabDrops, { icone: 'bolsa' })}
+  /js/pocket.js  (3)
+    L45: white-space: nowrap; overflow: hidden; text-overflow: ellipsis; backdrop-filter: blur(3px); }
+    L328: <div class="pk-cx pk-bloco"><div class="pk-cab"><span class="pk-mini">${esc(t('Drops da sessão'))}</span></div>
+    L329: ${itens ? `<div class="pk-itens">${itens}</div>` : `<p class="pk-vazio">${esc(t('Nenhum drop ainda.'))}</p>`}</div>`;
+  /js/som-menu.js  (1)
+    L164: x: { cls: 'ev', quando: 'Quando alguém do servidor tira um UX.', esp: 1500, fundo: true, nome: 'Drop de UX', fn: (a, o, t) => {
+  /js/shorts.js  (4)
+    L35: if (G) { clearTimeout(G.fimArena); G.cam = null; if (!G.quadroEscolhido) G.quadroI = quadroPadrao(cena); pintarQuadros(); }
+    L44: else if (!G.quadroEscolhido) { G.quadroI = quadroPadrao(ctx.cenaPrincipal?.()); pintarQuadros(); }
+    L47: function quadroPadrao(cena) {
+    L82: painel, canvas, g: canvas.getContext('2d'), rec, tipo, partes: [], quadroI: quadroPadrao(cena), quadroEscolhido: false,
+  /js/vinculo.js  (9)
+    L29: const nDrop = 4; // as 4 primeiras caem dos selvagens; as outras (BIG) são da Shop
+    L93: return `<small class="vc-dica-bandeja">Toque na comida para dar 1 · "Encher" dá quantas precisar</small><div class="vc-bandeja">${lista.map((f) => `<div class="vc-prato ${comidas().indexOf(f) >= nDrop ? 'big' : ''}">
+    L150: const drop = comidas().slice(0, nDrop).filter((f) => f.saciedade > 0);
+    L151: for (const f of [...drop].sort((a, b) => b.saciedade - a.saciedade)) {
+    L156: const f = drop.find((x) => (estoque[x.id] || 0) > 0);
+    L187: const temDrop = comidas().slice(0, nDrop).some((f) => tem(f.id) > 0);
+    L211: <td class="vc-t-al"><div>${rapidas.map((f) => `<button class="vc-t-prato ${comidas().indexOf(f) >= nDrop ? 'big' : ''}" data-comer="${f.id}" data-qtd="1" data-id="${d.id}" ${cheio ? 'disabled' : ''} data-dica="Dar 1× ${esc(f.nome)} (+${f.saciedade}%)">${icone(f.id)}<em>×${tem(f.id)}</em></button>`).
+    L215: const despensa = comidas().map((f, i) => `<span class="vc-t-desp ${i >= nDrop ? 'big' : ''} ${tem(f.id) ? '' : 'zero'}" data-dica="${esc(f.nome)}: +${f.saciedade}% de saciedade${i >= nDrop ? ' (Shop)' : ''}">${icone(f.id)}<b>${tem(f.id)}</b></span>`).join('');
+    L222: <button class="vc-t-lote com" data-alimentar-todos ${famintos.length && temDrop ? '' : 'disabled'} data-dica="${temDrop ? 'Enche quem está abaixo de 25% com as comidas dos selvagens (as BIG ficam guardadas)' : 'Sem comida dos selvagens na mochila'}">${gl('comida')}Alimentar quem tem fome <em>${famin
+  /js/torre.js  (1)
+    L382: raiz.addEventListener('drop', (ev) => {
+  /js/visual-digiidle.js  (1)
+    L141: export function quadroParadoAndando(e, frames, parado, agora) {
+  /js/digiidle/motor-fx.js  (8)
+    L664: droppedByBudget: 0,
+    L665: droppedOffscreen: 0,
+    L666: floatingTextsDropped: 0,
+    L681: huntVfxAdmissionStats.droppedOffscreen += 1;
+    L694: huntVfxAdmissionStats.droppedByBudget += 1;
+    L790: } else if (elapsed < meteor.dropStart) {
+    L793: const progress = clamp((elapsed - meteor.dropStart) /
+    L794: Math.max(0.01, meteor.impactAt - meteor.dropStart), 0, 1);
+  /js/parado.js  (1)
+    L73: export async function quadroParado(id, x = false) {
+  /js/menus2.js  (1)
+    L1410: 'boost-loot': '+50% de XP do Tamer, +50% de XP do Digimon e +40% no bônus de loot e na chance dos drops durante o prazo.',
+  /js/pvp5.js  (1)
+    L298: raiz.addEventListener('drop', (ev) => {
+  /js/arena-torre.js  (1)
+    L32: const PASSO = 10, QUADRO_MS = 95; // px andados por quadro de andar; o ms por quadro de V.quadroParadoAndando

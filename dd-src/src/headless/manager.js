@@ -90,6 +90,52 @@ class HeadlessManager extends EventEmitter {
       this.emit('account:battle', { index: accountIndex, battle });
     });
 
+    // As atividades do painel (captura de ovo, ovo chocado, drop, log das
+    // ferramentas). Sem limite de taxa: cada uma e um acontecimento unico, e
+    // perder uma captura SSS para economizar um IPC nao se justifica.
+    client.on('atividade', (a) => {
+      // A captura carrega um ovo cru: a letra e o retrato dele so existem aqui
+      // (catalogos via net.request, data-URL por causa da CSP da janela).
+      if (a && a.tipo === 'captura' && a.ovo) {
+        require('./ovos').enriquecer(a.ovo)
+          .then((ovo) => this.emit('account:atividade', { index: accountIndex, atividade: { ...a, ovo } }))
+          .catch(() => this.emit('account:atividade', { index: accountIndex, atividade: a }));
+        return;
+      }
+      // Se o item dropado é raro quem decide é o catálogo do jogo: a mesma
+      // lista da aba "Itens Raros". Antes era uma lista de exceções minha, e
+      // ela deixava passar "Energia de Ovo Bird Instável" (categoria 'datas',
+      // que cai a cada poucos abates) como se fosse um achado.
+      // A negociação do Mercado traz slugs ('agumon') e ids de item
+      // ('token-boss'). O nome bonito está no catálogo, que só existe aqui.
+      if (a && a.tipo === 'mercado') {
+        require('./ovos').nomeDoNegocio(a)
+          .then((nome) => this.emit('account:atividade', { index: accountIndex, atividade: { ...a, nome } }))
+          .catch(() => this.emit('account:atividade', { index: accountIndex, atividade: a }));
+        return;
+      }
+      if (a && a.tipo === 'drop' && a.item) {
+        require('./catalogo').nomesRaros()
+          .then((raros) => this.emit('account:atividade', {
+            index: accountIndex, atividade: { ...a, raro: raros.has(a.item) },
+          }))
+          // Sem catálogo não se inventa: 'raro' fica indefinido e o Painel
+          // trata como desconhecido, em vez de encher a lista de lixo.
+          .catch(() => this.emit('account:atividade', { index: accountIndex, atividade: a }));
+        return;
+      }
+      this.emit('account:atividade', { index: accountIndex, atividade: a });
+    });
+
+    client.on('historico', (h) => {
+      require('./ovos').enriquecerLista(h)
+        .then((lista) => {
+          if (this.clients.get(accountIndex) !== client) return;
+          this.emit('account:historico', { index: accountIndex, historico: lista });
+        })
+        .catch((err) => console.error(`[headless:ovos] conta ${accountIndex}:`, err.message));
+    });
+
     this.clients.set(accountIndex, client);
 
     // A primeira conta entra na hora; cada seguinte espera a sua vez na fila.

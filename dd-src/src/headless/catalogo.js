@@ -105,6 +105,29 @@ async function especiesDaArea() {
   return out;
 }
 
+/**
+ * Os nomes dos itens que o jogo considera RAROS.
+ *
+ * Não é uma lista escrita à mão: é a mesma classificação da aba "Itens Raros"
+ * da Mochila. O cliente monta aquele bolso com `cat.itens.raros` (mochila.js:
+ * `{ id: 'raros', nome: 'Itens Raros', … }`), mais os D-Skills, que moram em
+ * `zmoves` e aparecem no mesmo bolso (`g = [['Baús', …], ['D-Skills', skills]]`).
+ *
+ * Isso corrige um erro concreto da versão anterior, que chamava de raro tudo o
+ * que não estivesse numa lista de exceções minha: "Energia de Ovo Bird
+ * Instável" está em `datas` (cai o tempo todo) e virava linha na Atividade.
+ *
+ * O drop chega como TEXTO ("· drop: Boss Token"), então a chave é o nome.
+ */
+async function nomesRaros() {
+  const j = await carregar('itens');
+  const out = new Set();
+  for (const c of ['raros', 'zmoves']) {
+    for (const i of j[c] || []) if (i && i.nome) out.add(i.nome);
+  }
+  return out;
+}
+
 /** Calculador de tier de ovo, alimentado pelos catálogos do jogo. */
 async function tierOvo() {
   const [especies, itens] = await Promise.all([carregar('especies'), carregar('itens')]);
@@ -112,4 +135,4 @@ async function tierOvo() {
   return criarTierOvo(especies, itens);
 }
 
-module.exports = { carregar, precos, ilhaPorSlug, tierOvo, especiePorId, especiesDaArea };
+module.exports = { carregar, precos, ilhaPorSlug, tierOvo, especiePorId, especiesDaArea, nomesRaros };

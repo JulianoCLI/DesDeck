@@ -5,6 +5,14 @@ const { getCookieHeader } = require('./cookies');
 
 const WS_URL = 'wss://digiidle.com/ws';
 const PING_INTERVAL_MS = 25000;
+// Os baus do Labirinto mudam poucas vezes por dia; nao ha por que perguntar
+// mais do que isto. O primeiro pedido sai depois do login, nao junto com ele.
+const LAB_PRIMEIRO_MS = 8000;
+const LAB_INTERVAL_MS = 5 * 60 * 1000;
+// O 'mercado.mudou' avisa que ALGUMA coisa mexeu no mercado inteiro — inclusive
+// anúncios de outras pessoas. Pedir 'mercado.meus' a cada aviso seria um pedido
+// por segundo em horário cheio, então os avisos são juntados nesta janela.
+const MERCADO_DEBOUNCE_MS = 4000;
 const RECONNECT_MIN_MS = 2000;
 const RECONNECT_MAX_MS = 30000;
 const AUTH_TIMEOUT_MS = 15000;
@@ -56,6 +64,8 @@ class DigiiIdleHeadlessClient extends EventEmitter {
     this.lastError = null;
 
     this.pingTimer = null;
+    this.labTimer = null;
+    this.labPrimeiro = null;
     this.reconnectTimer = null;
     this.reconnectDelay = RECONNECT_MIN_MS;
     this.autoReconnect = true;
@@ -101,7 +111,21 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       evpMax: 0,
       eventoXP: null,
       ultimoAbate: null, // { nome, em } do pacote 'log' tipo abate
+
+      // ---- O painel. Medido em conta real (test-painel2-campos.js):
+      // D-Dol e 'gemas'. 'diamantes' e o DCoin, a moeda da Shop - mostrar um
+      // no lugar do outro trocaria a moeda na cara do usuario.
+      gemas: 0,
+      // O lobby do Labirinto nao chega sozinho; 'bauHoje'/'cfg.bauPorDia' vem
+      // em resposta a 'lab.info' e e de la que sai "labs disponiveis hoje".
+      labBauHoje: null,
+      labBauPorDia: null,
     };
+
+    // O historico de ovos deste login. O servidor manda os ultimos 60 no
+    // 'welcome' e cada ovo novo chega no pacote 'captura'. Quem acumula alem
+    // disso e o renderer (o painel guarda o seu proprio, com botao de apagar).
+    this.historicoOvos = [];
 
     this.sessionStartTime = Date.now();
 
@@ -164,6 +188,8 @@ class DigiiIdleHeadlessClient extends EventEmitter {
     this.reconnectDelay = RECONNECT_MIN_MS;
     this.setStatus('connected');
     this.startPingTimer();
+    this.startLabTimer();
+    this.startMercadoMarco();
     this.emit('connected');
   }
 
@@ -203,7 +229,19 @@ class DigiiIdleHeadlessClient extends EventEmitter {
         this.state.eventoXP = msg.eventoXP || null;
         // O Passe chega aqui dentro, não num pacote próprio.
         this.state.passe = msg.passe || null;
+        // O D-Dol. Conferido em conta real: gemas=D-Dol, diamantes=DCoin.
+        this.state.gemas = msg.gemas || 0;
         this.emit('update');
+        break;
+
+      // Os últimos 60 ovos capturados, mandados uma vez no login. É a semente
+      // do Histórico de Ovos do painel: sem isto, o histórico só começaria a
+      // existir depois da próxima captura (minutos ou horas de tela vazia).
+      case 'welcome':
+        if (Array.isArray(msg.historico)) {
+          this.historicoOvos = msg.historico.filter(Boolean);
+          this.emit('historico', this.historicoOvos);
+        }
         break;
 
       // O diario do jogo. Interessa o abate: e a unica fonte do NOME do
@@ -216,6 +254,48 @@ class DigiiIdleHeadlessClient extends EventEmitter {
             this.state.ultimoAbate = { nome: m[1], em: msg.em || Date.now() };
             this.emit('update');
           }
+          // O item dropado NÃO tem pacote próprio: vem no fim do texto do
+          // abate, depois de ' · drop: '. Medido em conta real:
+          //   "Bloomlordmon derrotado! +11265 xp tamer, … · drop: Energia de
+          //    Ovo Bird Instável"
+          // Se o item é raro, quem diz é o CATÁLOGO do jogo (a mesma lista da
+          // aba "Itens Raros" da Mochila), não uma lista escrita por mim. A
+          // marca vai no manager, que tem acesso ao catálogo.
+          const d = / · drop: (.+)$/.exec(msg.txt);
+          if (d) {
+            this.emit('atividade', {
+              tipo: 'drop', em: msg.em || Date.now(), item: d[1].trim(), de: m ? m[1] : null,
+            });
+          }
+        }
+        break;
+
+      // O ovo chocado. Não é um 'log': é um 'toast', e o cliente do jogo o
+      // reconhece pelo texto (`/^O ovo chocou/`, app.js L593, onde ele toca o
+      // som do ovo). Procurar isto em 'log' nunca acharia nada.
+      case 'toast':
+        if (typeof msg.txt === 'string') {
+          if (/^O ovo chocou/i.test(msg.txt)) {
+            this.emit('atividade', { tipo: 'chocou', em: Date.now(), txt: msg.txt });
+          }
+          this.emit('toast', msg.txt);
+        }
+        break;
+
+      // A captura de um ovo. Atenção ao ok:false: medido em conta real, o
+      // pacote da FALHA não traz 'ovo' nem 'historico' — só
+      // { corpo, esp, ok, scanner }. Tratar todo 'captura' como sucesso
+      // encheria o histórico de entradas vazias (foram 7 falhas em 90 s).
+      case 'captura':
+        if (msg.ok && msg.historico) {
+          this.historicoOvos.unshift(msg.historico);
+          // O mesmo teto do cliente do jogo. O acúmulo de longo prazo é do
+          // renderer; aqui é só a janela desta sessão.
+          this.historicoOvos = this.historicoOvos.slice(0, 60);
+          this.emit('atividade', {
+            tipo: 'captura', em: msg.historico.em || Date.now(), ovo: msg.historico,
+          });
+          this.emit('historico', this.historicoOvos);
         }
         break;
 
@@ -242,6 +322,10 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       // bauHoje, cfg, dif, eu, fila, gerente, guild, noLobby, pronto, t, ultimo.
       case 'lab':
         this.state.lab = msg;
+        // Os baús do dia, para o card dizer quantos labirintos ainda cabem.
+        // Medido em conta real: bauHoje=3, cfg.bauPorDia=3 -> 0 disponíveis.
+        if (typeof msg.bauHoje === 'number') this.state.labBauHoje = msg.bauHoje;
+        if (msg.cfg && typeof msg.cfg.bauPorDia === 'number') this.state.labBauPorDia = msg.cfg.bauPorDia;
         this.emit('lab', msg);
         break;
 
@@ -269,6 +353,20 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       // vem conteúdo: quem quiser a lista nova pede 'mercado.listar' de novo.
       case 'mercado.mudou':
         this.emit('mercado-mudou', msg);
+        // Pode ter sido uma venda MINHA. O aviso não diz: quem sabe é o
+        // 'mercado.meus', que traz o histórico de negociações da conta.
+        this.pedirMinhasNegociacoes();
+        break;
+
+      // A resposta de 'mercado.meus': { abertos, historico, pensao }. Cada
+      // linha do histórico é uma negociação ENTRE PLAYERS, com 'vendi' dizendo
+      // de que lado a conta estava (menus2.js: `meus.historico.filter((x) =>
+      // !!x.vendi === vendi)`).
+      //
+      // Isto não se confunde com a venda de ovos: aquela é 'market.vender',
+      // para o NPC da Loja, e nem passa por aqui.
+      case 'mercado.meus':
+        this.novasNegociacoes(msg);
         break;
 
       case 'batalha':
@@ -296,6 +394,8 @@ class DigiiIdleHeadlessClient extends EventEmitter {
 
   onClose(ev) {
     this.stopPingTimer();
+    this.stopLabTimer();
+    this.stopMercadoMarco();
     this.ws = null;
 
     // Code 4000 = jogo aberto em outra aba; 4001 = bloqueio admin
@@ -328,6 +428,103 @@ class DigiiIdleHeadlessClient extends EventEmitter {
     // Não sobrescreve um 'failed' anterior: o primeiro erro é o que explica a
     // falha; os seguintes são consequência dele.
     if (this.status !== 'failed') this.falhar(explicaErro(motivo));
+  }
+
+  // Os baus do Labirinto nao chegam sozinhos: provado em conta real, o pacote
+  // 'lab' so vem em resposta a 'lab.info' (que le o lobby, nao inscreve a conta
+  // em nada). Sem pedir, "labs disponiveis" ficaria em '-' para sempre.
+  //
+  // O intervalo e longo de proposito: o contador so muda quando a conta entra
+  // num labirinto, algumas vezes por dia. O primeiro pedido espera alguns
+  // segundos para nao sair no mesmo instante do login.
+  startLabTimer() {
+    this.stopLabTimer();
+    // 'connected' e um getter, nao um metodo: chamar isConnected() derrubava o
+    // processo principal 8s depois do login, com o socket ja aberto.
+    const pedir = () => { if (this.connected) this.send({ t: 'lab.info' }); };
+    const t0 = setTimeout(pedir, LAB_PRIMEIRO_MS);
+    if (t0.unref) t0.unref();
+    this.labPrimeiro = t0;
+    this.labTimer = setInterval(pedir, LAB_INTERVAL_MS);
+    if (this.labTimer.unref) this.labTimer.unref();
+  }
+
+  stopLabTimer() {
+    if (this.labPrimeiro) { clearTimeout(this.labPrimeiro); this.labPrimeiro = null; }
+    if (this.labTimer) { clearInterval(this.labTimer); this.labTimer = null; }
+  }
+
+  // ------------------------------------------- Mercado da Comunidade
+  // As vendas e compras ENTRE PLAYERS, que é o que o Painel mostra. A venda de
+  // ovos para o NPC ('market.vender') é outra coisa e sai pelo log da
+  // ferramenta.
+  //
+  // Nenhum pacote anuncia "você vendeu". O caminho é o mesmo do jogo: ao
+  // 'mercado.mudou', pedir 'mercado.meus' e comparar com o que já se viu.
+  pedirMinhasNegociacoes() {
+    if (this.mercadoTimer) return;
+    this.mercadoTimer = setTimeout(() => {
+      this.mercadoTimer = null;
+      if (this.connected) this.send({ t: 'mercado.meus' });
+    }, MERCADO_DEBOUNCE_MS);
+    if (this.mercadoTimer.unref) this.mercadoTimer.unref();
+  }
+
+  novasNegociacoes(msg) {
+    const hist = (msg && msg.historico) || [];
+    // A PRIMEIRA resposta só serve de marco: ela traz o histórico inteiro da
+    // conta, e anunciá-lo encheria a Atividade com vendas de semanas atrás na
+    // hora do login. Só o que aparecer depois é novidade.
+    const primeira = !this.mercadoVistos;
+    if (primeira) this.mercadoVistos = new Set();
+
+    for (const x of hist) {
+      if (!x) continue;
+      // Sem id estável, a assinatura é o que identifica a linha. 'em' é o
+      // instante da negociação: duas vendas iguais no mesmo ms não acontecem.
+      const chave = [x.em, x.tipo, x.item, x.qtd, x.preco, x.moeda, x.outro].join('|');
+      if (this.mercadoVistos.has(chave)) continue;
+      this.mercadoVistos.add(chave);
+      if (primeira) continue;
+
+      const r = x.resumo || {};
+      this.emit('atividade', {
+        tipo: 'mercado',
+        em: x.em || Date.now(),
+        vendi: !!x.vendi,
+        // 'tipo' diz o que foi negociado: digimon, ovo, item, casa ou bike.
+        oque: x.tipo || 'item',
+        item: x.item || null,
+        especie: r.especie || null,
+        qtd: x.qtd || 1,
+        preco: x.preco || 0,
+        moeda: x.moeda || 'bits',
+        outro: x.outro || null,
+        potencia: r.potencia || null,
+        shiny: !!r.shiny,
+        nivel: r.nivel || null,
+      });
+    }
+    // Teto de memória: o histórico do servidor é finito, mas uma conta que
+    // vende o dia todo acumularia chaves sem limite num processo que fica dias
+    // de pé.
+    if (this.mercadoVistos.size > 4000) {
+      this.mercadoVistos = new Set([...this.mercadoVistos].slice(-2000));
+    }
+  }
+
+  // Marco inicial do mercado, logo depois do login: sem esta primeira resposta,
+  // a primeira venda do dia seria anunciada junto com todo o histórico antigo.
+  startMercadoMarco() {
+    this.stopMercadoMarco();
+    const t = setTimeout(() => { if (this.connected) this.send({ t: 'mercado.meus' }); }, LAB_PRIMEIRO_MS);
+    if (t.unref) t.unref();
+    this.mercadoMarco = t;
+  }
+
+  stopMercadoMarco() {
+    if (this.mercadoMarco) { clearTimeout(this.mercadoMarco); this.mercadoMarco = null; }
+    if (this.mercadoTimer) { clearTimeout(this.mercadoTimer); this.mercadoTimer = null; }
   }
 
   startPingTimer() {
@@ -398,6 +595,8 @@ class DigiiIdleHeadlessClient extends EventEmitter {
   disconnect() {
     this.autoReconnect = false;
     this.stopPingTimer();
+    this.stopLabTimer();
+    this.stopMercadoMarco();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

@@ -1,0 +1,185 @@
+conectado: desjuli | nivel 332
+
+
+================================================================
+A. TIER DO HISTORICO (letraOvo nas 60 entradas reais)
+================================================================
+  entradas: 60
+
+  distribuicao por letra:
+    A          8
+    B          17
+    C          23
+    D          12
+
+  sem letra ('?' ou erro): 0
+
+  amostra (5), com nota e potencia:
+    floramon         ovo=Rookie   P1 shiny=false -> tier C (nota 1.335)
+    floramon         ovo=Rookie   P1 shiny=false -> tier B (nota 1.613)
+    floramon         ovo=Rookie   P1 shiny=false -> tier C (nota 1.178)
+    floramon         ovo=Rookie   P1 shiny=false -> tier C (nota 0.841)
+    floramon         ovo=Rookie   P1 shiny=false -> tier D (nota 0.58)
+
+  => se "sem letra" for 0, os filtros S/SS/SSS do painel sao viaveis
+
+================================================================
+B. CHOCADEIRA / capOvos (o "Ovo Chocado")
+================================================================
+  capOvos    = 600
+  chocadeira = {
+  "vagas": 0
+}
+
+================================================================
+C. LABIRINTO (lab.info)
+================================================================
+  campos: bauHoje, cfg, dif, eu, fila, gerente, guild, noLobby, pronto, t, ultimo
+  bauHoje = 3
+  cfg.bauPorDia = 3
+  => LABS DISPONIVEIS HOJE = 0
+
+  lab inteiro:
+{
+  "bauHoje": 3,
+  "cfg": {
+    "bau": [
+      {
+        "item": "data:refinada",
+        "qtd": [
+          1,
+          2
+        ],
+        "chance": 100
+      },
+      {
+        "item": "data:pura",
+        "qtd": [
+          1,
+          1
+        ],
+        "chance": 15
+      },
+      {
+        "item": "token-boss",
+        "qtd": [
+          1,
+          1
+        ],
+        "chance": 35
+      },
+      {
+        "item": "evoluter",
+        "qtd": [
+          1,
+          1
+        ],
+        "chance": 20
+      },
+      {
+        "item": "fragmento-zmove",
+        "qtd": [
+          1,
+          1
+        ],
+        "chance": 1.5
+      },
+      {
+        "item": "peca-aoe",
+        "qtd": [
+          1,
+          1
+        ],
+        "chance": 1.5
+      },
+      {
+        "item": "safari-ticket",
+        "qtd": [
+          1,
+          1
+        ],
+        "chance": 1
+      }
+    ],
+    "bauPorDia": 3,
+    "boss": "machinedramon",
+    "bossPesadelo": "chaosdramon",
+    "dificuldades": [
+      {
+        "dano": 1,
+        "hp": 1,
+        "id": "normal",
+        "nome": "Normal",
+        "premio": 1
+      },
+      {
+        "dano": 1.35,
+        "hp": 1.5,
+        "id": "dificil",
+        "nome": "Difícil",
+        "premio": 1.6
+      },
+      {
+        "dano": 1.75,
+        "hp": 2.2,
+        "id": "pesadelo",
+        "nome": "Pesadelo",
+        "premio": 2.4
+      }
+    ],
+    "duracaoMin": 25,
+    "eliteEsp": [
+      "andromon",
+      "infermon",
+      "wargrowlmon"
+    ],
+    "elites": 3,
+    "max": 30,
+    "min": 3,
+    "normalEsp": [
+      "hagurumon",
+      "keramon",
+      "guardromon",
+      "chrysalimon"
+    ],
+    "renascerS": 12,
+    "salas": 12
+  },
+  "dif": "pesadelo",
+  "eu": {
+    "conta": "2ba26ee6-d267-458b-bf47-7a7143bf851f",
+    "nick": "desjuli",
+    "nivel": 332,
+    "esp": "machgaogamon",
+    "nvDig": 159,
+    "aura": 1,
+    "poder": 608,
+    "desde": 1795545509594
+  },
+  "fila": [
+    {
+      "conta": "4399a2f8-2129-4e81-a235-e5e78f2b3f98",
+      "nick": "GodBr",
+      "nivel": 460,
+      "esp": "dorugoramon",
+      "nvDig": 438,
+      "poder": 1828,
+      "desde": 1795542284568
+    },
+    {
+      "conta": "2aca800b-7461-4a98-ada2-0cdae69ecd0a",
+      "nick": "iNPC",
+      "nivel": 549,
+      "esp": "beelzemon",
+      "nvDig": 549,
+      "poder": 2046,
+      "desde": 1795542434072
+    },
+    {
+      "conta": "5351ed7b-e20a-44e7-8b1c-10899d2063d6",
+      "nick": "Yurios",
+      "nivel": 351,
+      "esp": "veedramon",
+      "nvD
+
+relatorio: C:\Users\pc\Desktop\DesDeck-Dev\dd-src\painel2-tier.txt

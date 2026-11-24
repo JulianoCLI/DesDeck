@@ -61,4 +61,6 @@ contextBridge.exposeInMainWorld('deck', {
   onHeadlessStatus: on('headless:account:status'),
   onHeadlessError: on('headless:account:error'),
   onHeadlessPainel: on('headless:account:painel'),
+  onHeadlessAtividade: on('headless:account:atividade'),
+  onHeadlessHistorico: on('headless:account:historico'),
 });
