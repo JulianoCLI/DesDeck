@@ -5,19 +5,19 @@ fontes baixadas: 102
 ======================================================================
   /js/app.js  (14)
     L110: for (const lista of [this.itens.scanners, this.itens.pocoes, this.itens.revives, this.itens.evolucao || [], this.itens.chips, this.itens.raros || [], this.itens.ovos || [], this.itens.zmoves || [], this.itens.datas || [], this.itens.auras || [], this.itens.comidas || []]) {
-    L928: ? ['ok', `Pronto para treinar em ${esc(m.vaiParaNome)}`, `Clique em Entrar e pode fechar o jogo. Rende XP do Tamer, XP do Digimon ativo${m.scan ? ', Bits e ovos do scan' : ' e Bits'}. O VIP também leva itens normais, sem os raros.`, 'entrar', 'Entrar']
-    L1494: // Cartão de Speed é item da Mochila › Itens Raros: acende lá quando nenhum está ativo.
-    L1495: const raros = (E.bikes || []).length > 0 && !E.bikes.some((b) => b.ativa);
-    L1505: raros,
-    L1516: $('#bolsa-ponto')?.classList.toggle('hidden', !(chocadeira || raros || boosts || selos.vinculo));
-    L1517: $('[data-selo-nav="mochila"]')?.classList.toggle('hidden', !(chocadeira || raros || boosts || selos.vinculo));
-    L2809: ${itens.some((it) => it.id?.startsWith('bau-bg-')) ? '<p class="bgf-nada">O baú foi para a Mochila › Raros: abra quando quiser.</p>' : ''}
-    L3704: const raros = [];
-    L3705: if (area.raros) {
-    L3706: const pct = (v) => `${String(+(v * area.raros).toFixed(5)).replace('.', I18N.decimal)}%`;
-    L3707: raros.push(drop('token-boss', pct(0.05), 'Boss Token'), ...['fragmento-chave', 'fragmento-shiny', 'fragmento-bike'].map((it) => drop(it, pct(0.0005))));
-    L3709: if (area.nivel >= 100) raros.push(drop('fragmento-ovo-shiny', '0,00375%'));
-    L3725: ${raros.length ? `<div class="ha-sub">Raros${area.raros ? `<em data-dica="Já com o Loot Boost">${esc(cat.regiao(area.ilha).nome)} ×${String(area.raros).replace('.', I18N.decimal)}</em>` : ''}</div>${raros.join('')}` : ''}</div>
+    L970: ? ['ok', `Pronto para treinar em ${esc(m.vaiParaNome)}`, `Clique em Entrar e pode fechar o jogo. Rende XP do Tamer, XP do Digimon ativo${m.scan ? ', Bits e ovos do scan' : ' e Bits'}. O VIP também leva itens normais, sem os raros.`, 'entrar', 'Entrar']
+    L1536: // Cartão de Speed é item da Mochila › Itens Raros: acende lá quando nenhum está ativo.
+    L1537: const raros = (E.bikes || []).length > 0 && !E.bikes.some((b) => b.ativa);
+    L1547: raros,
+    L1558: $('#bolsa-ponto')?.classList.toggle('hidden', !(chocadeira || raros || boosts || selos.vinculo));
+    L1559: $('[data-selo-nav="mochila"]')?.classList.toggle('hidden', !(chocadeira || raros || boosts || selos.vinculo));
+    L2851: ${itens.some((it) => it.id?.startsWith('bau-bg-')) ? '<p class="bgf-nada">O baú foi para a Mochila › Raros: abra quando quiser.</p>' : ''}
+    L3746: const raros = [];
+    L3747: if (area.raros) {
+    L3748: const pct = (v) => `${String(+(v * area.raros).toFixed(5)).replace('.', I18N.decimal)}%`;
+    L3749: raros.push(drop('token-boss', pct(0.05), 'Boss Token'), ...['fragmento-chave', 'fragmento-shiny', 'fragmento-bike'].map((it) => drop(it, pct(0.0005))));
+    L3751: if (area.nivel >= 100) raros.push(drop('fragmento-ovo-shiny', '0,00375%'));
+    L3767: ${raros.length ? `<div class="ha-sub">Raros${area.raros ? `<em data-dica="Já com o Loot Boost">${esc(cat.regiao(area.ilha).nome)} ×${String(area.raros).replace('.', I18N.decimal)}</em>` : ''}</div>${raros.join('')}` : ''}</div>
   /js/cena.js  (3)
     L985: // As bikes do Cartão de Speed já montadas como roupa, por personagem e raridade ("rina-mitica").
     L2250: // Cartão de Speed ativo na hunt: a bike da raridade do cartão, do personagem da roupa
@@ -178,19 +178,19 @@ fontes baixadas: 102
     L36: import { instalarMochila } from './mochila.js?v=8-dskill-elem';
     L38: import { instalarCalculadora, classesHf } from './calculadora.js?v=7-dskill1800';
     L47: import { instalarKurata } from './kurata.js?v=8-dskill-elem';
-    L1539: ${d.zmove ? `<span class="chip" data-dica="D-Skill ${esc(d.zmove)} (${d.zcat === 'fisico' ? 'Físico' : 'Especial'}): poder 1800, recarga 60 s, acerta o alvo e quem encosta nele (3×3).">D</span>` : ''}${d.aoe ? '<span class="chip" data-dica="Chip AoE: os golpes acertam todo selvagem até 5 tiles (11×1
-    L2509: // Selo do D-Skill na ficha: "E: FOGO" (Especial) ou "F: FOGO" (Físico). No Digimon do próprio Tamer é um
-    L2515: const dica = `D-Skill ${el} · ${fis ? 'Físico' : 'Especial'}`;
-    L2525: const v = await perguntar({ titulo: `D-Skill ${cat.elemento(d.zmove).nome}`,
-    L2529: if (v && v !== (d.zcat === 'fisico' ? 'fisico' : 'especial')) enviar('dskill.categoria', { id: d.id, cat: v });
-    L2532: // O D-Skill como o servidor monta (zmove.go): poder 1800, recarga 60 s, na categoria
-    L2534: // O elemento é o da forma em uso: evoluiu para outro elemento, o D-Skill vai junto.
-    L2537: return { id: 'zmove', nome: `D-Skill ${cat.elemento(elem).nome}`, elemento: elem, poder: 1800, recargaMs: 60000,
-    L2541: // O D-Skill saiu: o slot dá um clarão.
-    L3707: raros.push(drop('token-boss', pct(0.05), 'Boss Token'), ...['fragmento-chave', 'fragmento-shiny', 'fragmento-bike'].map((it) => drop(it, pct(0.0005))));
-    L4029: ${d.local === 'equipe' && (cat.itens.zmoves.some((z) => z.elemento === e.elemento && (E.itens[z.id] || 0) > 0 && !d.zmove) || ((E.itens['disco-aoe'] || 0) > 0 && !d.aoe)) ? '<button class="bt-sec" id="fd-disco">💿 Aplicar disco</button>' : ''}</div></div>`;
-    L4037: ${e.lendario || d.zmove || d.aoe || au ? `<div class="fd-tags">${e.lendario ? '<span class="pill ouro">Bônus de lendário ×4</span>' : ''}${d.zmove ? seloZCat(d, !!alheio) : ''}${d.aoe ? '<span class="pill" style="background:#c2410c">Chip AoE</span>' : ''}${au ? `<span class="pill ax-pill" style="--a
-    L4080: const ops = [...cat.itens.zmoves.filter((z) => z.elemento === e.elemento && (E.itens[z.id] || 0) > 0 && !d.zmove).map((z) => z.id), ...((E.itens['disco-aoe'] || 0) > 0 && !d.aoe ? ['disco-aoe'] : [])];
+    L1581: ${d.zmove ? `<span class="chip" data-dica="D-Skill ${esc(d.zmove)} (${d.zcat === 'fisico' ? 'Físico' : 'Especial'}): poder 1800, recarga 60 s, acerta o alvo e quem encosta nele (3×3).">D</span>` : ''}${d.aoe ? '<span class="chip" data-dica="Chip AoE: os golpes acertam todo selvagem até 5 tiles (11×1
+    L2551: // Selo do D-Skill na ficha: "E: FOGO" (Especial) ou "F: FOGO" (Físico). No Digimon do próprio Tamer é um
+    L2557: const dica = `D-Skill ${el} · ${fis ? 'Físico' : 'Especial'}`;
+    L2567: const v = await perguntar({ titulo: `D-Skill ${cat.elemento(d.zmove).nome}`,
+    L2571: if (v && v !== (d.zcat === 'fisico' ? 'fisico' : 'especial')) enviar('dskill.categoria', { id: d.id, cat: v });
+    L2574: // O D-Skill como o servidor monta (zmove.go): poder 1800, recarga 60 s, na categoria
+    L2576: // O elemento é o da forma em uso: evoluiu para outro elemento, o D-Skill vai junto.
+    L2579: return { id: 'zmove', nome: `D-Skill ${cat.elemento(elem).nome}`, elemento: elem, poder: 1800, recargaMs: 60000,
+    L2583: // O D-Skill saiu: o slot dá um clarão.
+    L3749: raros.push(drop('token-boss', pct(0.05), 'Boss Token'), ...['fragmento-chave', 'fragmento-shiny', 'fragmento-bike'].map((it) => drop(it, pct(0.0005))));
+    L4071: ${d.local === 'equipe' && (cat.itens.zmoves.some((z) => z.elemento === e.elemento && (E.itens[z.id] || 0) > 0 && !d.zmove) || ((E.itens['disco-aoe'] || 0) > 0 && !d.aoe)) ? '<button class="bt-sec" id="fd-disco">💿 Aplicar disco</button>' : ''}</div></div>`;
+    L4079: ${e.lendario || d.zmove || d.aoe || au ? `<div class="fd-tags">${e.lendario ? '<span class="pill ouro">Bônus de lendário ×4</span>' : ''}${d.zmove ? seloZCat(d, !!alheio) : ''}${d.aoe ? '<span class="pill" style="background:#c2410c">Chip AoE</span>' : ''}${au ? `<span class="pill ax-pill" style="--a
+    L4122: const ops = [...cat.itens.zmoves.filter((z) => z.elemento === e.elemento && (E.itens[z.id] || 0) > 0 && !d.zmove).map((z) => z.id), ...((E.itens['disco-aoe'] || 0) > 0 && !d.aoe ? ['disco-aoe'] : [])];
   /js/cena.js  (2)
     L2137: if (combate && !e._lod && esp.animSkill && !(e._pedSkill > agoraP - 15000)) {
     L2138: e._pedSkill = agoraP;
@@ -294,44 +294,44 @@ fontes baixadas: 102
   /js/app.js  (68)
     L104: especies: [], porId: {}, golpes: {}, areas: [], areaPorId: {}, regioes: [], itens: {}, tipos: {}, fx: {}, hits: new Set(), skins: [],
     L110: for (const lista of [this.itens.scanners, this.itens.pocoes, this.itens.revives, this.itens.evolucao || [], this.itens.chips, this.itens.raros || [], this.itens.ovos || [], this.itens.zmoves || [], this.itens.datas || [], this.itens.auras || [], this.itens.comidas || []]) {
-    L211: const arquivos = ['especies', 'golpes', 'areas', 'itens', 'tipos', 'fx', 'hits', 'skins', 'bosses', 'passe', 'shop', 'regioes', 'torre'];
-    L221: const [especies, golpes, areas, itens, tipos, fx, hits, skins, bosses, passe, shop, regioes, torre] = dados;
-    L222: Object.assign(cat, { especies, golpes, areas, itens, tipos, fx, hits: new Set(hits), skins, bosses, passe, shop, regioes, torre }); // torre: shared/torre.json (Wiki da Torre dos Elementos)
-    L888: const scanners = cat.itens.scanners;
-    L928: ? ['ok', `Pronto para treinar em ${esc(m.vaiParaNome)}`, `Clique em Entrar e pode fechar o jogo. Rende XP do Tamer, XP do Digimon ativo${m.scan ? ', Bits e ovos do scan' : ' e Bits'}. O VIP também leva itens normais, sem os raros.`, 'entrar', 'Entrar']
-    L989: <div class="offc-cura-linha"><span>Poções</span><div class="auto-opcoes" id="offc-pocoes">${curas(cat.itens.pocoes, m.pocoes)}</div></div>
-    L991: <div class="offc-cura-linha"><span>Revives</span><div class="auto-opcoes" id="offc-revives">${curas(cat.itens.revives, m.revives)}</div></div>
-    L1094: const ordem = cat.itens.scanners.map((s) => s.id);
-    L1104: const itensN = (o) => Object.values(o || {}).reduce((a, n) => a + n, 0);
-    L1105: const temItens = itensN(m.itens) > 0;
-    L1106: // O que o treino juntou: ovos (os misteriosos só no 100%) e os itens do VIP, numa faixa só.
-    L1107: const coleta = m.scanner || temItens ? `<div class="off-coleta">
-    L1110: ${temItens ? `<div class="off-itens"><small>Itens</small>${usadosOff(m.itens)}</div>` : ''}
-    L1131: ${temItens ? linha('Itens', `${R.fmt(itensN(m.itensGratis))} <small>(metade)</small>`, R.fmt(itensN(m.itens))) : ''}
-    L1138: ${m.vip ? '' : '<small class="off-vip">Com VIP: até 12 h, 70% grátis ou 100% por só 1 DCoin, e itens no treino.</small>'}
-    L1487: const ovosNaBolsa = ovosDigitais.length + (cat.itens.ovos || []).reduce((t, i) => t + (E.itens[i.id] || 0), 0);
-    L1494: // Cartão de Speed é item da Mochila › Itens Raros: acende lá quando nenhum está ativo.
-    L1501: boss: (cat.bosses || []).some((b) => E.nivel >= b.tamerNivel && Object.entries(b.entrada || {}).every(([it, q]) => (E.itens[it] || 0) >= q)),
-    L1814: $('#escape-qtd').textContent = R.fmtCompacto(E.itens['escape-rope'] || 0);
-    L1815: $('#escape-rope').classList.toggle('vazio', !(E.itens['escape-rope'] > 0));
-    L1841: const pronto = evo && ativo.nivel >= evo.nivel && (E.itens[evo.chip] || 0) > 0 && (E.itens.evoluter || 0) >= nEvo && (!ativo.shiny || (E.itens['chip-shiny'] || 0) > 0);
-    L1850: : alem ? `${(eMax.especiais || []).length ? 'Especial certeiro, ' : ''}Rerrol e Especial aleatório: duas Megas e Núcleo Digital (o Rerrol é por DCoin).` : evo ? `Precisa de Nv ${evo.nivel} (está no ${ativo.nivel}) e 1× ${nomeItem(cat, evo.chip)} (tem ${E.itens[evo.chip] || 0})${nEvo ? ` e ${nEvo}× E
-    L1973: const evoCfg = () => cat.itens.evoConfig || { evpMax: 100, evpMinimo: 20, dreno5s: {}, sucesso: {}, evoluter: {}, evoluterPorAura: 2 };
-    L2001: const qtd = E.itens[id] || 0;
-    L2015: mudarHtml($('#auto-scanner-opts'), cat.itens.scanners.map((s) => itemOp(s.id, a.scanners?.includes(s.id), (a.scanners || []).indexOf(s.id) + 1)).join(''));
-    L2018: mudarHtml($('#auto-revive-opts'), cat.itens.revives.map((s) => itemOp(s.id, a.revives.includes(s.id), a.revives.indexOf(s.id) + 1)).join(''));
-    L2019: mudarHtml($('#auto-pocao-opts'), cat.itens.pocoes.map((s) => itemOp(s.id, a.pocoes.includes(s.id), a.pocoes.indexOf(s.id) + 1)).join(''));
-    L2036: $('#auto-evp-opts').addEventListener('click', (e) => { if (e.target.closest('[data-item]') && !(E.itens['pocao-evp'] > 0)) abrirLoja('pocoes'); });
-    L2456: mudarHtml($('#caidos-bolas'), cat.itens.scanners.map((s) => {
-    L2457: const q = E.itens[s.id] || 0;
-    L2703: // Os itens do pódio: o ícone com a quantidade no canto; o nome no balão.
-    L2710: <span>${p.itens.map(item).join('')}</span></div>`).join('');
-    L2744: // Os itens vêm com o id (o ícone); um servidor antigo manda só o texto do baú.
-    L2745: const itens = g.itens || (g.bau || []).map((txt) => ({ txt }));
-    L2746: for (const it of itens) {
-    L2776: // em cartões com ícone (XP, Bits, o baú e os itens do pódio). O placar inteiro fica recolhido.
-    L2788: // Os itens vêm com o id (o ícone); um servidor antigo manda só o texto do baú.
-    L2789: const itens = g.itens || [...(g.bau || []), ...(g.top || [])].map((txt) => ({ txt }));
+    L252: const arquivos = ['especies', 'golpes', 'areas', 'itens', 'tipos', 'fx', 'hits', 'skins', 'bosses', 'passe', 'shop', 'regioes', 'torre'];
+    L262: const [especies, golpes, areas, itens, tipos, fx, hits, skins, bosses, passe, shop, regioes, torre] = dados;
+    L263: Object.assign(cat, { especies, golpes, areas, itens, tipos, fx, hits: new Set(hits), skins, bosses, passe, shop, regioes, torre }); // torre: shared/torre.json (Wiki da Torre dos Elementos)
+    L930: const scanners = cat.itens.scanners;
+    L970: ? ['ok', `Pronto para treinar em ${esc(m.vaiParaNome)}`, `Clique em Entrar e pode fechar o jogo. Rende XP do Tamer, XP do Digimon ativo${m.scan ? ', Bits e ovos do scan' : ' e Bits'}. O VIP também leva itens normais, sem os raros.`, 'entrar', 'Entrar']
+    L1031: <div class="offc-cura-linha"><span>Poções</span><div class="auto-opcoes" id="offc-pocoes">${curas(cat.itens.pocoes, m.pocoes)}</div></div>
+    L1033: <div class="offc-cura-linha"><span>Revives</span><div class="auto-opcoes" id="offc-revives">${curas(cat.itens.revives, m.revives)}</div></div>
+    L1136: const ordem = cat.itens.scanners.map((s) => s.id);
+    L1146: const itensN = (o) => Object.values(o || {}).reduce((a, n) => a + n, 0);
+    L1147: const temItens = itensN(m.itens) > 0;
+    L1148: // O que o treino juntou: ovos (os misteriosos só no 100%) e os itens do VIP, numa faixa só.
+    L1149: const coleta = m.scanner || temItens ? `<div class="off-coleta">
+    L1152: ${temItens ? `<div class="off-itens"><small>Itens</small>${usadosOff(m.itens)}</div>` : ''}
+    L1173: ${temItens ? linha('Itens', `${R.fmt(itensN(m.itensGratis))} <small>(metade)</small>`, R.fmt(itensN(m.itens))) : ''}
+    L1180: ${m.vip ? '' : '<small class="off-vip">Com VIP: até 12 h, 70% grátis ou 100% por só 1 DCoin, e itens no treino.</small>'}
+    L1529: const ovosNaBolsa = ovosDigitais.length + (cat.itens.ovos || []).reduce((t, i) => t + (E.itens[i.id] || 0), 0);
+    L1536: // Cartão de Speed é item da Mochila › Itens Raros: acende lá quando nenhum está ativo.
+    L1543: boss: (cat.bosses || []).some((b) => E.nivel >= b.tamerNivel && Object.entries(b.entrada || {}).every(([it, q]) => (E.itens[it] || 0) >= q)),
+    L1856: $('#escape-qtd').textContent = R.fmtCompacto(E.itens['escape-rope'] || 0);
+    L1857: $('#escape-rope').classList.toggle('vazio', !(E.itens['escape-rope'] > 0));
+    L1883: const pronto = evo && ativo.nivel >= evo.nivel && (E.itens[evo.chip] || 0) > 0 && (E.itens.evoluter || 0) >= nEvo && (!ativo.shiny || (E.itens['chip-shiny'] || 0) > 0);
+    L1892: : alem ? `${(eMax.especiais || []).length ? 'Especial certeiro, ' : ''}Rerrol e Especial aleatório: duas Megas e Núcleo Digital (o Rerrol é por DCoin).` : evo ? `Precisa de Nv ${evo.nivel} (está no ${ativo.nivel}) e 1× ${nomeItem(cat, evo.chip)} (tem ${E.itens[evo.chip] || 0})${nEvo ? ` e ${nEvo}× E
+    L2015: const evoCfg = () => cat.itens.evoConfig || { evpMax: 100, evpMinimo: 20, dreno5s: {}, sucesso: {}, evoluter: {}, evoluterPorAura: 2 };
+    L2043: const qtd = E.itens[id] || 0;
+    L2057: mudarHtml($('#auto-scanner-opts'), cat.itens.scanners.map((s) => itemOp(s.id, a.scanners?.includes(s.id), (a.scanners || []).indexOf(s.id) + 1)).join(''));
+    L2060: mudarHtml($('#auto-revive-opts'), cat.itens.revives.map((s) => itemOp(s.id, a.revives.includes(s.id), a.revives.indexOf(s.id) + 1)).join(''));
+    L2061: mudarHtml($('#auto-pocao-opts'), cat.itens.pocoes.map((s) => itemOp(s.id, a.pocoes.includes(s.id), a.pocoes.indexOf(s.id) + 1)).join(''));
+    L2078: $('#auto-evp-opts').addEventListener('click', (e) => { if (e.target.closest('[data-item]') && !(E.itens['pocao-evp'] > 0)) abrirLoja('pocoes'); });
+    L2498: mudarHtml($('#caidos-bolas'), cat.itens.scanners.map((s) => {
+    L2499: const q = E.itens[s.id] || 0;
+    L2745: // Os itens do pódio: o ícone com a quantidade no canto; o nome no balão.
+    L2752: <span>${p.itens.map(item).join('')}</span></div>`).join('');
+    L2786: // Os itens vêm com o id (o ícone); um servidor antigo manda só o texto do baú.
+    L2787: const itens = g.itens || (g.bau || []).map((txt) => ({ txt }));
+    L2788: for (const it of itens) {
+    L2818: // em cartões com ícone (XP, Bits, o baú e os itens do pódio). O placar inteiro fica recolhido.
+    L2830: // Os itens vêm com o id (o ícone); um servidor antigo manda só o texto do baú.
+    L2831: const itens = g.itens || [...(g.bau || []), ...(g.top || [])].map((txt) => ({ txt }));
     ... +28
   /js/menus.js  (10)
     L229: for (const it of cat.shop?.itens || []) {
@@ -537,12 +537,12 @@ fontes baixadas: 102
 1d. Categoria / tipo / tag de item
 ======================================================================
   /js/app.js  (6)
-    L443: avisoConexao({ tipo: 'admin', titulo: d.titulo, txt: d.txt, botao: 'Reconectar', aoVoltar: conectar, discord: bloqueada });
-    L453: tipo: 'aba', titulo: 'Jogo aberto em outra aba',
-    L2120: <button type="button" class="m-ver" data-ver-anuncio="${a.id}" data-tipo="${esc(a.tipo)}" data-esp="${esc(a.especie || a.item || '')}" data-moeda="${esc(a.moeda || '')}">Ver anúncio ›</button></div></div>`;
-    L2434: function adicionarLog(txt, tipo = '') {
-    L3602: tipo: 'atualizacao', status: 'Nova versão', titulo: m.titulo, txt: m.txt, botao: 'Reiniciar o jogo',
-    L4074: const v = await perguntar({ titulo: 'Reduzir nível', texto: `Reduzir ${prefixoX(d)}${e.nome} para qual nível? (de ${e.tetoCaptura} a ${d.nivel - 1}; não tem como desfazer)`, valor: e.tetoCaptura, tipo: 'number', min: e.tetoCaptura, max: d.nivel - 1, ok: 'Continuar' });
+    L484: avisoConexao({ tipo: 'admin', titulo: d.titulo, txt: d.txt, botao: 'Reconectar', aoVoltar: conectar, discord: bloqueada });
+    L494: tipo: 'aba', titulo: 'Jogo aberto em outra aba',
+    L2162: <button type="button" class="m-ver" data-ver-anuncio="${a.id}" data-tipo="${esc(a.tipo)}" data-esp="${esc(a.especie || a.item || '')}" data-moeda="${esc(a.moeda || '')}">Ver anúncio ›</button></div></div>`;
+    L2476: function adicionarLog(txt, tipo = '') {
+    L3644: tipo: 'atualizacao', status: 'Nova versão', titulo: m.titulo, txt: m.txt, botao: 'Reiniciar o jogo',
+    L4116: const v = await perguntar({ titulo: 'Reduzir nível', texto: `Reduzir ${prefixoX(d)}${e.nome} para qual nível? (de ${e.tetoCaptura} a ${d.nivel - 1}; não tem como desfazer)`, valor: e.tetoCaptura, tipo: 'number', min: e.tetoCaptura, max: d.nivel - 1, ok: 'Continuar' });
   /js/cena.js  (9)
     L1194: if (c.aliado) atualizar('a', { ...c.aliado, tipo: 'aliado' });
     L1195: atualizar('t', { ...c.tamer, tipo: 'tamer', skin: this.skinLocal, asa: this.asaLocal || '', auraT: this.auraTLocal || '', titulo: this.tituloLocal || '', tituloCor: this.tituloCorLocal || '', bike: c.tamer?.bike || '' });
@@ -701,8 +701,8 @@ fontes baixadas: 102
 2a. Pacotes do MERCADO entre players
 ======================================================================
   /js/app.js  (2)
-    L665: case 'mercado.sorteio':
-    L1492: const temMorador = vagaLivre && [...(E.equipe || []), ...colecao].some((d) => !morando.has(d.id) && d.local !== 'mercado'
+    L707: case 'mercado.sorteio':
+    L1534: const temMorador = vagaLivre && [...(E.equipe || []), ...colecao].some((d) => !morando.has(d.id) && d.local !== 'mercado'
   /js/loja.js  (5)
     L30: const QTD_MAX = 1_000_000; // o teto do servidor por compra (market.comprar)
     L31: const LOTE_IDS = 1000; // ids por market.vender: cabe folgado nos 16 KB da mensagem
@@ -820,8 +820,8 @@ fontes baixadas: 102
 2e. Mensagens de log/toast de compra e venda
 ======================================================================
   /js/app.js  (2)
-    L1772: // Buffs da guild: o Boost do banco (comprado) e o prêmio do ranking da Guerra.
-    L3514: if (!itens.length) { toast(m.txt || `Comprou ${m.nome}.`); return; }
+    L1814: // Buffs da guild: o Boost do banco (comprado) e o prêmio do ranking da Guerra.
+    L3556: if (!itens.length) { toast(m.txt || `Comprou ${m.nome}.`); return; }
   /js/menus.js  (1)
     L332: <li>O Passe Premium é comprado à parte: ter VIP não dá o Premium, e comprando depois, você resgata o Premium dos dias que já pegou neste ciclo.</li></ul></div>`);
   /js/cofre.js  (1)
@@ -893,41 +893,41 @@ fontes baixadas: 102
     L127: let ovosDigitais = []; // a bolsa de Ovos Digitais (o que o scanner pega)
     L134: let historico = [];
     L147: let scannerSel = localStorage.getItem('scanner') || 'scanner-basico';
-    L557: historico = m.historico || [];
-    L616: // O "é seu!" espera o scanner terminar o scan na cena, como no DigiIdle.
-    L620: tocarSom(`capP${Math.min(5, Math.max(1, +m.ovo?.potencia || 1))}`); // um som por Potência (Configurações › Sons)
-    L621: historico.unshift(m.historico);
-    L622: historico = historico.slice(0, 60);
-    L625: toast(`Ovo ${rotuloOvo(o)}${o.shiny ? ' UX' : ''}${o.potencia ? ` P${o.potencia}` : ''} de ${cat.especie(o.especie)?.nome || cat.especie(m.esp)?.nome} é seu! Choque na Incubadora.`);
-    L641: case 'chat.historico': chat.msgs[m.canal] = m.msgs || []; if (m.canal === chat.canal) renderChat(); break;
-    L645: case 'shiny': popupShiny(m); break;
-    L888: const scanners = cat.itens.scanners;
-    L917: // Os scanners do scan, na ordem de uso (o servidor antigo manda só um, em "scanner").
-    L918: const scanSel = m.scanners || (m.scanner ? [m.scanner] : []);
-    L941: <img src="/icones/ovo-shiny.png" alt="">
-    L995: <h3><img src="/icones/scanner-plus.png" alt="">Scan de ovos${m.vip ? '' : ' <span class="offc-selo vip">VIP</span>'}</h3>
-    L999: <div class="offc-scanners ${m.scan && m.vip ? '' : 'off'}" id="offc-scanners">${curas(scanners, scanSel)}</div>
-    L1000: <p class="offc-dica">Marque quantos quiser: gasta os scanners da mochila na ordem marcada (acabou um, passa para o próximo). Ovos P4, P5 e UX chegam misteriosos e só vêm no resgate 100%.</p>
-    L1023: const salvar = (mud) => enviar('offline.config', { hunt: m.hunt, scan: m.scan, scanners: scanSel, pocoes: m.pocoes, revives: m.revives, limiar: m.limiar, ...mud });
-    L1054: if (e.target.checked && !scanSel.length) { e.target.checked = false; toast('Escolha um scanner primeiro.', true); return; }
-    L1057: // Marca/desmarca um scanner; sem nenhum marcado, o scan desliga junto.
-    L1058: $('#offc-scanners', c).onclick = (e) => {
-    L1064: salvar({ scanners: lista, ...(lista.length ? {} : { scan: false }) });
-    L1090: // Os scanners gastos no resgate: um só fica como antes ("Nome · N scan(s)"); vários viram ícone ×N.
-    L1093: if (por.length <= 1) return `${icone(m.scanner)}<span>${esc(cat.item(m.scanner)?.nome || 'Scanner')} · ${R.fmt(m.scans)} scan(s)</span>`;
-    L1094: const ordem = cat.itens.scanners.map((s) => s.id);
-    L1107: const coleta = m.scanner || temItens ? `<div class="off-coleta">
-    L1108: ${m.scanner ? `<div class="off-coleta-cab">${scansOff(m)}${m.boost ? '<em>Boost Offline</em>' : ''}${m.bolsaCheia ? '<em class="aviso">Bolsa de Ovos cheia</em>' : ''}</div>
-    L1130: ${m.scanner ? linha('Ovos', R.fmt(ovos.length), `${R.fmt(ovos.length + m.misteriosos)}${m.misteriosos ? ` <small class="off-mist-txt">+${m.misteriosos} ?</small>` : ''}`) : ''}
-    L1155: const nomeOvo = (o) => `${esc(cat.especie(o.especie)?.nome || '')}${o.shiny ? ' UX' : ''} · P${o.potencia}`;
-    L1532: const p = ['I', 'II', 'III', 'IV', 'V'][d.potencia - 1];
-    L1533: const bonus = [0, 5, 10, 25, 100][d.potencia - 1];
-    L1535: <span class="chip p p${d.potencia}" data-dica="Potência ${p} — este Digimon tem +${bonus}% em todos os atributos.">P${d.potencia}</span>
-    L1841: const pronto = evo && ativo.nivel >= evo.nivel && (E.itens[evo.chip] || 0) > 0 && (E.itens.evoluter || 0) >= nEvo && (!ativo.shiny || (E.itens['chip-shiny'] || 0) > 0);
-    L1850: : alem ? `${(eMax.especiais || []).length ? 'Especial certeiro, ' : ''}Rerrol e Especial aleatório: duas Megas e Núcleo Digital (o Rerrol é por DCoin).` : evo ? `Precisa de Nv ${evo.nivel} (está no ${ativo.nivel}) e 1× ${nomeItem(cat, evo.chip)} (tem ${E.itens[evo.chip] || 0})${nEvo ? ` e ${nEvo}× E
-    L1863: const dica = `poder ${R.fmt(d.poder)} · qualidade ${R.qual(d.qualidade)} · P${d.potencia} · ${cat.elemento(e.elemento).nome}\nclique para colocar em campo · botão direito: ficha`;
-    L1877: if ((E.guildTag || '') !== (chat.tagVista || '')) { chat.tagVista = E.guildTag || ''; renderAbasChat(); if (E.guildTag) enviar('chat.historico', { canal: 'guild' }); }
-    L2006: $('#auto-scanner-captura').checked = a.scannerCaptura;
+    L598: historico = m.historico || [];
+    L658: // O "é seu!" espera o scanner terminar o scan na cena, como no DigiIdle.
+    L662: tocarSom(`capP${Math.min(5, Math.max(1, +m.ovo?.potencia || 1))}`); // um som por Potência (Configurações › Sons)
+    L663: historico.unshift(m.historico);
+    L664: historico = historico.slice(0, 60);
+    L667: toast(`Ovo ${rotuloOvo(o)}${o.shiny ? ' UX' : ''}${o.potencia ? ` P${o.potencia}` : ''} de ${cat.especie(o.especie)?.nome || cat.especie(m.esp)?.nome} é seu! Choque na Incubadora.`);
+    L683: case 'chat.historico': chat.msgs[m.canal] = m.msgs || []; if (m.canal === chat.canal) renderChat(); break;
+    L687: case 'shiny': popupShiny(m); break;
+    L930: const scanners = cat.itens.scanners;
+    L959: // Os scanners do scan, na ordem de uso (o servidor antigo manda só um, em "scanner").
+    L960: const scanSel = m.scanners || (m.scanner ? [m.scanner] : []);
+    L983: <img src="/icones/ovo-shiny.png" alt="">
+    L1037: <h3><img src="/icones/scanner-plus.png" alt="">Scan de ovos${m.vip ? '' : ' <span class="offc-selo vip">VIP</span>'}</h3>
+    L1041: <div class="offc-scanners ${m.scan && m.vip ? '' : 'off'}" id="offc-scanners">${curas(scanners, scanSel)}</div>
+    L1042: <p class="offc-dica">Marque quantos quiser: gasta os scanners da mochila na ordem marcada (acabou um, passa para o próximo). Ovos P4, P5 e UX chegam misteriosos e só vêm no resgate 100%.</p>
+    L1065: const salvar = (mud) => enviar('offline.config', { hunt: m.hunt, scan: m.scan, scanners: scanSel, pocoes: m.pocoes, revives: m.revives, limiar: m.limiar, ...mud });
+    L1096: if (e.target.checked && !scanSel.length) { e.target.checked = false; toast('Escolha um scanner primeiro.', true); return; }
+    L1099: // Marca/desmarca um scanner; sem nenhum marcado, o scan desliga junto.
+    L1100: $('#offc-scanners', c).onclick = (e) => {
+    L1106: salvar({ scanners: lista, ...(lista.length ? {} : { scan: false }) });
+    L1132: // Os scanners gastos no resgate: um só fica como antes ("Nome · N scan(s)"); vários viram ícone ×N.
+    L1135: if (por.length <= 1) return `${icone(m.scanner)}<span>${esc(cat.item(m.scanner)?.nome || 'Scanner')} · ${R.fmt(m.scans)} scan(s)</span>`;
+    L1136: const ordem = cat.itens.scanners.map((s) => s.id);
+    L1149: const coleta = m.scanner || temItens ? `<div class="off-coleta">
+    L1150: ${m.scanner ? `<div class="off-coleta-cab">${scansOff(m)}${m.boost ? '<em>Boost Offline</em>' : ''}${m.bolsaCheia ? '<em class="aviso">Bolsa de Ovos cheia</em>' : ''}</div>
+    L1172: ${m.scanner ? linha('Ovos', R.fmt(ovos.length), `${R.fmt(ovos.length + m.misteriosos)}${m.misteriosos ? ` <small class="off-mist-txt">+${m.misteriosos} ?</small>` : ''}`) : ''}
+    L1197: const nomeOvo = (o) => `${esc(cat.especie(o.especie)?.nome || '')}${o.shiny ? ' UX' : ''} · P${o.potencia}`;
+    L1574: const p = ['I', 'II', 'III', 'IV', 'V'][d.potencia - 1];
+    L1575: const bonus = [0, 5, 10, 25, 100][d.potencia - 1];
+    L1577: <span class="chip p p${d.potencia}" data-dica="Potência ${p} — este Digimon tem +${bonus}% em todos os atributos.">P${d.potencia}</span>
+    L1883: const pronto = evo && ativo.nivel >= evo.nivel && (E.itens[evo.chip] || 0) > 0 && (E.itens.evoluter || 0) >= nEvo && (!ativo.shiny || (E.itens['chip-shiny'] || 0) > 0);
+    L1892: : alem ? `${(eMax.especiais || []).length ? 'Especial certeiro, ' : ''}Rerrol e Especial aleatório: duas Megas e Núcleo Digital (o Rerrol é por DCoin).` : evo ? `Precisa de Nv ${evo.nivel} (está no ${ativo.nivel}) e 1× ${nomeItem(cat, evo.chip)} (tem ${E.itens[evo.chip] || 0})${nEvo ? ` e ${nEvo}× E
+    L1905: const dica = `poder ${R.fmt(d.poder)} · qualidade ${R.qual(d.qualidade)} · P${d.potencia} · ${cat.elemento(e.elemento).nome}\nclique para colocar em campo · botão direito: ficha`;
+    L1919: if ((E.guildTag || '') !== (chat.tagVista || '')) { chat.tagVista = E.guildTag || ''; renderAbasChat(); if (E.guildTag) enviar('chat.historico', { canal: 'guild' }); }
+    L2048: $('#auto-scanner-captura').checked = a.scannerCaptura;
     ... +46
   /js/cena.js  (15)
     L26: import { canvasX, corJoiaDe } from './shiny.js?v=4';
@@ -1296,25 +1296,25 @@ fontes baixadas: 102
   /js/digiidle/skill-vfx-catalog-v385.js  (1)
     L4891: "skillName": "Metal Drop",
   /js/app.js  (19)
-    L1566: // Os eventos do servidor ativos (XP, Drop, Bits, P4+, Ovo UX, Scan); servidor antigo manda só o de XP.
-    L2992: <section class="ss-bloco ss-b-achados"><h4>ACHADOS</h4>${achados ? `<div class="ss-chips">${achados}</div>` : '<p class="sessao-vazio">Nenhum drop ainda.</p>'}</section>
-    L3354: // Na repetição automática as telas de drop se empilham, e um botão fecha todas.
-    L3363: const drops = Object.entries(s.drops || {}).map(([it, q]) => `${q}× ${esc(nomeItem(cat, it))}`).join(' · ') || 'nada caiu';
-    L3366: <h3 style="justify-content:center">${esc(cat.especie(s.boss)?.nome)}</h3><p><b>${s.vitorias}</b> vitória(s) em <b>${s.lutas}</b> luta(s)</p><p>${drops}</p>
-    L3685: // A Energia de Ovo da família do selvagem, com a chance do estágio dele (ovoConfig.dropData).
-    L3687: const ch = cat.itens.ovoConfig?.dropData?.[ESTAGIO_OVO[e.estagio] || 'mega'];
-    L3691: return ch[i] > 0 && cat.item(id) ? `<div class="ha-drop">${iconeItem(id)}<span>${esc(cat.item(id).nome)}</span><b>${String(ch[i]).replace('.', I18N.decimal)}%</b></div>` : '';
-    L3699: const drop = (it, v, nome) => `<div class="ha-drop">${iconeItem(it)}<span>${esc(nome || cat.item(it).nome)}</span><b>${v}</b></div>`;
-    L3702: const evoluter = evoCfg().dropEvoluter?.[e.estagio];
-    L3703: const protecao = cat.itens.ovoConfig?.dropProtecao?.[e.estagio];
-    L3707: raros.push(drop('token-boss', pct(0.05), 'Boss Token'), ...['fragmento-chave', 'fragmento-shiny', 'fragmento-bike'].map((it) => drop(it, pct(0.0005))));
-    L3709: if (area.nivel >= 100) raros.push(drop('fragmento-ovo-shiny', '0,00375%'));
-    L3718: <div class="ha-sec"><div class="ha-sec-tit">Drops</div>
-    L3719: ${drop(e.chip, pctTxt(e.chanceChip))}
-    L3720: ${area.chipExtra ? drop(area.chipExtra, pctTxt(e.chanceChip)) : ''}
-    L3721: ${evoluter ? drop('evoluter', pctTxt(evoluter), 'Evoluter') : ''}
-    L3723: ${protecao ? drop('protecao-ovo', pctTxt(protecao)) : ''}
-    L3724: ${(cat.itens.vinculoConfig?.drop?.[e.estagio] || []).map((v, i) => (v > 0 && cat.itens.comidas?.[i] ? drop(cat.itens.comidas[i].id, pctTxt(v)) : '')).join('')}
+    L1608: // Os eventos do servidor ativos (XP, Drop, Bits, P4+, Ovo UX, Scan); servidor antigo manda só o de XP.
+    L3034: <section class="ss-bloco ss-b-achados"><h4>ACHADOS</h4>${achados ? `<div class="ss-chips">${achados}</div>` : '<p class="sessao-vazio">Nenhum drop ainda.</p>'}</section>
+    L3396: // Na repetição automática as telas de drop se empilham, e um botão fecha todas.
+    L3405: const drops = Object.entries(s.drops || {}).map(([it, q]) => `${q}× ${esc(nomeItem(cat, it))}`).join(' · ') || 'nada caiu';
+    L3408: <h3 style="justify-content:center">${esc(cat.especie(s.boss)?.nome)}</h3><p><b>${s.vitorias}</b> vitória(s) em <b>${s.lutas}</b> luta(s)</p><p>${drops}</p>
+    L3727: // A Energia de Ovo da família do selvagem, com a chance do estágio dele (ovoConfig.dropData).
+    L3729: const ch = cat.itens.ovoConfig?.dropData?.[ESTAGIO_OVO[e.estagio] || 'mega'];
+    L3733: return ch[i] > 0 && cat.item(id) ? `<div class="ha-drop">${iconeItem(id)}<span>${esc(cat.item(id).nome)}</span><b>${String(ch[i]).replace('.', I18N.decimal)}%</b></div>` : '';
+    L3741: const drop = (it, v, nome) => `<div class="ha-drop">${iconeItem(it)}<span>${esc(nome || cat.item(it).nome)}</span><b>${v}</b></div>`;
+    L3744: const evoluter = evoCfg().dropEvoluter?.[e.estagio];
+    L3745: const protecao = cat.itens.ovoConfig?.dropProtecao?.[e.estagio];
+    L3749: raros.push(drop('token-boss', pct(0.05), 'Boss Token'), ...['fragmento-chave', 'fragmento-shiny', 'fragmento-bike'].map((it) => drop(it, pct(0.0005))));
+    L3751: if (area.nivel >= 100) raros.push(drop('fragmento-ovo-shiny', '0,00375%'));
+    L3760: <div class="ha-sec"><div class="ha-sec-tit">Drops</div>
+    L3761: ${drop(e.chip, pctTxt(e.chanceChip))}
+    L3762: ${area.chipExtra ? drop(area.chipExtra, pctTxt(e.chanceChip)) : ''}
+    L3763: ${evoluter ? drop('evoluter', pctTxt(evoluter), 'Evoluter') : ''}
+    L3765: ${protecao ? drop('protecao-ovo', pctTxt(protecao)) : ''}
+    L3766: ${(cat.itens.vinculoConfig?.drop?.[e.estagio] || []).map((v, i) => (v > 0 && cat.itens.comidas?.[i] ? drop(cat.itens.comidas[i].id, pctTxt(v)) : '')).join('')}
   /js/cena.js  (7)
     L163: const quadroPronto = (img, sx, sy, sw, sh) => !(img instanceof Fatiada) || img.pronta(sx + sw / 2, sy + sh / 2);
     L164: const refPronto = (r) => !r?.ref || quadroPronto(r.img, r.sx, r.sy, r.sw, r.sh);

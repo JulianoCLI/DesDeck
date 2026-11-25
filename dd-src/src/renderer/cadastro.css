@@ -1,0 +1,255 @@
+/* UI do sistema de cadastro em lote — tema "Oceano & Ouro" do DigiDeck
+   Escopado sob .cadastro-host para não vazar para o resto do app. */
+
+.cadastro-host {
+  font-family: var(--font);
+  color: var(--text);
+  letter-spacing: -.005em;
+}
+
+/* ------------------------------------------------------------- painel principal */
+.cadastro-host .cadastro-panel {
+  display: flex; flex-direction: column; gap: 16px;
+}
+.cadastro-host .cadastro-panel h2 {
+  margin: 0; font: 600 17px/1.2 var(--title); letter-spacing: -.02em; color: var(--bright);
+}
+.cadastro-host .cadastro-panel > small,
+.cadastro-host .cadastro-panel > .about { color: var(--faint); }
+
+/* ------------------------------------------------------------- form */
+.cadastro-host .cadastro-form { display: flex; flex-direction: column; gap: 16px; }
+
+/* As opções do lote, todas numa linha. */
+.cadastro-host .form-linha {
+  display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+}
+.cadastro-host .campo { display: flex; flex-direction: column; gap: 6px; flex: 1 1 150px; min-width: 0; }
+.cadastro-host .campo-sm { flex: 0 0 110px; }
+.cadastro-host .campo label,
+.cadastro-host .bases-grid label > span {
+  font-size: 10.5px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.cadastro-host .campo input,
+.cadastro-host .campo select,
+.cadastro-host .base-input,
+.cadastro-host .cadastro-form textarea {
+  width: 100%; height: 36px; padding: 0 11px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--line-3); border-radius: 8px; outline: none;
+  font-size: 13px; font-family: inherit;
+  transition: border-color .15s, box-shadow .15s;
+}
+.cadastro-host .campo select { cursor: pointer; }
+.cadastro-host .cadastro-form textarea {
+  height: auto; min-height: 60px; padding: 9px 11px; resize: vertical; font-family: var(--mono); font-size: 12px;
+}
+.cadastro-host .campo input::placeholder,
+.cadastro-host .base-input::placeholder,
+.cadastro-host .cadastro-form textarea::placeholder { color: var(--faint); }
+.cadastro-host .campo input:hover,
+.cadastro-host .campo select:hover,
+.cadastro-host .base-input:hover { border-color: var(--line-4); }
+.cadastro-host .campo input:focus,
+.cadastro-host .campo select:focus,
+.cadastro-host .base-input:focus,
+.cadastro-host .cadastro-form textarea:focus {
+  border-color: #2a7fa3; box-shadow: 0 0 0 3px rgba(34, 211, 238, .12);
+}
+.cadastro-host .campo small { font-size: 11px; color: var(--faint); line-height: 1.35; }
+
+/* Blocos agrupadores (bases, proxies, sufixos) */
+.cadastro-host .bloco {
+  padding: 13px 14px; background: var(--panel-2);
+  border: 1px solid var(--line-2); border-radius: 11px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.cadastro-host .bloco-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+}
+.cadastro-host .bloco-head h3 {
+  margin: 0; font: 600 12.5px/1.2 var(--title); color: var(--bright);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.cadastro-host .bloco-nota { font-size: 11px; color: var(--faint); }
+.cadastro-host .bloco > small { font-size: 11px; color: var(--faint); line-height: 1.45; }
+
+.cadastro-host .bases-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px;
+}
+.cadastro-host .base-campo { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.cadastro-host .base-num { color: var(--cyan) !important; }
+
+.cadastro-host .proxy-resumo {
+  padding: 9px 11px; background: var(--bg); border: 1px solid var(--line-3);
+  border-radius: 8px; font-family: var(--mono); font-size: 12px; color: var(--text);
+}
+
+.cadastro-host .form-acoes {
+  display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap;
+}
+.cadastro-host .form-acoes #bloqueio-msg { flex: 1; min-width: 0; font-size: 12px; }
+
+.cadastro-host #senha-status { font-size: 11px; font-weight: 500; }
+.cadastro-host .texto-sucesso { color: var(--ok); }
+.cadastro-host .texto-erro { color: var(--danger); }
+
+/* ------------------------------------------------------------- botões */
+.cadastro-host .btn-primary,
+.cadastro-host .btn-secondary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: 34px; padding: 0 14px; font-size: 13px; font-weight: 500;
+  border-radius: 8px; cursor: pointer; transition: border-color .15s, background .15s, filter .15s;
+}
+.cadastro-host .btn-primary {
+  background: var(--grad); border: 1px solid transparent; color: var(--accent-ink); font-weight: 600;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 6px 20px -4px rgba(251, 191, 36, .32), inset 0 1px 0 rgba(255, 255, 255, .5), inset 0 -1px 0 rgba(0, 0, 0, .15);
+}
+.cadastro-host .btn-primary:hover { filter: brightness(1.07); }
+.cadastro-host .btn-primary:disabled { opacity: .45; cursor: default; filter: none; box-shadow: none; }
+.cadastro-host .btn-secondary {
+  background: var(--panel-2); border: 1px solid var(--line-3); color: var(--text);
+}
+.cadastro-host .btn-secondary:hover { border-color: var(--line-4); background: var(--panel-3); }
+.cadastro-host .btn-secondary:disabled { opacity: .45; cursor: default; }
+.cadastro-host .btn-mini { height: 27px; padding: 0 11px; font-size: 12px; border-radius: 7px; }
+
+/* ------------------------------------------------------------- progresso */
+.cadastro-host .cadastro-progresso h3 {
+  margin: 0 0 12px; font: 600 15px/1.2 var(--title); color: var(--bright);
+}
+.cadastro-host .barra-progresso {
+  height: 8px; background: var(--panel-2); border: 1px solid var(--line-2);
+  border-radius: 99px; overflow: hidden; margin-bottom: 10px;
+}
+.cadastro-host .barra-preenchida {
+  height: 100%; background: var(--grad); border-radius: 99px; transition: width .3s ease;
+}
+.cadastro-host .progresso-texto { margin: 0 0 6px; font-size: 12.5px; color: var(--muted); }
+.cadastro-host .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cadastro-host .stat {
+  padding: 12px; border-radius: 10px; background: var(--panel-2);
+  border: 1px solid var(--line-2); font-size: 13px; font-weight: 500; text-align: center;
+}
+.cadastro-host .stat.confirmadas { color: var(--ok); border-left: 3px solid var(--ok); }
+.cadastro-host .stat.falhadas { color: var(--danger); border-left: 3px solid var(--danger); }
+
+/* ------------------------------------------------------------- log de contas */
+.cadastro-host .log-contas {
+  margin-top: 4px; max-height: 300px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; padding: 8px;
+}
+.cadastro-host .log-contas h4 {
+  margin: 4px 6px 8px; font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--faint);
+}
+.cadastro-host .lista-contas { list-style: none; margin: 0; padding: 0; }
+.cadastro-host .lista-contas li {
+  display: flex; align-items: center; gap: 8px; padding: 7px 8px;
+  font-size: 12.5px; border-left: 2px solid transparent; border-radius: 4px;
+  transition: background .15s;
+}
+.cadastro-host .lista-contas li:hover { background: var(--panel-2); }
+.cadastro-host .lista-contas .indice { font-weight: 600; color: var(--faint); min-width: 34px; font-variant-numeric: tabular-nums; }
+.cadastro-host .lista-contas .tela { font-size: 11px; color: var(--faint); }
+.cadastro-host .lista-contas .status { font-size: 13px; }
+.cadastro-host .lista-contas .motivo { font-size: 11.5px; color: var(--faint); }
+.cadastro-host .conta-confirmada { border-left-color: var(--ok); color: var(--text); }
+.cadastro-host .conta-falhou { border-left-color: var(--danger); color: var(--text); }
+.cadastro-host .conta-pendente { border-left-color: var(--warn); color: var(--text); }
+
+.cadastro-host .log-contas::-webkit-scrollbar { width: 8px; }
+.cadastro-host .log-contas::-webkit-scrollbar-track { background: transparent; }
+.cadastro-host .log-contas::-webkit-scrollbar-thumb { background: var(--panel-3); border-radius: 99px; }
+
+/* ------------------------------------------------------------- modal de proxies (escuro) */
+.cadastro-host .modal {
+  position: fixed; inset: 0; background: rgba(4, 11, 22, .7);
+  z-index: 1000; display: none; align-items: center; justify-content: center; padding: 20px;
+}
+.cadastro-host .modal.show { display: flex; }
+.cadastro-host .modal-content {
+  background: var(--glass); border: 1px solid var(--line-3); border-radius: 14px;
+  box-shadow: 0 40px 100px rgba(0, 4, 12, .85), inset 0 1px 0 rgba(165, 243, 252, .05);
+  width: min(600px, 100%); max-width: 600px; max-height: 90vh;
+  display: flex; flex-direction: column; color: var(--text); overflow: hidden;
+}
+.cadastro-host .modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 20px; border-bottom: 1px solid var(--line-2);
+}
+.cadastro-host .modal-header h3 { margin: 0; font: 600 16px/1.2 var(--title); color: var(--bright); }
+.cadastro-host .close-btn {
+  width: 30px; height: 30px; display: grid; place-items: center;
+  border: 1px solid transparent; border-radius: 7px; background: transparent;
+  color: var(--faint); cursor: pointer; transition: color .15s, background .15s;
+}
+.cadastro-host .close-btn:hover { background: var(--panel-3); color: var(--bright); }
+.cadastro-host .modal-body { padding: 18px 20px; overflow-y: auto; min-height: 0; }
+.cadastro-host .section { margin-bottom: 18px; }
+.cadastro-host .section label {
+  display: block; font-size: 11.5px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px;
+}
+.cadastro-host .section textarea {
+  width: 100%; padding: 9px 11px; background: var(--bg); color: var(--text);
+  border: 1px solid var(--line-3); border-radius: 8px;
+  font-family: var(--mono); font-size: 12px; resize: vertical; outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.cadastro-host .section textarea:focus { border-color: #2a7fa3; box-shadow: 0 0 0 3px rgba(34, 211, 238, .12); }
+.cadastro-host .section textarea::placeholder { color: var(--faint); }
+.cadastro-host .section small { font-size: 11.5px; color: var(--faint); }
+.cadastro-host .section.buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.cadastro-host .section.buttons button { flex: 1; min-width: 120px; }
+
+.cadastro-host .section code {
+  font-family: var(--mono); font-size: 11px; padding: 1px 4px;
+  background: var(--panel-3); border-radius: 4px; color: var(--cyan);
+}
+.cadastro-host .section textarea.mono { min-height: 130px; line-height: 1.6; }
+
+/* A lista salva, uma linha por proxy */
+.cadastro-host .proxy-lista {
+  list-style: none; margin: 0; padding: 0;
+  max-height: 150px; overflow-y: auto;
+  border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel-2);
+}
+.cadastro-host .proxy-lista li {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 6px 10px; font-family: var(--mono); font-size: 11.5px;
+  border-bottom: 1px solid var(--line-2);
+}
+.cadastro-host .proxy-lista li:last-child { border-bottom: 0; }
+.cadastro-host .proxy-lista .addr { color: var(--text); }
+.cadastro-host .proxy-lista .user { color: var(--faint); }
+
+.cadastro-host .test-status {
+  margin-top: 14px; padding: 12px; background: var(--panel-2);
+  border-left: 3px solid var(--cyan); border-radius: 10px;
+}
+.cadastro-host .test-progress { font-weight: 600; margin-bottom: 6px; color: var(--cyan); font-size: 12.5px; }
+.cadastro-host .test-results {
+  font-family: var(--mono); font-size: 11.5px; max-height: 200px; overflow-y: auto;
+  white-space: pre-wrap; line-height: 1.6; color: var(--text);
+}
+
+.cadastro-host .modal-footer {
+  display: flex; gap: 10px; padding: 16px 20px; border-top: 1px solid var(--line-2); background: var(--panel);
+}
+.cadastro-host .modal-footer button { flex: 1; }
+
+.cadastro-host .tela {
+  min-width: 20px; font-weight: 600; font-size: 11px; padding: 2px 6px;
+  background: var(--panel-3); border-radius: 6px; color: var(--muted); text-align: center;
+}
+
+/* ------------------------------------------------------------- responsivo */
+@media (max-width: 768px) {
+  .cadastro-host .form-linha { flex-direction: column; }
+  .cadastro-host .campo, .cadastro-host .campo-sm { flex: 1 1 auto; }
+  .cadastro-host .modal-content { width: 95%; max-height: 95vh; }
+  .cadastro-host .modal-footer { flex-direction: column; }
+  .cadastro-host .modal-footer button { width: 100%; }
+}

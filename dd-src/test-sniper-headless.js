@@ -27,7 +27,10 @@ const ok = (cond, txt) => { log(`  ${cond ? 'OK  ' : 'FALHA'} ${txt}`); if (!con
 const { ToolSniper } = require('./src/headless/tools');
 
 // ------------------------------------------------------------ o cliente falso
-// So o que o ToolSniper usa: on(), state, connected, sendCommand().
+// So o que o ToolSniper usa: on(), removeListener(), state, connected,
+// sendCommand(). O removeListener faz parte do contrato: o client real e um
+// EventEmitter, e o stop() da ferramenta desliga os ouvintes do mercado por
+// ele. Sem o metodo no dublê, o teste nao enxergaria um vazamento de ouvintes.
 function fakeClient(estado) {
   const ouvintes = {};
   return {
@@ -36,7 +39,17 @@ function fakeClient(estado) {
     state: Object.assign({ nick: 'teste', local: 'hunt', nivel: 50, bits: 1000000, gemas: 100 }, estado),
     enviados: [],
     on(ev, fn) { (ouvintes[ev] = ouvintes[ev] || []).push(fn); },
-    emit(ev, m) { for (const fn of ouvintes[ev] || []) fn(m); },
+    removeListener(ev, fn) {
+      const L = ouvintes[ev];
+      if (!L) return;
+      const i = L.indexOf(fn);
+      if (i >= 0) L.splice(i, 1);
+    },
+    off(ev, fn) { this.removeListener(ev, fn); },
+    listenerCount(ev) { return (ouvintes[ev] || []).length; },
+    // Uma copia: um ouvinte que se remove durante o emit (o stop() da propria
+    // ferramenta) nao deve embaralhar a iteracao em curso.
+    emit(ev, m) { for (const fn of [...(ouvintes[ev] || [])]) fn(m); },
     sendCommand(t, d) { this.enviados.push({ t, d }); return true; },
   };
 }
