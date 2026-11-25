@@ -10,6 +10,7 @@ const { makeIcon, makeDot, writeIco } = require('./icon');
 const { Vault, encryptBackup, decryptBackup } = require('./vault');
 const { createUpdater } = require('./updater');
 const { HeadlessManager } = require('./headless/manager');
+const proxyGuard = require('./proxy-guard');
 
 const DEV = !app.isPackaged;
 
@@ -46,9 +47,6 @@ let vault = null;
 let pendingBackup = null;
 let sleepBlocker = null;
 const icons = {};
-// Session não expõe a partição, então a chave é o próprio objeto da sessão
-// (session.fromPartition devolve sempre a mesma instância para a mesma partição).
-const proxyCredentials = new Map(); // Session -> { user, pass }
 
 // Gerenciador de clientes headless (Fase 1)
 const headlessManager = new HeadlessManager();
@@ -129,6 +127,15 @@ function createWindow() {
 
   win.once('ready-to-show', () => {
     if (!process.argv.includes('--hidden')) win.show();
+  });
+
+  // Diagnóstico temporário: captura erros do renderer no terminal (dev).
+  win.webContents.on('console-message', (e, level, message, line, sourceId) => {
+    if (level >= 2) console.error(`[renderer:${level}] ${message} (${sourceId}:${line})`);
+    else if (level === 1) console.warn(`[renderer:1] ${message} (${sourceId}:${line})`);
+  });
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.error('[renderer] processo morreu:', details.reason, details.exitCode);
   });
 
   // Minimizar manda para a bandeja; fechar fecha de verdade.
@@ -339,29 +346,35 @@ function registerIpc() {
     return true;
   });
 
+  // Aplica o proxy de uma partição. Um proxy só com host:port (sem usuário e
+  // senha) é válido e continua sendo proxy: a versão anterior exigia as quatro
+  // partes e, sem elas, caía para conexão direta DEVOLVENDO true - o renderer
+  // achava que tinha dado certo e carregava a página pelo IP real.
+  //
+  // Agora: com proxy, a partição é travada até o setProxy confirmar (falha
+  // fechado). Sem proxy, só desarma quem pedir explicitamente.
   handle('proxy:apply', async (_e, partition, proxy) => {
     if (!/^persist:acc-[\w-]+$/.test(partition || '')) return false;
-    try {
-      const ses = session.fromPartition(partition);
-      if (proxy && proxy.host && proxy.port && proxy.user && proxy.pass) {
-        proxyCredentials.set(ses, { user: proxy.user, pass: proxy.pass });
-        const proxyUrl = `http://${proxy.host}:${proxy.port}`;
-        await ses.setProxy({ proxyRules: proxyUrl, proxyBypassRules: '<-loopback>' });
-      } else {
-        proxyCredentials.delete(ses);
-        await ses.setProxy({ mode: 'direct' });
-      }
-      ses.forceReloadProxyConfig();
-      return true;
-    } catch (err) {
-      console.error('[proxy:apply] erro ao aplicar proxy:', err);
-      return false;
-    }
+    const ses = session.fromPartition(partition);
+    if (proxy && proxy.host && proxy.port) return proxyGuard.apply(ses, proxy);
+    return proxyGuard.clear(ses);
+  });
+
+  // Trava a partição antes de qualquer navegação: nada sai dela até um
+  // proxy:apply dar certo. O renderer chama isto para contas de tela com proxy
+  // já no momento em que o card nasce, antes de existir src.
+  handle('proxy:arm', (_e, partition) => {
+    if (!/^persist:acc-[\w-]+$/.test(partition || '')) return false;
+    proxyGuard.arm(session.fromPartition(partition));
+    return true;
   });
 
   handle('proxy:test', async (_e, proxy) => {
     if (!proxy || !proxy.host || !proxy.port) return { error: 'Host e port obrigatórios' };
-    const testSession = session.fromPartition('digideck-proxy-test-' + Date.now());
+    // Partição fixa, não uma nova a cada teste: session.fromPartition registra
+    // a sessão no processo para sempre, então um nome com Date.now() deixava
+    // uma sessão órfã por clique em "Testar".
+    const testSession = session.fromPartition('digideck-proxy-test');
     try {
       const proxyUrl = `http://${proxy.host}:${proxy.port}`;
       await testSession.setProxy({ proxyRules: proxyUrl, proxyBypassRules: '<-loopback>' });
@@ -392,6 +405,9 @@ function registerIpc() {
       return { error: String(err.message || err).slice(0, 200) };
     } finally {
       await testSession.clearStorageData();
+      // A sessão é reusada: deixar o proxy aplicado faria o próximo teste sair
+      // pelo proxy anterior.
+      try { await testSession.setProxy({ mode: 'direct' }); } catch { /* ignora */ }
     }
   });
 
@@ -472,7 +488,22 @@ function registerIpc() {
     const acc = state.accounts?.find((a) => a.id === accId);
     if (!acc) return { ok: false, error: 'Conta não encontrada' };
     const partition = `persist:acc-${accId}`;
-    headlessManager.start(accId, partition, { name: acc.name, ...options });
+    // O proxy sai da tela (grupo) da conta, como na webview. O renderer não
+    // mandava nada disso e o socket saía sempre pelo IP real.
+    const group = state.groups?.find((g) => g.id === acc.groupId) || null;
+    const proxy = (group && group.proxy) || null;
+    // Catálogos e sprites passam a sair pela sessão da conta, que é onde o
+    // proxy está aplicado. Em headless a webview nunca navega, então ninguém
+    // chamou proxy:apply nesta partição: aplicamos aqui.
+    require('./headless/rede').usarParticao(partition);
+    const ses = session.fromPartition(partition);
+    if (proxy) proxyGuard.apply(ses, proxy).catch((err) => console.error('[headless] proxy:', err));
+    headlessManager.start(accId, partition, {
+      name: acc.name,
+      proxy,
+      exigeProxy: !!(group && group.proxy),
+      ...options,
+    });
     return { ok: true };
   });
 
@@ -499,6 +530,25 @@ function registerIpc() {
   handle('headless:tool:stop', (_e, accId, toolId) => {
     return { ok: headlessManager.stopTool(accId, String(toolId)) };
   });
+
+  // ---- A mochila e os preços do Mercado, para a tela do Auto Seller.
+  //
+  // A tela de ajustes precisa mostrar "você tem 12 na mochila" e "a média é
+  // 4.300 bits", e nenhum dos dois existe no renderer: a mochila está no estado
+  // do socket e a média só vem do servidor. Sem isto a pessoa escolheria o
+  // preço no escuro, que é exatamente o que a ferramenta existe para evitar.
+  //
+  // SÓ LEITURA: 'mercado.listar' é um pedido de listagem, o mesmo que o jogo faz
+  // ao abrir a tela de anúncio. Nada aqui anuncia, compra ou gasta.
+  handle('headless:mochila', (_e, accId) => headlessManager.mochila(accId));
+
+  handle('headless:mercado:media', (_e, accId, item, moeda) => (
+    headlessManager.mediaDoItem(accId, String(item || ''), moeda === 'gemas' ? 'gemas' : 'bits')
+  ));
+
+  // ---- Cadastro em lote (Fase B)
+  const { registrarHandlersCadastro } = require('./cadastro/ipc-handlers');
+  registrarHandlersCadastro(handle, net);
 }
 
 // Grava no disco os cookies de login de todas as contas.
@@ -527,7 +577,7 @@ if (!app.requestSingleInstanceLock()) {
   // (e Session não tem .partition), por isso as credenciais são achadas pela sessão do webContents.
   app.on('login', (event, contents, _details, authInfo, callback) => {
     if (!authInfo.isProxy) return; // login de site: deixa a própria página tratar
-    const creds = contents && proxyCredentials.get(contents.session);
+    const creds = contents && proxyGuard.creds(contents.session);
     if (!creds) return; // sem credenciais: não responde ao desafio (não vaza nada)
     event.preventDefault();
     callback(creds.user, creds.pass);
@@ -549,6 +599,18 @@ if (!app.requestSingleInstanceLock()) {
         send('shortcut', combo);
       }
     });
+
+    // Vazamento de IP por WebRTC. Uma página pode pedir candidatos ICE a um
+    // servidor STUN e receber de volta o IP real da máquina - o da rede local E
+    // o público - mesmo com todo o HTTP saindo pelo proxy. STUN é UDP e não
+    // passa por proxy HTTP, então nenhuma regra de proxy cobre isso, e não há
+    // permissão a negar: setPermissionRequestHandler só cobre câmera e microfone.
+    //
+    // Testado: sem isto, a página recebe "typ srflx" com o IP público real.
+    // Com isto, zero candidatos. As opções de linha de comando
+    // (--force-webrtc-ip-handling-policy) NÃO funcionam aqui; só esta API faz
+    // efeito. Os jogos não usam WebRTC, então não há o que quebrar.
+    try { contents.setWebRTCIPHandlingPolicy('disable_non_proxied_udp'); } catch { /* versão sem a API */ }
 
     if (contents.getType() === 'webview') {
       // Pop-ups do jogo (login com Google/Discord etc.) abrem numa janela na mesma sessão da conta.

@@ -584,7 +584,23 @@ body.dragging .wv-wrap::after { content: ""; position: absolute; inset: 0; z-ind
 .log-row.ovo .mark { background: var(--accent-2); }
 .log-row.chocou .mark { background: #fcd34d; }
 .log-row.item .mark { background: #d8b4fe; }
-.log-row.mercado .mark, .log-row.sniper .mark { background: var(--ok); }
+.log-row.mercado .mark { background: var(--ok); }
+/* O Sniper: o que ele mirou e tentou fica discreto; a compra confirmada e o que
+   escapou ganham cor, porque é o que se procura ao abrir a aba Mercado. */
+.log-row.sniper .mark { background: var(--accent); }
+.log-row.sniper-ok .mark { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+.log-row.sniper-ok { color: var(--ok); }
+.log-row.sniper-no .mark { background: var(--faint); }
+.log-row.sniper-no { color: var(--faint); }
+/* O Auto Seller, na mesma divisao do Sniper: a tentativa fica discreta, o
+   anuncio confirmado ganha cor e o que nao foi ao ar apaga. Amarelo para nao se
+   confundir com a compra (verde) do Sniper na mesma aba. */
+.log-row.seller .mark { background: var(--accent-2); }
+.log-row.seller-ok .mark { background: #fcd34d; box-shadow: 0 0 0 3px color-mix(in srgb, #fcd34d 25%, transparent); }
+.log-row.seller-ok { color: #fcd34d; }
+.log-row.seller-no .mark { background: var(--faint); }
+.log-row.seller-no { color: var(--faint); }
+.log-pulse { padding: 8px 2px 2px; font-size: 11px; color: var(--faint); font-family: var(--mono); border-top: 1px dashed var(--line); margin-top: 4px; }
 .log-row b { font-weight: 600; }
 .log-empty { color: var(--faint); padding: 12px 2px; }
 

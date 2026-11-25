@@ -1227,6 +1227,163 @@ function codeSniper(cfg) {
 })();`));
 }
 
+/**
+ * Este item pode ir para o Mercado?
+ *
+ * A mesma regra do cliente do jogo (/js/menus2.js L264, a função NEGOCIAVEL).
+ * A tela de ajustes só oferece MERCADO_ITENS, mas um id avulso digitado à mão
+ * chegaria aqui — e um item que o Mercado não aceita é um comando recusado a
+ * cada volta, para sempre.
+ */
+const SELLER_PREFIXOS = ['chip-', 'fragmento-', 'zmove-', 'data-'];
+const SELLER_AVULSOS = ['token-boss', 'peca-aoe', 'disco-aoe', 'mystic-ticket', 'safari-ticket', 'ovo-shiny', 'evoluter'];
+const vendavel = (id) => !!id && (SELLER_PREFIXOS.some((p) => String(id).startsWith(p)) || SELLER_AVULSOS.includes(id));
+
+/** Esta linha da lista pode ir para o ar? Sem item escolhido não vende nada. */
+const itemVendaValido = (it) => !!(it && it.item && vendavel(it.item));
+
+function codeSeller(cfg) {
+  const itens = (cfg.itens || []).filter(itemVendaValido).map((it) => ({
+    item: it.item,
+    moeda: it.moeda === 'gemas' ? 'gemas' : 'bits',
+    precoManual: Math.max(0, +it.precoManual || 0),
+    precoMinimo: Math.max(0, +it.precoMinimo || 0),
+  }));
+  return isolar(comCfg('seller', {
+    itens,
+    intervaloSec: Math.max(60, cfg.intervaloSec || 300),
+    maxPorHora: Math.max(0, cfg.maxPorHora || 0),
+  }, `
+(async () => {
+  let listaPend = null;
+  let anuncios = [];             // instantes dos anúncios, para o limite por hora
+  const avisouSemMedia = {};     // o aviso de "sem média" sai uma vez por item
+  // O item anunciado e ainda sem confirmação. O jogo NÃO responde a
+  // 'mercado.anunciar': a prova é o item sair da mochila.
+  const esperando = new Map();
+
+  const naMochila = (item) => {
+    const E = G.estado || {};
+    return Math.max(0, (E.itens || {})[item] || 0);
+  };
+
+  // Pede uma listagem e espera a resposta. O pacote de resposta é 'mercado'.
+  const listar = (filtro) => new Promise((resolve) => {
+    listaPend = resolve;
+    if (!G.enviar('mercado.listar', filtro)) { listaPend = null; resolve(null); return; }
+    setTimeout(() => { if (listaPend === resolve) { listaPend = null; resolve(null); } }, 8000);
+  });
+
+  const engancha = () => {
+    if (!G.sock || G.sock.__seller) return;
+    G.sock.__seller = true;
+    G.sock.addEventListener('message', (ev) => {
+      if (typeof ev.data !== 'string') return;
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (!m) return;
+      if (m.t === 'mercado') { const r = listaPend; listaPend = null; if (r) r(m); }
+      // O estado traz a mochila: é onde se vê o item ter saído.
+      else if (m.t === 'estado') setTimeout(confere, 50);
+    });
+  };
+
+  // O inventário diminuiu: o anúncio saiu de verdade.
+  const confere = () => {
+    for (const [item, p] of [...esperando]) {
+      const agora = naMochila(item);
+      if (agora >= p.antes) continue;
+      esperando.delete(item);
+      G.log('seller: anúncio de ' + item + ' confirmado (' + (p.antes - agora) + ' unidade(s) saíram da mochila)');
+    }
+  };
+
+  // A média de 7 dias deste item nesta moeda. O pedido é o mesmo que o jogo
+  // monta na tela de anúncio (menus2.js L1114): { tipo:'item', especie, moeda }.
+  // A média NÃO vem de 'mercado.precos' — para item o jogo descarta esse
+  // pacote (L1258); ela vem aqui, em media[moeda] = { media, qtd }.
+  const referencia = async (it) => {
+    const m = await listar({ tipo: 'item', especie: it.item, moeda: it.moeda });
+    if (!m) return null;
+    const md = (m.media || {})[it.moeda];
+    const lista = (m.lista || []).filter((a) => a.item === it.item && a.moeda === it.moeda);
+    const outros = lista.filter((a) => !a.meu);
+    return {
+      media: md && md.media > 0 ? Math.round(md.media) : 0,
+      mediaQtd: (md && md.qtd) || 0,
+      menor: (outros[0] && outros[0].preco) || 0,
+      jaAberto: !!lista.find((a) => a.meu),
+    };
+  };
+
+  const noLimite = () => {
+    if (!CFG.maxPorHora) return false;
+    const corte = Date.now() - 3600000;
+    anuncios = anuncios.filter((t) => t > corte);
+    return anuncios.length >= CFG.maxPorHora;
+  };
+
+  const anunciar = async (it, qtd, preco, ref) => {
+    if (CFG.__off) return;
+    const moeda = it.moeda === 'gemas' ? 'D-Dol' : 'bits';
+    // Marca ANTES de enviar: se o envio falhar, melhor perder uma volta do que
+    // mandar o mesmo anúncio duas vezes na volta seguinte.
+    esperando.set(it.item, { antes: naMochila(it.item), em: Date.now() });
+    if (!G.enviar('mercado.anunciar', { tipo: 'item', item: it.item, qtd: qtd, moeda: it.moeda, preco: preco })) {
+      esperando.delete(it.item);
+      return;
+    }
+    anuncios.push(Date.now());
+    G.log('seller: anunciei ' + qtd + '× ' + it.item + ' por ' + preco + ' ' + moeda + ' cada (' + (preco * qtd) + ' no total)' + (it.precoManual > 0 ? ' [preço fixo]' : ' [média de ' + ref.mediaQtd + ' venda(s)]') + (ref.jaAberto ? ' — somou no anúncio que já estava aberto' : ''));
+  };
+
+  const varrer = async () => {
+    if (CFG.__off || !G.estado) return;
+    engancha();
+    confere();
+    for (const it of CFG.itens) {
+      if (CFG.__off || noLimite()) break;
+      // Ainda sem confirmação do anúncio anterior deste item: anunciar de novo
+      // somaria unidades que talvez já estejam à venda.
+      if (esperando.has(it.item)) continue;
+      const qtd = naMochila(it.item);
+      if (qtd <= 0) continue;
+      const ref = await referencia(it);
+      if (!ref) continue;
+      const preco = it.precoManual > 0 ? it.precoManual : ref.media;
+      if (!(preco > 0)) {
+        // Sem venda em 7 dias o servidor não tem média, e não há preço a usar.
+        // Chutar um valor seria inventar o número que a ferramenta existe para
+        // NÃO inventar.
+        if (!avisouSemMedia[it.item]) {
+          avisouSemMedia[it.item] = true;
+          G.log('seller: ' + it.item + ' não tem média em ' + (it.moeda === 'gemas' ? 'D-Dol' : 'bits') + ' (nenhuma venda em 7 dias). Não vou anunciar sem preço.');
+        }
+        continue;
+      }
+      avisouSemMedia[it.item] = false;
+      if (it.precoMinimo > 0 && preco < it.precoMinimo) {
+        G.log('seller: ' + it.item + ' está a ' + preco + ', abaixo do piso de ' + it.precoMinimo + '. Não vou anunciar.');
+        continue;
+      }
+      // O respirar da ponte resolve vazio (não devolve "continuo valendo?" como
+      // o do headless), então a desistência é conferida AQUI: a pessoa pode ter
+      // desligado a ferramenta durante a pausa.
+      await G.respirar(4000);
+      if (CFG.__off) break;
+      await anunciar(it, qtd, preco, ref);
+    }
+  };
+
+  const seguro = async () => { try { await varrer(); } catch (e) { G.log('seller: volta falhou', e); } };
+  const laco = async () => {
+    await seguro();
+    const base = CFG.intervaloSec * 1000;
+    setTimeout(laco, base + G.jitter('seller', base));
+  };
+  G.quando(() => { engancha(); setTimeout(laco, 20000 + G.jitter('seller-inicio', 45000)); });
+})();`));
+}
+
 // ---------------------------------------------------------------- catálogo
 const TOOLS = [
   {
@@ -1384,6 +1541,29 @@ const TOOLS = [
       return `${n} alvo${n > 1 ? 's' : ''} em ${moedas.join(' e ')} · varre a cada ${c.intervaloSec || 60}s${c.maxPorHora > 0 ? ` · até ${c.maxPorHora}/h` : ''}${c.soLiberados ? ' · só liberados' : ' · pega na fila'}`;
     },
   },
+  {
+    id: 'seller',
+    name: 'Auto Seller',
+    icon: 'tag',
+    desc: 'Anuncia os itens da mochila no Mercado pela média de venda dos últimos 7 dias, o mesmo preço que o jogo mostra. Sem lista de itens não anuncia nada.',
+    defaults: () => ({
+      // Nasce com a lista VAZIA: sem item escolhido a ferramenta não anuncia
+      // nada, então ligá-la sem configurar não põe nenhum item à venda.
+      itens: [],
+      intervaloSec: 300,
+      maxPorHora: 10,
+    }),
+    code: codeSeller,
+    summary: (c) => {
+      const itens = (c.itens || []).filter(itemVendaValido);
+      if (!itens.length) return 'sem item na lista · não anuncia nada';
+      const n = itens.length;
+      const moedas = [...new Set(itens.map((i) => (i.moeda === 'gemas' ? 'D-Dol' : 'bits')))];
+      const fixos = itens.filter((i) => +i.precoManual > 0).length;
+      const porPreco = fixos === n ? 'preço fixo' : fixos ? `${fixos} com preço fixo` : 'pela média de 7 dias';
+      return `${n} item${n > 1 ? 's' : ''} em ${moedas.join(' e ')} · ${porPreco} · confere a cada ${Math.round((c.intervaloSec || 300) / 60)} min${c.maxPorHora > 0 ? ` · até ${c.maxPorHora}/h` : ''}`;
+    },
+  },
 ];
 
 const toolById = (id) => TOOLS.find((t) => t.id === id);
@@ -1404,4 +1584,4 @@ const toolLigada = (conf, tool) => (conf && typeof conf.enabled === 'boolean' ? 
 // passo. Religar depois é só aplicar a config de novo, que limpa o __off.
 const offCode = (id) => `(() => { window.__ddGame && window.__ddGame.desligar(${JSON.stringify(id)}); })();`;
 
-window.DDTools = { TOOLS, toolById, toolLigada, REFILL_ITENS, MERCADO_ITENS, acharItem, alvoValido, buscasDoAlvo, TIERS, offCode };
+window.DDTools = { TOOLS, toolById, toolLigada, REFILL_ITENS, MERCADO_ITENS, acharItem, alvoValido, buscasDoAlvo, vendavel, itemVendaValido, TIERS, offCode };

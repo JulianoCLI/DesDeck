@@ -37,8 +37,17 @@ mercado-filtros.txt
 mercado-grep.txt
 sniper-fila.txt
 sniper-headless.txt
+sniper-log.txt
 itens-probe.txt
 form-probe.txt
 sniper-real.txt
 sniper-tool.txt
 sniper-vivo.txt
+# Idem para o Auto Seller. O seller-vivo.txt em especial traz o id da partição,
+# o nick, o saldo e a mochila da conta real onde a sonda rodou.
+seller-form.txt
+seller-headless.txt
+seller-tool.txt
+seller-vivo.txt
+# A saída do grep do Painel 2 no JS do jogo: arquivo gerado, não fonte.
+painel2-grep.txt

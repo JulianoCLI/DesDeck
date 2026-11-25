@@ -58,6 +58,12 @@ class DigiiIdleHeadlessClient extends EventEmitter {
     this.partition = partition;
     this.wsUrl = WS_URL;
     this.origin = 'https://digiidle.com';
+    // O proxy da tela da conta, repassado pelo main. Sem isto o socket sai pelo
+    // IP real, por mais que a webview da mesma conta esteja proxiada.
+    this.proxy = options.proxy || null;
+    // Tela com proxy configurado mas que falhou em chegar até aqui: é melhor a
+    // conta não conectar do que conectar direto.
+    this.exigeProxy = !!options.exigeProxy;
 
     this.ws = null;
     this.status = 'disconnected'; // 'disconnected' | 'connecting' | 'connected' | 'failed'
@@ -145,6 +151,10 @@ class DigiiIdleHeadlessClient extends EventEmitter {
 
     this.setStatus('connecting');
 
+    // Catálogos e sprites saem pela sessão desta conta (onde o proxy está
+    // aplicado), e não pela sessão padrão, que nunca é proxiada.
+    try { require('./rede').usarParticao(this.partition); } catch { /* opcional */ }
+
     // Coleta cookies
     try {
       this.cookieHeader = await getCookieHeader(this.partition);
@@ -169,10 +179,38 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     };
 
+    // O proxy da tela, se houver. O 'ws' roda na pilha de rede do Node, que não
+    // tem nada a ver com a sessão do Electron: setProxy() na partição não afeta
+    // este socket em nada. Sem um agent, o socket sai pelo IP real da máquina -
+    // e com o cookie de sessão obtido pelo proxy, o servidor veria o mesmo
+    // login vindo de dois IPs diferentes.
+    //
+    // Falha fechado: se a conta tem proxy configurado e o agent não sobe, a
+    // conexão não acontece.
+    let agent;
+    if (this.proxy && this.proxy.host && this.proxy.port) {
+      try {
+        const { HttpsProxyAgent } = require('https-proxy-agent');
+        const { host, port, user, pass } = this.proxy;
+        const auth = user && pass
+          ? `${encodeURIComponent(user)}:${encodeURIComponent(pass)}@`
+          : '';
+        agent = new HttpsProxyAgent(`http://${auth}${host}:${port}`);
+      } catch (err) {
+        this.setStatus('failed');
+        this.falhar(`Proxy desta tela não pôde ser usado (${err.message}). A conta não conecta sem ele.`);
+        return;
+      }
+    } else if (this.exigeProxy) {
+      this.setStatus('failed');
+      this.falhar('Esta tela exige proxy e nenhum foi configurado. A conta não conecta sem ele.');
+      return;
+    }
+
     try {
       // Sem compressão (z=1 omitido), sem token
       const url = `${this.wsUrl}?off=1&dl=1`;
-      this.ws = new WebSocket(url, { headers, handshakeTimeout: AUTH_TIMEOUT_MS });
+      this.ws = new WebSocket(url, { headers, handshakeTimeout: AUTH_TIMEOUT_MS, agent });
 
       this.ws.onopen = () => this.onOpen();
       this.ws.onmessage = (ev) => this.onMessage(ev);
@@ -203,6 +241,10 @@ class DigiiIdleHeadlessClient extends EventEmitter {
 
     if (!msg || typeof msg !== 'object') return;
 
+    // Espelho cru de toda mensagem, para quem precisa de pacotes que o roteador
+    // abaixo não trata (o cadastro escuta 'nick' e 'starter', que caem no default).
+    this.emit('msg', msg);
+
     // Roteador mínimo: só o que as ferramentas precisam
     switch (msg.t) {
       case 'estado':
@@ -231,6 +273,15 @@ class DigiiIdleHeadlessClient extends EventEmitter {
         this.state.passe = msg.passe || null;
         // O D-Dol. Conferido em conta real: gemas=D-Dol, diamantes=DCoin.
         this.state.gemas = msg.gemas || 0;
+        // O seller precisa ver isto: o jogo não responde a 'mercado.anunciar',
+        // e a única prova de que o anúncio saiu é o item DIMINUIR na mochila —
+        // o que só se sabe aqui, no pacote que acabou de atualizar 'itens'.
+        // Uma ferramenta com defeito não pode derrubar o estado, que é o que
+        // alimenta todo o resto do app.
+        try {
+          const vend = this.tools.get('seller');
+          if (vend && vend.confirmarPorInventario) vend.confirmarPorInventario();
+        } catch { /* a ferramenta não pode atrapalhar o estado */ }
         this.emit('update');
         break;
 
@@ -488,6 +539,18 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       if (primeira) continue;
 
       const r = x.resumo || {};
+      // O sniper precisa ver isto ANTES do Painel: é a única prova de que a
+      // compra foi dele (o jogo não responde 'mercado.comprar'). Quando ele
+      // reconhece a negociação como sua, ela já virou a linha 'comprei' do
+      // sniper, e repeti-la como "comprou X de Y" seria a mesma compra duas
+      // vezes na mesma aba.
+      let doSniper = false;
+      try {
+        const s = this.tools.get('sniper');
+        if (s && s.confirmar) doSniper = s.confirmar(x);
+      } catch { /* a ferramenta não pode atrapalhar o histórico */ }
+      if (doSniper) continue;
+
       this.emit('atividade', {
         tipo: 'mercado',
         em: x.em || Date.now(),

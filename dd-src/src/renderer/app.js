@@ -67,6 +67,8 @@ const ICONS = {
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 5.2a3.5 3.5 0 0 1 0 5.6"/><path d="M17.5 14.2a6.5 6.5 0 0 1 4 5.8"/>',
   // O Passe: um calendário com o dia marcado, que é o que a ferramenta faz.
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8.5 14.5l2 2 4-4"/>',
+  // O Auto Seller: a etiqueta de preço, que é o que ele põe nos itens.
+  tag: '<path d="M12.6 2.6H21v8.4l-9.8 9.8a2 2 0 0 1-2.8 0l-5.6-5.6a2 2 0 0 1 0-2.8z"/><circle cx="17" cy="7" r="1.4" fill="currentColor"/>',
 };
 function icon(name, size = 16) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -138,6 +140,25 @@ const tone = (c) => (COLORS.includes(c) || LOGO_COLORS.includes(c) ? c : COLORS[
 const BACKOFF = [5, 10, 20, 30, 60, 120, 300].map((s) => s * 1000);
 const PROBE_JS = '(() => { const b = document.body; return { t: b ? b.innerText.slice(0, 120000) : "", title: document.title }; })()';
 const ALERT_TYPES = ['alert', 'word', 'freeze', 'drop-alert'];
+
+// Os tipos de log do Sniper. 'sniper-ok' é a compra confirmada e 'sniper-no' é
+// o que escapou: separados do 'sniper' comum porque merecem cor própria na
+// Atividade — é o que se procura ao abrir a aba.
+const SNIPER_TYPES = ['sniper', 'sniper-ok', 'sniper-no'];
+
+// Os tipos de log do Auto Seller, na mesma divisão do Sniper: 'seller-ok' é o
+// anúncio confirmado pela mochila e 'seller-no' é o que não foi ao ar.
+const SELLER_TYPES = ['seller', 'seller-ok', 'seller-no'];
+
+// O último "estou vivo" do Sniper. Não é uma linha do log (ele varre a cada
+// minuto, e isso encheria a aba): é o rodapé da aba Mercado, que responde
+// "a ferramenta está rodando?" sem poluir o histórico.
+let sniperPulso = null;
+
+// O mesmo rodapé para o Auto Seller. Ele roda a cada 5 min e quase sempre não
+// tem nada a fazer (mochila vazia), e é exatamente aí que "não anunciou nada" e
+// "não está rodando" ficam indistinguíveis.
+let sellerPulso = null;
 
 // Teto do Historico de Ovos guardado no disco. Cada entrada carrega um retrato
 // em data-URL (poucos KB), entao o custo e no arquivo de estado, nao na tela:
@@ -462,8 +483,23 @@ function flush() {
 function save() { dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(flush, 350); }
 function markDirty() { dirty = true; }
 
-function log(type, acc, msg) {
-  state.log.push({ t: Date.now(), type, accId: acc ? acc.id : null, name: acc ? acc.name : '', msg });
+/**
+ * Como a conta deve ser chamada no log.
+ *
+ * Com várias contas rodando a mesma ferramenta, "DigiIdle 3" não diz nada: o
+ * nick do jogo é o nome que a pessoa reconhece, e é por ele que ela confere a
+ * compra dentro do jogo. O nick só existe em headless (vem no pacote 'estado'),
+ * então o nome da conta no DesDeck segue como reserva.
+ */
+function nickDe(acc) {
+  if (!acc) return '';
+  const r = rt.get(acc.id);
+  const nick = r && r.headlessState && r.headlessState.nick;
+  return nick || acc.name || '';
+}
+
+function log(type, acc, msg, nome) {
+  state.log.push({ t: Date.now(), type, accId: acc ? acc.id : null, name: nome || (acc ? acc.name : ''), msg });
   if (state.log.length > 800) state.log.splice(0, state.log.length - 800);
   markDirty();
   if (state.ui.view === 'dash') renderLog();
@@ -827,6 +863,10 @@ function createRuntime(acc) {
     const proxy = group?.proxy || null;
     if (proxy) {
       try {
+        // Trava a partição ANTES de tentar aplicar. Se o applyProxy falhar ou
+        // a conta navegar por outro caminho, nada sai: a trava só abre quando
+        // o setProxy confirma.
+        await deck.armProxy(partitionOf(id));
         const ok = await deck.applyProxy(partitionOf(id), proxy);
         if (!ok) throw new Error('setProxy recusou');
       } catch (err) {
@@ -1029,6 +1069,150 @@ function nomeNegocio(a) {
 }
 
 /**
+ * O que o Sniper viu ou fez, em português.
+ *
+ * As fases vêm do headless com CAMPOS, não com texto pronto, então a frase é
+ * montada aqui — onde ela pertence. As fases são:
+ *   mirou    = um anúncio bateu num alvo seu (o começo de tudo)
+ *   fila     = estava retido (todo anúncio nasce com 2 min de trava)
+ *   tentando = o comando de compra foi enviado
+ *   comprei  = CONFIRMADO pelo histórico da conta: foi você quem levou
+ *   perdido  = ninguém confirmou em 15 s: alguém chegou antes
+ *   barrado  = ele desistiu, e o 'motivo' diz por quê
+ *   varreu   = o pulso: prova que a ferramenta está rodando
+ */
+function nomeSniper(a) {
+  // 'nome' vem traduzido do processo principal, que tem o catálogo; aqui só
+  // existiria o slug ('gaomon').
+  const nome = a.nome || a.especie || a.item || null;
+  const extra = `${a.potencia ? ` P${a.potencia}` : ''}${a.shiny ? ' ✦' : ''}`;
+  if (a.oque === 'ovo') return `ovo${nome ? ` de ${nome}` : ''}${extra}`;
+  if (a.oque === 'digimon') return `${nome || 'Digimon'}${extra}`;
+  return nome || 'item';
+}
+
+function registraSniper(acc, a) {
+  const moeda = a.moeda === 'gemas' ? 'D-Dol' : 'bits';
+  const preco = `${fmtNum(a.preco || 0)} ${moeda}`;
+  const oque = nomeSniper(a);
+  const alvo = a.alvo ? ` [${a.alvo}]` : '';
+  // Quem agiu é o nick do jogo, não "eu": com várias contas rodando o Sniper, a
+  // primeira pessoa não diz QUAL conta comprou — que é o que se quer saber.
+  const nick = nickDe(acc);
+
+  if (a.fase === 'varreu') {
+    // O pulso não merece uma linha por volta: ele sozinho encheria a aba. Só
+    // atualiza o rodapé de status, que diz "está vivo e varrendo".
+    sniperPulso = { t: Date.now(), buscas: a.buscas || 0, vistos: a.vistos || 0, nick };
+    if (state.ui.view === 'dash') renderLog();
+    return;
+  }
+
+  if (a.fase === 'mirou') {
+    const teto = a.teto ? `, teto ${fmtNum(a.teto)}` : '';
+    log('sniper', acc, `achou ${oque} por ${preco}${teto}${alvo}`, nick);
+    return;
+  }
+  if (a.fase === 'fila') {
+    log('sniper', acc, `${oque} está retido; compra em ${a.seg}s${alvo}`, nick);
+    return;
+  }
+  if (a.fase === 'tentando') {
+    log('sniper', acc, `enviou a compra de ${oque} por ${preco}…`, nick);
+    return;
+  }
+  if (a.fase === 'comprei') {
+    const de = a.de ? ` de ${a.de}` : '';
+    log('sniper-ok', acc, `COMPROU ${oque} por ${preco}${de}${alvo}`, nick);
+    return;
+  }
+  if (a.fase === 'perdido') {
+    log('sniper-no', acc, `não levou ${oque} por ${preco} — outro comprador chegou antes`, nick);
+    return;
+  }
+  // Estava na fila e não virou compra. Sem esta linha o Painel prometia
+  // "compra em 118s" e depois ficava calado, que é o pior dos mundos.
+  if (a.fase === 'desistiu') {
+    if (a.motivo === 'sumiu') {
+      log('sniper-no', acc, `${oque} saiu do Mercado antes de liberar — outro comprador chegou antes`, nick);
+      return;
+    }
+    if (a.motivo === 'subiu') {
+      log('sniper-no', acc, `${oque} subiu de ${fmtNum(a.antes || 0)} para ${preco}, acima do teto${alvo}`, nick);
+      return;
+    }
+    log('sniper-no', acc, `desistiu de ${oque}: o alvo foi alterado ou removido`, nick);
+    return;
+  }
+
+  if (a.fase === 'barrado') {
+    if (a.motivo === 'reserva') {
+      const livre = (a.saldo || 0) - (a.reserva || 0);
+      log('sniper-no', acc, `deixou passar ${oque} por ${preco}: só há ${fmtNum(livre)} ${moeda} livres (reserva de ${fmtNum(a.reserva || 0)})`, nick);
+      return;
+    }
+    if (a.motivo === 'limite') {
+      log('sniper-no', acc, `deixou passar ${oque}: no limite de ${a.max} compra(s)/hora`, nick);
+      return;
+    }
+    log('sniper-no', acc, `deixou passar ${oque} por ${preco} (${a.motivo || 'motivo desconhecido'})`, nick);
+  }
+}
+
+function registraSeller(acc, a) {
+  const moeda = a.moeda === 'gemas' ? 'D-Dol' : 'bits';
+  // O nome bonito vem do catálogo, pelo manager; sem ele, o id cru ainda é
+  // melhor que nada.
+  const oque = a.nome || a.item || 'item';
+  const preco = `${fmtNum(a.preco || 0)} ${moeda}`;
+  const nick = nickDe(acc);
+
+  if (a.fase === 'varreu') {
+    // Como no Sniper: uma linha por volta encheria a aba. Vai para o rodapé.
+    sellerPulso = { t: Date.now(), olhados: a.olhados || 0, anunciados: a.anunciados || 0, nick };
+    if (state.ui.view === 'dash') renderLog();
+    return;
+  }
+
+  if (a.fase === 'anunciando') {
+    // De onde saiu o preço é a pergunta central desta ferramenta, então ela é
+    // respondida na própria linha.
+    const fonte = a.manual
+      ? 'preço fixo seu'
+      : `média de 7 dias${a.mediaQtd ? ` sobre ${fmtNum(a.mediaQtd)} venda(s)` : ''}`;
+    log('seller', acc, `anunciando ${fmtNum(a.qtd || 0)}× ${oque} a ${preco} cada (${fonte})…`, nick);
+    return;
+  }
+  if (a.fase === 'anunciou') {
+    // O "você recebe" é o número que importa: a comissão de 15% sai do
+    // vendedor, então o total bruto engana.
+    const liquido = fmtNum((a.total || 0) - (a.taxa || 0));
+    const somou = a.somou ? ' (somou no anúncio que já estava aberto)' : '';
+    log('seller-ok', acc, `ANUNCIOU ${fmtNum(a.saiu || a.qtd || 0)}× ${oque} a ${preco} cada · recebe ${liquido} ${moeda} após a comissão${somou}`, nick);
+    return;
+  }
+  if (a.fase === 'recusado') {
+    log('seller-no', acc, `o anúncio de ${oque} não foi ao ar: o item continua na mochila (o jogo recusou)`, nick);
+    return;
+  }
+  if (a.fase === 'barrado') {
+    if (a.motivo === 'sem-media') {
+      log('seller-no', acc, `não anunciou ${oque}: o servidor não tem média em ${moeda} (nenhuma venda em 7 dias)`, nick);
+      return;
+    }
+    if (a.motivo === 'piso') {
+      log('seller-no', acc, `não anunciou ${oque}: a média está em ${preco}, abaixo do seu piso de ${fmtNum(a.piso || 0)}`, nick);
+      return;
+    }
+    if (a.motivo === 'offline') {
+      log('seller-no', acc, `não anunciou ${oque}: a conta não estava conectada`, nick);
+      return;
+    }
+    log('seller-no', acc, `não anunciou ${oque} (${a.motivo || 'motivo desconhecido'})`, nick);
+  }
+}
+
+/**
  * Transforma uma atividade do headless numa linha do log, ou ignora.
  *
  * O filtro é aqui e não no socket porque é escolha de interface: o que conta
@@ -1069,6 +1253,17 @@ function registraAtividade(accId, a) {
     log('mercado', acc, `${a.vendi ? 'vendeu' : 'comprou'} ${qtd}${nomeNegocio(a)} por ${fmtNum(total)} ${moeda}${quem}`);
     return;
   }
+
+  // O log do Sniper, em etapas. Cada fase é uma linha, para dar para acompanhar
+  // o que ele viu, o que tentou e se a compra foi mesmo nossa — o jogo não
+  // confirma 'mercado.comprar', então 'tentando' e 'comprei' são momentos
+  // diferentes, separados pela chegada do histórico.
+  if (a.tipo === 'sniper') { registraSniper(acc, a); return; }
+
+  // O log do Auto Seller, pelo mesmo motivo: o jogo não responde a
+  // 'mercado.anunciar', então "anunciando" e "anunciou" são momentos
+  // diferentes, separados pela mochila diminuir.
+  if (a.tipo === 'seller') { registraSeller(acc, a); return; }
 
   if (a.tipo === 'ferramenta') {
     const txt = String(a.txt || '');
@@ -1156,10 +1351,18 @@ async function toggleHeadlessMode(accId, enable) {
 
       const group = groupOf(acc);
       if (group?.proxy) {
+        // applyProxy devolve false em vez de lançar, então o catch sozinho não
+        // pegava falha de setProxy: a página carregava pelo IP real.
+        let ok = false;
         try {
-          await deck.applyProxy(`persist:acc-${accId}`, group.proxy);
+          await deck.armProxy(`persist:acc-${accId}`);
+          ok = await deck.applyProxy(`persist:acc-${accId}`, group.proxy);
         } catch (err) {
-          raiseAlert(acc, 'Proxy', 'Erro ao aplicar');
+          console.error('[proxy] falhou ao aplicar:', err);
+        }
+        if (!ok) {
+          raiseAlert(acc, 'Proxy', 'Não consegui aplicar o proxy desta tela.');
+          log('erro', acc, 'Saída do headless cancelada: proxy não aplicado');
           return false;
         }
       }
@@ -2634,16 +2837,48 @@ function renderLog() {
   chips.replaceChildren(...filters.map(([k, label]) => h('button', {
     class: 'chip' + (logFilter === k ? ' active' : ''), onclick: () => { logFilter = k; renderLog(); },
   }, label)));
-  const JOGO = ['ovo', 'chocou', 'item', 'mercado', 'sniper'];
+  const JOGO = ['ovo', 'chocou', 'item', 'mercado', ...SNIPER_TYPES, ...SELLER_TYPES];
   const match = (e) => logFilter === 'all'
     || (logFilter === 'jogo' && JOGO.includes(e.type))
-    || (logFilter === 'mercado' && (e.type === 'mercado' || e.type === 'sniper'))
+    || (logFilter === 'mercado' && (e.type === 'mercado' || SNIPER_TYPES.includes(e.type) || SELLER_TYPES.includes(e.type)))
     || (logFilter === 'drop' && (e.type === 'drop' || e.type === 'freeze'))
     || (logFilter === 'recover' && e.type === 'recover')
     || (logFilter === 'alert' && ALERT_TYPES.includes(e.type))
     || e.type === logFilter;
   const rows = state.log.filter(match).slice(-150).reverse();
-  list.replaceChildren(...(rows.length ? rows.map(logRow) : [h('div', { class: 'log-empty' }, 'Nada por aqui ainda.')]));
+  const filhos = rows.length ? rows.map(logRow) : [h('div', { class: 'log-empty' }, 'Nada por aqui ainda.')];
+  // Na aba Mercado, o pulso do Sniper fica no rodapé: é a diferença entre
+  // "não achou nada" e "não está rodando".
+  if (logFilter === 'mercado') {
+    for (const p of [sniperPulsoRow(), sellerPulsoRow()]) if (p) filhos.push(p);
+  }
+  list.replaceChildren(...filhos);
+}
+
+/** O rodapé "o Sniper está vivo", ou null quando ele nunca varreu. */
+function sniperPulsoRow() {
+  if (!sniperPulso) return null;
+  const p = sniperPulso;
+  const quando = fmtTime(p.t);
+  // Qual conta varreu é parte da informação: com várias rodando o Sniper, um
+  // pulso sem nick não diz se a conta que importa está viva.
+  const quem = p.nick ? `${p.nick} · ` : '';
+  return h('div', { class: 'log-pulse', title: 'O Sniper varre a cada volta do intervalo e também quando o servidor avisa que o mercado mudou.' },
+    `${quem}Sniper ativo · última varredura ${quando}: ${p.buscas} busca(s), ${fmtNum(p.vistos)} anúncio(s) vistos`);
+}
+
+/** O rodapé "o Auto Seller está vivo", ou null quando ele nunca rodou. */
+function sellerPulsoRow() {
+  if (!sellerPulso) return null;
+  const p = sellerPulso;
+  const quem = p.nick ? `${p.nick} · ` : '';
+  // 'olhados' é quantos itens da lista estavam de fato na mochila. Zero aqui
+  // significa "a mochila não tem nenhum deles", que é diferente de "não rodou".
+  const oque = p.olhados
+    ? `${p.olhados} item(ns) na mochila, ${p.anunciados} anunciado(s)`
+    : 'nenhum item da lista está na mochila';
+  return h('div', { class: 'log-pulse', title: 'O Auto Seller confere a mochila a cada volta do intervalo e anuncia pela média de 7 dias do servidor.' },
+    `${quem}Auto Seller ativo · última volta ${fmtTime(p.t)}: ${oque}`);
 }
 function logRow(e) {
   const type = e.type === 'drop-alert' ? 'drop' : e.type;
@@ -3080,9 +3315,28 @@ function openGroupForm(g) {
         const accsInGroup = state.accounts.filter((a) => a.groupId === g.id);
         for (const acc of accsInGroup) {
           const r = rt.get(acc.id);
-          if (r && r.wv) {
-            const partition = `persist:acc-${acc.id}`;
-            await deck.applyProxy(partition, proxy);
+          if (!r || !r.wv) continue; // conta parada: pega o proxy novo ao ligar
+          const partition = `persist:acc-${acc.id}`;
+          if (proxy) {
+            // O retorno era jogado fora e o reload() acontecia de qualquer
+            // jeito - inclusive quando o proxy não subia.
+            let ok = false;
+            try {
+              await deck.armProxy(partition);
+              ok = await deck.applyProxy(partition, proxy);
+            } catch (err) {
+              console.error('[proxy] falhou ao aplicar:', err);
+            }
+            if (!ok) {
+              raiseAlert(acc, 'Proxy', 'Não consegui aplicar o proxy desta tela.');
+              drop(acc.id, `proxy não aplicado (${n})`);
+              continue;
+            }
+            r.wv.reload();
+          } else {
+            // Tirar o proxy de uma tela é passar as contas dela para conexão
+            // direta: isso é uma escolha, e precisa ser consciente.
+            await deck.applyProxy(partition, null);
             r.wv.reload();
           }
         }
@@ -3094,11 +3348,26 @@ function openGroupForm(g) {
   };
   
   const remove = async () => {
-    const count = state.accounts.filter((a) => a.groupId === g.id).length;
-    const ok = await confirmBox('Excluir tela', count ? `As ${count} conta(s) desta tela vão para "Sem grupo". Nenhuma conta é apagada.` : 'A tela está vazia.', 'Excluir tela', true);
+    const naTela = state.accounts.filter((a) => a.groupId === g.id);
+    const count = naTela.length;
+    // "Sem grupo" não tem proxy: apagar uma tela proxiada passava as contas
+    // dela para conexão direta sem dizer nada. Quem confirma precisa saber.
+    const aviso = count && g.proxy
+      ? `As ${count} conta(s) desta tela vão para "Sem grupo", que NÃO tem proxy. Elas serão desligadas: religue só depois de pôr o proxy numa tela nova.`
+      : count ? `As ${count} conta(s) desta tela vão para "Sem grupo". Nenhuma conta é apagada.` : 'A tela está vazia.';
+    const ok = await confirmBox('Excluir tela', aviso, 'Excluir tela', true);
     if (!ok) return;
+    // Derruba antes de soltar o grupo: enquanto a conta está ligada, a sessão
+    // dela já está proxiada, e o próximo reload sairia direto.
+    if (g.proxy) {
+      for (const a of naTela) if (rt.has(a.id)) drop(a.id, `tela "${g.name}" (com proxy) foi excluída`);
+    }
     state.groups = state.groups.filter((x) => x.id !== g.id);
-    for (const a of state.accounts) if (a.groupId === g.id) a.groupId = null;
+    for (const a of state.accounts) {
+      if (a.groupId !== g.id) continue;
+      a.groupId = null;
+      if (g.proxy) a.enabled = false;
+    }
     save();
     refresh();
   };
@@ -3202,6 +3471,92 @@ function openTools() {
   });
 }
 
+// Traz para o deck as contas que o lote confirmou: uma tela (grupo) por bloco,
+// com o proxy que criou aquelas contas, e o headless ligado no fim.
+//
+// O id da conta vem do lote, não é sorteado aqui: a sessão foi criada em
+// persist:acc-<id> durante o cadastro, e é esse cookie que evita pedir login.
+async function importarContasDoLote(contas) {
+  const confirmadas = (contas || []).filter((c) => c.status === 'confirmada' && c.contaId);
+  if (!confirmadas.length) return { criadas: 0, telas: 0 };
+
+  const telas = new Map(); // tela do lote -> groupId
+  const novas = [];
+
+  for (const c of confirmadas) {
+    if (state.accounts.some((a) => a.id === c.contaId)) continue; // já importada
+
+    if (!telas.has(c.tela)) {
+      const existentes = state.groups.length;
+      const g = {
+        id: uid(),
+        // O nome da tela é a base de nick daquele bloco, que é como a pessoa
+        // reconhece o grupo. Sem base (lote antigo), cai no rótulo genérico.
+        name: c.baseNick || `Lote ${existentes + 1}`,
+        color: COLORS[existentes % COLORS.length],
+        limit: 0,
+        // O proxy fica na tela, que é onde o deck o lê (group.proxy).
+        proxy: c.proxy || null,
+      };
+      state.groups.push(g);
+      telas.set(c.tela, g.id);
+    }
+
+    const acc = {
+      ...DEFAULT_ACCOUNT,
+      id: c.contaId,
+      name: c.nick,
+      url: DIGIIDLE.url,
+      groupId: telas.get(c.tela),
+      enabled: true,
+      // Marca explícita, e não toggleHeadlessMode() depois: o createRuntime do
+      // refresh já decide por isHeadless(), e ligar depois dele achava a conta
+      // "já no modo pedido" e saía sem subir o socket — era a conta que chegava
+      // com o headless aparentemente desligado até desligar e religar na mão.
+      headless: true,
+      createdAt: Date.now(),
+      stats: { onlineMs: 0, drops: 0, recoveries: 0 },
+    };
+    state.accounts.push(acc);
+    novas.push(acc);
+
+    // Conta nova nasce na cidade, sem hunt. A "Auto Melhor Hunt" marcada aqui
+    // é ligada pelo applyToolsHeadless quando o socket conecta, e a primeira
+    // passada dela já leva a conta para a melhor área.
+    if (!state.tools.hunt) state.tools.hunt = {};
+    state.tools.hunt[acc.id] = { enabled: true, cfg: {} };
+
+    log('info', acc, 'conta criada pelo cadastro em lote');
+  }
+
+  if (!novas.length) return { criadas: 0, telas: 0 };
+
+  save();
+  refresh();
+
+  return { criadas: novas.length, telas: telas.size };
+}
+
+// Cadastro em lote de contas (com proxies por tela).
+function openCadastro() {
+  const container = h('div', { class: 'cadastro-host' });
+  const ui = new window.CadastroUI();
+  // A UI do cadastro roda em outro escopo e não enxerga state/save/refresh.
+  ui.importarContas = importarContasDoLote;
+  ui.avisar = (msg, tipo) => toast(msg, tipo || 'ok', 6000);
+  modal({
+    title: 'Cadastro em Lote',
+    wide: true,
+    body: container,
+    foot: [h('button', { class: 'btn', onclick: closeModal }, 'Fechar')],
+    // Fechar a janela não pode descartar um lote em andamento: o polling segue
+    // em segundo plano só para importar as contas no fim.
+    onClose: () => { ui.container = null; },
+  });
+  // Monta depois do DOM existir no modal.
+  requestAnimationFrame(() => ui.mount('.cadastro-host'));
+}
+
 // Uma ferramenta, conta a conta: liga/desliga e abre os ajustes daquela conta.
 function openToolAccounts(tool) {
   if (!state.tools[tool.id]) state.tools[tool.id] = {};
@@ -3253,8 +3608,10 @@ function openToolAccounts(tool) {
 function openToolConfig(tool, acc, onDone) {
   const conf = state.tools[tool.id][acc.id];
   const cfg = { ...tool.defaults(), ...(conf.cfg || {}) };
-  const forms = { refill: refillForm, eggs: eggsForm, hunt: huntForm, scan: scanForm, lab: labForm, passe: passeForm, sniper: sniperForm };
-  const form = (forms[tool.id] || refillForm)(cfg);
+  const forms = { refill: refillForm, eggs: eggsForm, hunt: huntForm, scan: scanForm, lab: labForm, passe: passeForm, sniper: sniperForm, seller: sellerForm };
+  // A conta vai junto porque o Auto Seller mostra a mochila E a média de 7 dias
+  // DELA: os dois números só existem no processo principal, por conta.
+  const form = (forms[tool.id] || refillForm)(cfg, acc);
 
   modal({
     title: `${tool.name} · ${acc.name}`,
@@ -3843,6 +4200,263 @@ function sniperForm(cfg) {
       reservaGemas: Math.max(0, +resGemas.value || 0),
       maxPorHora: Math.max(0, +maxHora.value || 0),
       soLiberados: soLib.checked,
+    }),
+  };
+}
+
+// --------------------------------------------- formulário do Auto Seller
+// Um "item da lista" é: qual item, em que moeda, e por quanto. O "por quanto"
+// nasce da média de venda de 7 dias do servidor — o MESMO número que o jogo
+// oferece no botão "usar" da tela de anúncio, sem acréscimo nem desconto.
+//
+// A tela busca ao vivo duas coisas que o renderer não tem: quantas unidades a
+// mochila tem e qual é essa média. Sem elas a pessoa escolheria o preço no
+// escuro, que é justamente o que a ferramenta existe para evitar.
+function sellerForm(cfg, acc) {
+  const MERCADO_ITENS = (window.DDTools.MERCADO_ITENS || []).filter((it) => window.DDTools.vendavel(it.id));
+  const semAcento = (s) => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const nomeDe = (id) => (MERCADO_ITENS.find((it) => it.id === id) || {}).nome || id;
+
+  const normaliza = (i) => ({
+    item: i.item || '',
+    moeda: i.moeda === 'gemas' ? 'gemas' : 'bits',
+    precoManual: Math.max(0, +i.precoManual || 0),
+    precoMinimo: Math.max(0, +i.precoMinimo || 0),
+  });
+  const itens = (cfg.itens || []).map(normaliza);
+  const itemNovo = () => ({ item: '', moeda: 'bits', precoManual: 0, precoMinimo: 0 });
+
+  // A mochila é pedida UMA vez e reaproveitada por todas as linhas: ela já está
+  // no estado do socket, mas uma ida por linha faria a tela piscar sem motivo.
+  let mochila = null;
+  const mochilaPronta = (async () => {
+    try {
+      const r = await deck.headlessMochila(acc.id);
+      mochila = r && r.ok ? (r.itens || {}) : null;
+    } catch { mochila = null; }
+  })();
+
+  /**
+   * Os campos de UM item. Mesma função para o rascunho e para os já salvos, pelo
+   * mesmo motivo do Sniper: um campo novo entraria em só um dos dois lados.
+   */
+  const editor = (it, aoMudar) => {
+    const mudou = () => { if (aoMudar) aoMudar(); };
+
+    const busca = h('input', { class: 'input', value: '', placeholder: 'digite para filtrar: chip, fragmento, disco…' });
+    const sel = h('select', { class: 'input', size: '8', style: { width: '100%' } });
+    const aviso = h('span', { class: 'help' });
+
+    const moeda = h('select', { class: 'input' },
+      h('option', { value: 'bits', selected: it.moeda !== 'gemas' }, 'bits'),
+      h('option', { value: 'gemas', selected: it.moeda === 'gemas' }, 'D-Dol'));
+
+    const manual = h('input', { class: 'input', type: 'number', min: '0', value: String(it.precoManual || 0) });
+    const minimo = h('input', { class: 'input', type: 'number', min: '0', value: String(it.precoMinimo || 0) });
+
+    // As duas linhas de informação viva: a mochila e a média.
+    const infoQtd = h('span', { class: 'help', style: { margin: 0 } }, 'conferindo a mochila…');
+    const infoMedia = h('span', { class: 'help', style: { margin: 0 } }, '');
+    const usarBt = h('button', { class: 'btn sm', type: 'button', style: { display: 'none' } }, 'usar como preço fixo');
+
+    const pintaQtd = async () => {
+      await mochilaPronta;
+      if (!it.item) { infoQtd.textContent = 'Escolha um item para ver quanto você tem.'; return; }
+      if (!mochila) {
+        infoQtd.style.color = 'var(--warn, #f59e0b)';
+        infoQtd.textContent = 'A conta não está conectada em headless: não dá para ler a mochila agora.';
+        return;
+      }
+      const n = Math.max(0, +mochila[it.item] || 0);
+      infoQtd.style.color = n ? '' : 'var(--warn, #f59e0b)';
+      infoQtd.textContent = n
+        ? `Na mochila agora: ${fmtNum(n)} unidade(s) — a ferramenta anuncia TODAS.`
+        : 'Na mochila agora: nenhuma. Nada será anunciado até você obter o item.';
+    };
+
+    // Cada ida ao servidor é um pedido de listagem; um 'pedido' identifica o
+    // último, para uma resposta lenta de um item antigo não sobrescrever a tela.
+    let pedido = 0;
+    const pintaMedia = async () => {
+      const meu = ++pedido;
+      usarBt.style.display = 'none';
+      if (!it.item) { infoMedia.textContent = ''; return; }
+      infoMedia.style.color = '';
+      infoMedia.textContent = 'consultando a média do servidor…';
+      let r = null;
+      try { r = await deck.headlessMercadoMedia(acc.id, it.item, it.moeda); } catch { r = null; }
+      if (meu !== pedido) return;
+      const nomeMoeda = it.moeda === 'gemas' ? 'D-Dol' : 'bits';
+      if (!r || !r.ok) {
+        infoMedia.style.color = 'var(--warn, #f59e0b)';
+        infoMedia.textContent = 'Não deu para consultar (a conta precisa estar conectada em headless).';
+        return;
+      }
+      if (!r.media) {
+        infoMedia.style.color = 'var(--warn, #f59e0b)';
+        infoMedia.textContent = `Sem média em ${nomeMoeda}: ninguém vendeu este item nos últimos 7 dias. `
+          + 'Com a lista assim, só um preço fixo seu faria a ferramenta anunciar.';
+        return;
+      }
+      // A comissão de 15% sai do vendedor, então o bruto engana: o que a pessoa
+      // precisa comparar é o líquido.
+      const liquido = Math.round(r.media * 0.85);
+      const partes = [`Média de 7 dias: ${fmtNum(r.media)} ${nomeMoeda} por unidade`,
+        `você recebe ${fmtNum(liquido)} após a comissão de 15%`];
+      if (r.mediaQtd) partes.push(`sobre ${fmtNum(r.mediaQtd)} venda(s)`);
+      if (r.menor) partes.push(`anúncio mais barato aberto: ${fmtNum(r.menor)}`);
+      if (r.jaAberto) partes.push(`você já tem ${fmtNum(r.jaAberto.qtd)} à venda a ${fmtNum(r.jaAberto.preco)} — o jogo SOMA as novas unidades nesse anúncio e mantém o preço antigo`);
+      infoMedia.textContent = `${partes.join(' · ')}.`;
+      usarBt.style.display = '';
+      usarBt.onclick = () => { it.precoManual = r.media; manual.value = String(r.media); mudou(); };
+    };
+
+    const desenha = () => {
+      const q = busca.value.trim();
+      const casam = !q ? MERCADO_ITENS
+        : MERCADO_ITENS.filter((x) => semAcento(x.nome).includes(semAcento(q)) || x.id.includes(q.toLowerCase()));
+      sel.replaceChildren(...casam.map((x) => h('option', { value: x.id, selected: x.id === it.item }, x.nome)));
+      if (!casam.length) {
+        aviso.style.color = 'var(--warn, #f59e0b)';
+        aviso.textContent = `Nenhum item negociável bate com "${q}".`;
+        return;
+      }
+      // Sobrou um só com filtro digitado: já escolhe. Com vários, não escolhe
+      // nada sozinho — "chip" casa com doze, e cravar o primeiro poria à venda
+      // o item errado.
+      if (casam.length === 1 && q && it.item !== casam[0].id) {
+        it.item = casam[0].id; sel.value = casam[0].id;
+        pintaQtd(); pintaMedia(); mudou();
+      }
+      if (it.item) {
+        aviso.style.color = '';
+        aviso.textContent = `Vai anunciar: ${nomeDe(it.item)} (${it.item})`;
+      } else {
+        aviso.style.color = 'var(--warn, #f59e0b)';
+        aviso.textContent = `${casam.length} item(ns) negociáveis. Clique em um: sem item escolhido nada é anunciado.`;
+      }
+    };
+
+    sel.addEventListener('change', () => { it.item = sel.value; desenha(); pintaQtd(); pintaMedia(); mudou(); });
+    busca.addEventListener('input', desenha);
+    moeda.addEventListener('change', () => { it.moeda = moeda.value; pintaMedia(); mudou(); });
+    manual.addEventListener('input', () => { it.precoManual = Math.max(0, +manual.value || 0); mudou(); });
+    minimo.addEventListener('input', () => { it.precoMinimo = Math.max(0, +minimo.value || 0); mudou(); });
+    desenha(); pintaQtd(); pintaMedia();
+
+    return {
+      campos: h('div', {},
+        h('span', { class: 'help' }, 'Qual item (digite para filtrar a lista)'), busca,
+        h('div', { style: { marginTop: '6px' } }, sel),
+        h('div', { style: { marginTop: '6px' } }, aviso),
+        h('div', { style: { marginTop: '8px' } }, infoQtd),
+        h('div', { style: { marginTop: '4px', display: 'flex', gap: '8px', alignItems: 'baseline', flexWrap: 'wrap' } }, infoMedia, usarBt),
+        h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' } },
+          h('label', { style: { flex: '1 1 110px' } }, h('span', { class: 'help' }, 'Moeda'), moeda),
+          h('label', { style: { flex: '1 1 150px' } }, h('span', { class: 'help' }, 'Preço fixo (0 = usar a média)'), manual),
+          h('label', { style: { flex: '1 1 150px' } }, h('span', { class: 'help' }, 'Piso: não anunciar abaixo de'), minimo)),
+        h('span', { class: 'help' }, 'Com preço fixo em 0 o valor é a média de 7 dias do servidor, igualzinha — sem aumentar nem baixar. O piso é a trava: se a média cair abaixo dele, a ferramenta não anuncia e o item fica na mochila.')),
+    };
+  };
+
+  // --------------------------------------------------- rascunho (item em edição)
+  const rascunho = h('div', {});
+  let novo = null;
+  const fechaRascunho = () => { novo = null; rascunho.replaceChildren(); };
+
+  const abreRascunho = () => {
+    novo = itemNovo();
+    const okBt = h('button', { class: 'btn primary', type: 'button' }, 'Adicionar');
+    const cancelBt = h('button', { class: 'btn', type: 'button', onclick: fechaRascunho }, 'Cancelar');
+    const dica = h('span', { class: 'help', style: { margin: 0 } });
+
+    const revisar = () => {
+      const pode = !!novo.item;
+      okBt.disabled = !pode;
+      okBt.style.opacity = pode ? '' : '0.5';
+      dica.style.color = pode ? '' : 'var(--warn, #f59e0b)';
+      dica.textContent = pode ? 'Pronto para entrar na lista.' : 'Escolha o item para poder adicionar.';
+    };
+
+    const ed = editor(novo, revisar);
+    okBt.addEventListener('click', () => {
+      if (!novo.item) return;   // a trava real; o disabled é só a dica visual
+      itens.push(novo);
+      fechaRascunho();
+      draw();
+    });
+    revisar();
+
+    rascunho.replaceChildren(h('div', { class: 'card', style: { padding: '12px', marginTop: '10px', borderLeft: '3px solid var(--accent, #60a5fa)' } },
+      h('strong', { style: { display: 'block', marginBottom: '8px' } }, 'Novo item'),
+      ed.campos,
+      h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', marginTop: '12px', flexWrap: 'wrap' } },
+        okBt, cancelBt, dica)));
+  };
+
+  // ------------------------------------------------------- a lista dos salvos
+  const rows = h('div', {});
+
+  const draw = () => {
+    rows.replaceChildren();
+    if (!itens.length) {
+      rows.append(h('p', { class: 'about' }, 'Nenhum item ainda. Clique em "Adicionar item" — com a lista vazia a ferramenta não anuncia nada.'));
+      return;
+    }
+    rows.append(h('div', { style: { display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '8px' } },
+      h('strong', {}, `Itens à venda (${itens.length})`)));
+
+    itens.forEach((it, i) => {
+      const card = h('div', { class: 'card', style: { padding: '12px', marginBottom: '10px' } });
+      const titulo = h('strong', { style: { flex: 1, minWidth: 0 } });
+      const pintar = () => {
+        const on = !!it.item;
+        card.style.borderLeft = on ? '3px solid #fcd34d' : '3px solid var(--line-2)';
+        titulo.textContent = on
+          ? `${nomeDe(it.item)} · ${it.moeda === 'gemas' ? 'D-Dol' : 'bits'} · ${it.precoManual > 0 ? `preço fixo ${fmtNum(it.precoManual)}` : 'pela média de 7 dias'}`
+          : 'Sem item escolhido: esta linha não anuncia nada.';
+      };
+      const ed = editor(it, pintar);
+      const del = h('button', { class: 'btn danger', type: 'button', onclick: () => { itens.splice(i, 1); draw(); } }, 'Remover');
+      pintar();
+
+      card.append(
+        h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' } }, titulo, del),
+        ed.campos);
+      rows.append(card);
+    });
+  };
+
+  const addBt = h('button', { class: 'btn', type: 'button', onclick: () => (novo ? fechaRascunho() : abreRascunho()) }, 'Adicionar item');
+  draw();
+
+  // O intervalo é em MINUTOS porque é a unidade real desta ferramenta: o jogo só
+  // deixa mudar o preço de um item uma vez a cada 30 min, então conferir de 10
+  // em 10 segundos não adiantaria nada.
+  const intervalo = h('input', { class: 'input', type: 'number', min: '1', value: String(Math.max(1, Math.round((cfg.intervaloSec || 300) / 60))) });
+  const maxHora = h('input', { class: 'input', type: 'number', min: '0', value: String(cfg.maxPorHora ?? 10) });
+
+  const el = h('div', {},
+    h('p', { class: 'about' }, 'Cada linha é um item da mochila posto à venda no Mercado pela média de venda dos últimos 7 dias — o mesmo preço que o jogo sugere, sem acréscimo nem desconto. Lista vazia não anuncia nada.'),
+    addBt,
+    rascunho,
+    h('div', { style: { marginTop: '12px' } }, rows),
+    h('div', { class: 'field', style: { marginTop: '14px' } }, h('label', {}, 'Conferir a mochila a cada (minutos)'), intervalo,
+      h('span', { class: 'help' }, 'O jogo só permite trocar o preço de um item uma vez a cada 30 min, então conferir de minuto em minuto não traz ganho.')),
+    h('div', { class: 'field' }, h('label', {}, 'Máximo de anúncios por hora'), maxHora,
+      h('span', { class: 'help' }, '0 = sem limite. É a trava que segura um erro de configuração.')),
+    h('div', { class: 'warnbox' }, 'O anúncio põe o item de verdade à venda e a comissão de 15% sai de você. '
+      + 'Se já houver um anúncio seu do mesmo item, o jogo SOMA as unidades novas nele e mantém o preço antigo — a ferramenta não repreça nada. '
+      + 'Todo anúncio fica retido 2 min antes de aparecer para os outros.'));
+
+  return {
+    el,
+    read: () => ({
+      // O rascunho não entra: enquanto não se clica "Adicionar", ele é meio
+      // item, e salvar meio item é o caminho para anunciar o que não foi pedido.
+      itens: itens.filter((i) => i.item).map(normaliza),
+      intervaloSec: Math.max(60, Math.round((+intervalo.value || 5) * 60)),
+      maxPorHora: Math.max(0, +maxHora.value || 0),
     }),
   };
 }
@@ -4515,6 +5129,7 @@ async function boot() {
     b.addEventListener('click', () => started && setView(b.dataset.view));
   }
   $('#btnTools').addEventListener('click', () => started && !lockedUI && openTools());
+  $('#btnCadastro').addEventListener('click', () => started && !lockedUI && openCadastro());
   $('#btnAdd').append(icon('plus', 14), 'Conta');
   $('#btnAdd').addEventListener('click', () => started && openAccountForm(null));
   $('#btnAddGroup').append(icon('plus', 14), 'Tela');

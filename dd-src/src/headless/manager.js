@@ -108,6 +108,35 @@ class HeadlessManager extends EventEmitter {
       // que cai a cada poucos abates) como se fosse um achado.
       // A negociação do Mercado traz slugs ('agumon') e ids de item
       // ('token-boss'). O nome bonito está no catálogo, que só existe aqui.
+      // O log do sniper. O nome bonito ('Gaomon', 'Chip de Fogo') está no
+      // catálogo, que só se baixa aqui — no renderer existiria só o slug.
+      // 'nomeDoNegocio' já faz exatamente essa tradução para o Mercado, e os
+      // campos do evento foram nomeados para casar com ela.
+      if (a && a.tipo === 'sniper') {
+        if (!a.especie && !a.item) {
+          this.emit('account:atividade', { index: accountIndex, atividade: a });
+          return;
+        }
+        require('./ovos').nomeDoNegocio(a)
+          .then((nome) => this.emit('account:atividade', { index: accountIndex, atividade: { ...a, nome } }))
+          .catch(() => this.emit('account:atividade', { index: accountIndex, atividade: a }));
+        return;
+      }
+
+      // O log do seller. Só traz o id do item ('token-boss'), e 'nomeDoNegocio'
+      // já traduz isso pelo catálogo — o evento não tem 'oque', então cai
+      // direto no ramo do item.
+      if (a && a.tipo === 'seller') {
+        if (!a.item) {
+          this.emit('account:atividade', { index: accountIndex, atividade: a });
+          return;
+        }
+        require('./ovos').nomeDoNegocio(a)
+          .then((nome) => this.emit('account:atividade', { index: accountIndex, atividade: { ...a, nome } }))
+          .catch(() => this.emit('account:atividade', { index: accountIndex, atividade: a }));
+        return;
+      }
+
       if (a && a.tipo === 'mercado') {
         require('./ovos').nomeDoNegocio(a)
           .then((nome) => this.emit('account:atividade', { index: accountIndex, atividade: { ...a, nome } }))
@@ -174,6 +203,11 @@ class HeadlessManager extends EventEmitter {
       this.clients.delete(accountIndex);
     }
     this.painelEm.delete(accountIndex);
+    // Última conta a sair: os catálogos voltam para a sessão pública, em vez de
+    // seguirem presos à partição de uma conta que já não está rodando.
+    if (!this.clients.size) {
+      try { require('./rede').esquecerParticao(); } catch { /* opcional */ }
+    }
   }
 
   /**
@@ -239,6 +273,65 @@ class HeadlessManager extends EventEmitter {
     const client = this.clients.get(accountIndex);
     if (!client) return false;
     return client.stopTool(toolId);
+  }
+
+  /**
+   * A mochila da conta: { [itemId]: quantidade }.
+   *
+   * Para a tela do Auto Seller poder dizer "você tem 12 na mochila" antes de a
+   * pessoa escolher o preço. Vem do estado que o socket já mantém (o pacote
+   * 'estado' traz 'itens'), então não custa nenhum pedido ao servidor.
+   */
+  mochila(accountIndex) {
+    const client = this.clients.get(accountIndex);
+    if (!client || client.status !== 'connected') return { ok: false, itens: {} };
+    return { ok: true, itens: { ...((client.state && client.state.itens) || {}) } };
+  }
+
+  /**
+   * A média de venda de 7 dias de um item, mais o menor anúncio aberto e o
+   * nosso anúncio já em pé, se houver.
+   *
+   * SÓ LEITURA: 'mercado.listar' é o mesmo pedido que o jogo faz ao abrir a
+   * tela de anúncio. O número não existe no renderer de jeito nenhum — a média
+   * de item NÃO vem em 'mercado.precos' (o jogo descarta aquele pacote quando
+   * tipo === 'item'), ela vem dentro desta resposta, em media[moeda].
+   */
+  mediaDoItem(accountIndex, item, moeda) {
+    const client = this.clients.get(accountIndex);
+    const vazio = { ok: false, media: 0, mediaQtd: 0, menor: 0, jaAberto: null };
+    if (!client || client.status !== 'connected' || !item) return Promise.resolve(vazio);
+
+    return new Promise((resolve) => {
+      let pronto = false;
+      const fim = (r) => {
+        if (pronto) return;
+        pronto = true;
+        client.off('mercado', ouvir);
+        clearTimeout(t);
+        resolve(r);
+      };
+      const ouvir = (m) => {
+        const md = ((m && m.media) || {})[moeda];
+        const lista = ((m && m.lista) || []).filter((a) => a.item === item && a.moeda === moeda);
+        const meu = lista.find((a) => a.meu) || null;
+        const outros = lista.filter((a) => !a.meu);
+        fim({
+          ok: true,
+          // Arredondado como o jogo arredonda o card e o botão "usar".
+          media: md && md.media > 0 ? Math.round(md.media) : 0,
+          mediaQtd: (md && md.qtd) || 0,
+          menor: (outros[0] && outros[0].preco) || 0,
+          jaAberto: meu ? { qtd: meu.qtd || 0, preco: meu.preco || 0 } : null,
+        });
+      };
+      // O timer antes do listener: se o pedido não sair, 'fim' já tem o que
+      // limpar.
+      const t = setTimeout(() => fim(vazio), 8000);
+      if (t.unref) t.unref();
+      client.on('mercado', ouvir);
+      if (!client.sendCommand('mercado.listar', { tipo: 'item', especie: item, moeda })) fim(vazio);
+    });
   }
 
   /**

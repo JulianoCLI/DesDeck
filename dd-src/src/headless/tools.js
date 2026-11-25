@@ -22,6 +22,15 @@ const catalogo = require('./catalogo');
 // agirem no mesmo segundo do boot.
 const ENTRADA_SPREAD_MS = 80000;
 
+// Quanto esperamos pela confirmação de uma compra do sniper.
+//
+// O jogo não responde ao 'mercado.comprar'. A prova de que a compra foi nossa
+// chega pelo histórico de 'mercado.meus', que o client pede quando o servidor
+// avisa 'mercado.mudou' — e esse pedido tem um debounce de 4 s (client.js,
+// MERCADO_DEBOUNCE_MS). 15 s cobrem o debounce e a ida e volta com folga; além
+// disso, o silêncio já é a resposta.
+const CONFIRMA_MS = 15000;
+
 class HeadlessTool {
   constructor(client, toolId, config) {
     this.client = client;
@@ -49,7 +58,9 @@ class HeadlessTool {
       // O boot é o pior momento para coincidir: as contas sobem juntas e o
       // primeiro atraso é curto, então 25% dele espalharia pouco. Aqui o jitter
       // é calculado sobre uma janela própria, bem maior que o atraso em si.
-      .finally(() => { if (this.running) this.agendar(this.primeiroAtrasoMs() + this.jitterMs(ENTRADA_SPREAD_MS)); });
+      // agendar() soma o seu próprio jitter, então aqui o atraso vai cru: somar
+      // os dois atrasava a estreia por quase um minuto além do previsto.
+      .finally(() => { if (this.running) this.agendarPasso(this.primeiroAtrasoMs() + this.jitterMs(ENTRADA_SPREAD_MS), false); });
   }
 
   stop() {
@@ -93,10 +104,19 @@ class HeadlessTool {
     return base + sorteio;
   }
 
-  agendar(ms) {
+  /**
+   * Agenda o próximo passo do laço.
+   *
+   * O nome é 'agendarPasso', e não 'agendar', porque o sniper tem um método
+   * seu para agendar compras: com o mesmo nome, a subclasse sobrescrevia este
+   * e o laço do sniper simplesmente não existia.
+   *
+   * 'comJitter' é falso na estreia, que já vem com um jitter próprio e maior.
+   */
+  agendarPasso(ms, comJitter = true) {
     if (!this.running) return;
     if (this.loopTimer) clearTimeout(this.loopTimer);
-    this.loopTimer = setTimeout(() => this.loop(), ms + this.jitterMs(ms));
+    this.loopTimer = setTimeout(() => this.loop(), comJitter ? ms + this.jitterMs(ms) : ms);
     if (this.loopTimer.unref) this.loopTimer.unref();
   }
 
@@ -114,7 +134,7 @@ class HeadlessTool {
     } catch (err) {
       this.log('passo falhou:', err.message);
     }
-    this.agendar(this.getInterval());
+    this.agendarPasso(this.getInterval());
   }
 
   async step() {}
@@ -151,6 +171,27 @@ class HeadlessTool {
           em: Date.now(),
           tool: this.toolId,
           txt: args.map((a) => (a instanceof Error ? a.message : String(a))).join(' '),
+        });
+      }
+    } catch { /* ouvinte com defeito não atrapalha a ferramenta */ }
+  }
+
+  /**
+   * Um acontecimento com CAMPOS, não com texto.
+   *
+   * O log() acima manda uma frase pronta, e quem a lê no Painel tem de
+   * reconhecê-la por expressão regular — frágil: mudar uma palavra do log
+   * quebrava a linha do Painel em silêncio. Aqui os dados vão separados, e a
+   * frase é montada na interface, onde ela pertence.
+   *
+   * Nunca lança, pelo mesmo motivo do log(): um ouvinte com defeito não vale
+   * uma compra perdida.
+   */
+  evento(tipo, dados) {
+    try {
+      if (this.client && this.client.emit) {
+        this.client.emit('atividade', {
+          tipo, em: Date.now(), tool: this.toolId, ...dados,
         });
       }
     } catch { /* ouvinte com defeito não atrapalha a ferramenta */ }
@@ -1067,22 +1108,59 @@ class ToolSniper extends HeadlessTool {
     this.fila = new Map();      // id do anúncio -> timer do libera
     this.comprados = new Set(); // nunca tenta o mesmo anúncio duas vezes
     this.compras = [];          // instantes das compras, para o limite por hora
-    this.listaPend = null;
+    // As listagens à espera de resposta, em ordem de pedido. Era um slot único,
+    // e isso quebrava com dois pedidos ao mesmo tempo — o que acontece sempre
+    // que o 'mercado.mudou' dispara um step() em paralelo ao step periódico: o
+    // segundo pedido sobrescrevia o primeiro, cuja promise então NUNCA resolvia
+    // (o timeout de resgate só dispara para o pendente ainda registrado). Um
+    // await eterno no meio do laço travava a ferramenta inteira.
+    //
+    // O servidor responde na ordem em que recebeu, então uma fila FIFO entrega
+    // cada resposta a quem a pediu.
+    this.listaPend = [];
     this.avisouSaldo = {};      // o aviso de saldo curto sai uma vez por moeda
+    // As tentativas à espera de confirmação: id do anúncio -> o que foi tentado.
+    // O jogo não responde 'mercado.comprar', então a prova vem do histórico de
+    // 'mercado.meus' (fase 'comprei') ou não vem (fase 'perdido').
+    this.aguardando = new Map();
+    this.timers = new Map();    // os prazos de confirmação, para o stop() limpar
+    this.mirados = new Set();   // anúncios que já renderam uma linha 'mirou'
 
-    // A resposta de 'mercado.listar' e o aviso de que o mercado mexeu.
-    this.client.on('mercado', (m) => {
-      if (typeof m.agora === 'number') this.desvio = Date.now() - m.agora;
-      const r = this.listaPend;
-      this.listaPend = null;
+    // Os ouvintes do mercado. Ligados em start() e desligados em stop(), como
+    // as outras ferramentas fazem — no constructor eles sobreviviam ao stop(),
+    // então cada liga/desliga deixava um ouvinte morto no client: o aviso de
+    // 'mercado.mudou' passava a disparar uma varredura por religação, e uma
+    // ferramenta desligada voltava a agir.
+    this.aoMercado = (m) => {
+      if (m && typeof m.agora === 'number') this.desvio = Date.now() - m.agora;
+      const r = this.listaPend.shift();
       if (r) r(m);
-    });
-    this.client.on('mercado-mudou', () => {
+    };
+    this.aoMercadoMudou = () => {
       // É o momento mais provável de aparecer coisa nova, então varre já — com
       // um respiro para as contas não pedirem todas no mesmo instante.
       if (!this.running || this.desligada) return;
-      setTimeout(() => { this.step().catch(() => {}); }, 400 + Math.random() * 800);
-    });
+      const t = setTimeout(() => { this.step().catch(() => {}); }, 400 + Math.random() * 800);
+      if (t.unref) t.unref();
+    };
+    // Ligados já aqui: a ferramenta precisa ouvir o mercado desde que existe,
+    // e não só a partir do start(). O que faltava era o desligamento no stop().
+    this.ouvirMercado();
+  }
+
+  /** Liga os ouvintes do mercado uma única vez, mesmo se chamado de novo. */
+  ouvirMercado() {
+    this.client.removeListener('mercado', this.aoMercado);
+    this.client.removeListener('mercado-mudou', this.aoMercadoMudou);
+    this.client.on('mercado', this.aoMercado);
+    this.client.on('mercado-mudou', this.aoMercadoMudou);
+  }
+
+  start() {
+    if (this.running) return;
+    // Religar depois de um stop(): os ouvintes foram removidos lá.
+    this.ouvirMercado();
+    super.start();
   }
 
   /**
@@ -1140,9 +1218,20 @@ class ToolSniper extends HeadlessTool {
   getInterval() { return Math.max(20000, (this.config.intervaloSec || 60) * 1000); }
 
   stop() {
+    this.client.removeListener('mercado', this.aoMercado);
+    this.client.removeListener('mercado-mudou', this.aoMercadoMudou);
     super.stop();
     for (const t of this.fila.values()) clearTimeout(t);
     this.fila.clear();
+    // Os prazos de confirmação também são timers: sem limpá-los, uma ferramenta
+    // parada ainda emitiria 'perdido' minutos depois.
+    for (const t of this.timers.values()) clearTimeout(t);
+    this.timers.clear();
+    this.aguardando.clear();
+    // Ninguém mais vai receber estas respostas: resolver com null faz os
+    // 'await listar()' em curso desistirem, em vez de ficarem presos para
+    // sempre num laço que já foi parado.
+    for (const r of this.listaPend.splice(0)) r(null);
   }
 
   agoraServidor() { return Date.now() - this.desvio; }
@@ -1152,9 +1241,18 @@ class ToolSniper extends HeadlessTool {
     return new Promise((resolve) => {
       // filtroDe() devolve null quando o alvo sumiu: não há o que pedir.
       if (!filtro) { resolve(null); return; }
-      this.listaPend = resolve;
-      if (!this.send('mercado.listar', filtro)) { this.listaPend = null; resolve(null); return; }
-      setTimeout(() => { if (this.listaPend === resolve) { this.listaPend = null; resolve(null); } }, 8000);
+      this.listaPend.push(resolve);
+      if (!this.send('mercado.listar', filtro)) {
+        const i = this.listaPend.indexOf(resolve);
+        if (i >= 0) this.listaPend.splice(i, 1);
+        resolve(null);
+        return;
+      }
+      const t = setTimeout(() => {
+        const i = this.listaPend.indexOf(resolve);
+        if (i >= 0) { this.listaPend.splice(i, 1); resolve(null); }
+      }, 8000);
+      if (t.unref) t.unref();
     });
   }
 
@@ -1192,6 +1290,33 @@ class ToolSniper extends HeadlessTool {
   /** Dá para pagar este anúncio sem furar a reserva? */
   cabe(a) { return this.saldoDe(a.moeda) - this.reservaDe(a.moeda) >= a.preco; }
 
+  /**
+   * O que o Painel precisa saber sobre um anúncio, em campos.
+   *
+   * 'especie' é o slug ('gaomon'): o nome bonito vem do catálogo, que só existe
+   * no processo principal. Medido em conta real (mercado-campos.txt): o ovo traz
+   * resumo.especie, e o item traz o id em 'item'.
+   */
+  descrever(a, alvo) {
+    const r = (a && a.resumo) || {};
+    return {
+      id: a.id,
+      oque: a.tipo || 'ovo',
+      especie: r.especie || null,
+      item: a.item || null,
+      preco: a.preco || 0,
+      moeda: a.moeda || 'bits',
+      potencia: r.potencia || 0,
+      shiny: !!r.shiny,
+      nivel: r.nivel || 0,
+      // O vendedor, para a linha dizer de quem a conta comprou.
+      nick: a.nick || null,
+      // Qual alvo seu disparou: é a resposta para "por que ele mirou nisto?".
+      alvo: (alvo && alvo.nome) || null,
+      teto: (alvo && alvo.tetoPreco) || 0,
+    };
+  }
+
   noLimite() {
     const max = Math.max(0, this.config.maxPorHora || 0);
     if (!max) return false;
@@ -1203,17 +1328,82 @@ class ToolSniper extends HeadlessTool {
   /** Comprar. Só é chamada quando o anúncio já está liberado. */
   async comprar(a, alvo) {
     if (this.desligada || this.comprados.has(a.id)) return;
-    if (this.noLimite()) { this.log(`limite de ${this.config.maxPorHora} compra(s)/hora atingido; deixando passar #${a.id}`); return; }
-    if (!this.cabe(a)) { this.log(`#${a.id} custa ${a.preco} ${a.moeda}, mas a reserva não deixa`); return; }
+    const d = this.descrever(a, alvo);
+    if (this.noLimite()) {
+      this.evento('sniper', { fase: 'barrado', motivo: 'limite', max: this.config.maxPorHora, ...d });
+      return;
+    }
+    if (!this.cabe(a)) {
+      this.evento('sniper', {
+        fase: 'barrado', motivo: 'reserva', ...d,
+        saldo: this.saldoDe(a.moeda), reserva: this.reservaDe(a.moeda),
+      });
+      return;
+    }
     // Marca ANTES de enviar: se o envio falhar, melhor perder uma pechincha do
     // que arriscar comprar duas vezes.
     this.comprados.add(a.id);
     this.fila.delete(a.id);
-    if (!this.send('mercado.comprar', { id: a.id, qtd: 1, preco: a.preco, moeda: a.moeda })) return;
+    // O comando foi mandado, e é só isso que sabemos: o jogo NÃO responde a
+    // 'mercado.comprar'. Quem confirma é o histórico de 'mercado.meus', que
+    // chega segundos depois — então esta fase é 'tentando', e não 'comprei'.
+    this.evento('sniper', { fase: 'tentando', ...d });
+    if (!this.send('mercado.comprar', { id: a.id, qtd: 1, preco: a.preco, moeda: a.moeda })) {
+      this.evento('sniper', { fase: 'barrado', motivo: 'offline', ...d });
+      return;
+    }
     this.compras.push(Date.now());
     this.avisouSaldo[a.moeda] = false; // o saldo mudou: vale avisar de novo se faltar
-    const nome = (a.resumo && a.resumo.especie) || a.item || a.tipo;
-    this.log(`comprei #${a.id} (${nome}) por ${a.preco} ${a.moeda === 'gemas' ? 'D-Dol' : 'bits'}${alvo.nome ? ` [${alvo.nome}]` : ''}`);
+    // O Painel precisa reconhecer a confirmação quando ela vier. A espera é
+    // curta de propósito: passado isso, o silêncio já é a resposta (alguém
+    // chegou antes), e é o que a fase 'perdido' diz.
+    this.aguardando.set(a.id, { ...d, em: Date.now() });
+    this.conferirDepois(a.id);
+    const nome = d.especie || d.item || d.oque;
+    this.log(`enviou a compra de #${a.id} (${nome}) por ${a.preco} ${a.moeda === 'gemas' ? 'D-Dol' : 'bits'}${alvo.nome ? ` [${alvo.nome}]` : ''}`);
+  }
+
+  /**
+   * Fecha o caso de uma tentativa que ninguém confirmou.
+   *
+   * Sem confirmação em CONFIRMA_MS, a compra não foi nossa — no Mercado do
+   * DigiIdle o anúncio liberado é disputa aberta, e perder é comum. Dizer isso
+   * em voz alta é o ponto: "tentou e perdeu" e "nunca tentou" parecem iguais de
+   * fora, e são problemas completamente diferentes.
+   */
+  conferirDepois(id) {
+    const t = setTimeout(() => {
+      this.timers.delete(id);
+      const p = this.aguardando.get(id);
+      if (!p) return; // já confirmado pelo histórico
+      this.aguardando.delete(id);
+      this.evento('sniper', { fase: 'perdido', ...p });
+      this.log(`#${id} não confirmou: alguém chegou antes`);
+    }, CONFIRMA_MS);
+    if (t.unref) t.unref();
+    this.timers.set(id, t);
+  }
+
+  /**
+   * A confirmação, vinda do histórico de negociações da conta.
+   *
+   * É a única prova que existe de que a compra foi NOSSA: o client pede
+   * 'mercado.meus' a cada 'mercado.mudou' e emite as linhas novas. Casamos por
+   * preço e moeda porque o histórico não traz o id do anúncio.
+   */
+  confirmar(neg) {
+    if (!neg || neg.vendi) return false; // venda minha não é compra do sniper
+    for (const [id, p] of this.aguardando) {
+      if (p.moeda !== (neg.moeda || 'bits')) continue;
+      if ((neg.preco || 0) !== p.preco) continue;
+      this.aguardando.delete(id);
+      const t = this.timers.get(id);
+      if (t) { clearTimeout(t); this.timers.delete(id); }
+      this.evento('sniper', { fase: 'comprei', ...p, de: neg.outro || p.nick || null });
+      this.log(`compra de #${id} confirmada pelo histórico da conta`);
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -1223,8 +1413,14 @@ class ToolSniper extends HeadlessTool {
    *
    * A folga existe porque o servidor recusa quem chega adiantado: o desvio de
    * relógio é medido, mas não é exato, e a rede ainda cobra o seu tempo.
+   *
+   * O nome NÃO pode ser 'agendar': esse é o do laço da classe base, que o chama
+   * como agendar(ms). Sobrescrevê-lo fazia a base cair aqui com alvo=undefined,
+   * o `if (!alvo) return` engolia a chamada, e o sniper ficava sem laço nenhum —
+   * nem varredura periódica, nem a primeira varredura depois de conectar. Ele só
+   * agia quando o servidor avisava 'mercado.mudou'.
    */
-  agendar(a, alvo) {
+  agendarCompra(a, alvo) {
     if (!alvo) return;
     if (this.fila.has(a.id) || this.comprados.has(a.id)) return;
     const espera = a.libera - this.agoraServidor() + 250;
@@ -1238,17 +1434,34 @@ class ToolSniper extends HeadlessTool {
         // para alguém editar ou apagar o alvo na UI. Comprar por um alvo que não
         // existe mais é gastar contra a vontade de quem acabou de mudá-lo, então
         // revalidamos contra a config de AGORA.
+        // Um anúncio que entrou na fila e não virou compra é o caso mais
+        // confuso de todos: o Painel anunciou "compra em 118s" e depois nada.
+        // Cada saída daqui vira uma linha dizendo o que aconteceu.
         const atual = this.alvos.find((x) => this.mesmoAlvo(x, alvo));
-        if (!atual) { this.log(`#${a.id} saiu da fila: o alvo mudou ou foi removido`); return; }
+        if (!atual) {
+          this.evento('sniper', { fase: 'desistiu', motivo: 'alvo-mudou', ...this.descrever(a, alvo) });
+          this.log(`#${a.id} saiu da fila: o alvo mudou ou foi removido`);
+          return;
+        }
         // O mundo pode ter mudado nos 2 min de espera: outro comprador levou, o
         // vendedor retirou ou mudou o preço. Então reconferimos o anúncio AGORA,
         // em vez de confiar na foto antiga.
         const m = await this.listar(this.filtroDe(atual));
         if (!m || this.desligada) return;
         const vivo = (m.lista || []).find((x) => x.id === a.id);
-        if (!vivo) { this.log(`#${a.id} já não está à venda (alguém chegou antes)`); return; }
-        if (vivo.preco > atual.tetoPreco) { this.log(`#${a.id} subiu para ${vivo.preco}; acima do teto`); return; }
-        if (vivo.libera > this.agoraServidor()) { this.agendar(vivo, atual); return; } // preço mudou: retenção reiniciou
+        if (!vivo) {
+          this.evento('sniper', { fase: 'desistiu', motivo: 'sumiu', ...this.descrever(a, atual) });
+          this.log(`#${a.id} já não está à venda (alguém chegou antes)`);
+          return;
+        }
+        if (vivo.preco > atual.tetoPreco) {
+          this.evento('sniper', {
+            fase: 'desistiu', motivo: 'subiu', ...this.descrever(vivo, atual), antes: a.preco,
+          });
+          this.log(`#${a.id} subiu para ${vivo.preco}; acima do teto`);
+          return;
+        }
+        if (vivo.libera > this.agoraServidor()) { this.agendarCompra(vivo, atual); return; } // preço mudou: retenção reiniciou
         await this.comprar(vivo, atual);
       } catch (err) {
         this.log('a compra agendada falhou:', err.message);
@@ -1256,15 +1469,24 @@ class ToolSniper extends HeadlessTool {
     }, Math.max(0, espera));
     if (timer.unref) timer.unref();
     this.fila.set(a.id, timer);
-    this.log(`#${a.id} na fila por ${a.preco} ${a.moeda === 'gemas' ? 'D-Dol' : 'bits'} — libera em ${Math.ceil((a.libera - this.agoraServidor()) / 1000)}s`);
+    const seg = Math.ceil((a.libera - this.agoraServidor()) / 1000);
+    this.evento('sniper', { fase: 'fila', ...this.descrever(a, alvo), seg });
+    this.log(`#${a.id} na fila por ${a.preco} ${a.moeda === 'gemas' ? 'D-Dol' : 'bits'} — libera em ${seg}s`);
   }
 
   async step() {
     if (this.desligada || !this.estado) return;
+    // O resumo da varredura. Sem ele, "o sniper não achou nada" e "o sniper não
+    // está rodando" são indistinguíveis no Painel — que é justamente a dúvida
+    // que este log existe para responder.
+    let vistos = 0;
+    let buscas = 0;
     for (const alvo of this.alvos) {
       if (this.desligada || this.noLimite()) break;
       const m = await this.listar(this.filtroDe(alvo));
       if (!m) continue;
+      buscas++;
+      vistos += (m.lista || []).length;
       for (const a of m.lista || []) {
         if (this.comprados.has(a.id) || this.fila.has(a.id)) continue;
         // As guardas: nunca o nosso anúncio, nunca fechado, nunca acima do teto.
@@ -1277,22 +1499,365 @@ class ToolSniper extends HeadlessTool {
         // Saldo curto é o motivo mais chato de "o sniper nunca compra": do lado
         // de fora é idêntico a "não achou nada". Então ele é dito em voz alta,
         // uma vez por moeda, em vez de virar um 'continue' calado.
+        // Daqui para baixo o anúncio bateu no alvo: é "o sniper mirou nisto".
+        // Uma vez por anúncio, senão cada varredura repetiria a mesma linha
+        // enquanto ele seguisse retido no Mercado.
+        if (!this.mirados.has(a.id)) {
+          this.mirados.add(a.id);
+          if (this.mirados.size > 600) {
+            // Janela deslizante: o Set não pode crescer para sempre num
+            // processo que fica dias de pé.
+            for (const velho of [...this.mirados].slice(0, 300)) this.mirados.delete(velho);
+          }
+          this.evento('sniper', {
+            fase: 'mirou', ...this.descrever(a, alvo),
+            retido: a.libera > this.agoraServidor(),
+          });
+        }
+        // Saldo curto é o motivo mais chato de "o sniper nunca compra": do lado
+        // de fora é idêntico a "não achou nada". Então ele é dito em voz alta,
+        // uma vez por moeda, em vez de virar um 'continue' calado.
         if (!this.cabe(a)) {
           if (!this.avisouSaldo[a.moeda]) {
             this.avisouSaldo[a.moeda] = true;
+            const livre = this.saldoDe(a.moeda) - this.reservaDe(a.moeda);
             const moeda = a.moeda === 'gemas' ? 'D-Dol' : 'bits';
-            this.log(`achei #${a.id} por ${a.preco} ${moeda}, mas o saldo disponível é ${this.saldoDe(a.moeda) - this.reservaDe(a.moeda)} (saldo ${this.saldoDe(a.moeda)} menos a reserva ${this.reservaDe(a.moeda)}). Não vou comprar.`);
+            this.evento('sniper', {
+              fase: 'barrado', motivo: 'reserva', ...this.descrever(a, alvo),
+              saldo: this.saldoDe(a.moeda), reserva: this.reservaDe(a.moeda),
+            });
+            this.log(`achou #${a.id} por ${a.preco} ${moeda}, mas o saldo disponível é ${livre} (saldo ${this.saldoDe(a.moeda)} menos a reserva ${this.reservaDe(a.moeda)}). Não vai comprar.`);
           }
           continue;
         }
         if (a.libera > this.agoraServidor()) {
-          if (!this.config.soLiberados) this.agendar(a, alvo);
+          if (!this.config.soLiberados) this.agendarCompra(a, alvo);
           continue;
         }
         await this.comprar(a, alvo);
         if (this.noLimite()) break;
       }
     }
+    // Uma linha discreta por varredura, para o Painel provar que a ferramenta
+    // está viva. O Painel decide o que fazer com ela (hoje: agrupa e mostra
+    // apenas a última), então aqui ela sai sempre.
+    if (buscas) this.evento('sniper', { fase: 'varreu', buscas, vistos });
+  }
+}
+
+// ---------------------------------------------------------------- seller
+// Anuncia no Mercado os itens da mochila pelo preço MÉDIO que o próprio
+// servidor informa. É o inverso do sniper: lá o preço é um teto nosso, aqui o
+// preço é um dado do jogo, usado como está.
+//
+// Conferido no cliente do jogo (/js/menus2.js, a tela "Novo anúncio"):
+//   - anunciar é enviar('mercado.anunciar', { tipo:'item', item, qtd, moeda, preco })
+//     (L1241-1243). O jogo NÃO responde a este comando;
+//   - a média de um ITEM não vem de 'mercado.precos': o jogo descarta esse
+//     pacote quando o tipo é item (L1258, `st.tipo === 'item'` sai pelo return).
+//     Ela vem DENTRO da resposta de 'mercado.listar', no campo
+//     media[moeda] = { media, qtd } (L1254, e os cards de L439/L777 que a
+//     exibem como "média vendida nos últimos 7 dias", por unidade);
+//   - o pedido que traz essa média é { tipo:'item', especie: <itemId>, moeda }
+//     (L408 e L1114) — 'especie' é o id do item, e não há 'ordem' aqui;
+//   - anúncios do MESMO item somam no que já estava aberto (L1169: "Se você já
+//     tem um anúncio deste item, as unidades somam nele"), então anunciar duas
+//     vezes engrossa o lote em vez de criar um segundo anúncio;
+//   - a comissão de 15% sai do vendedor (L1066), e o anúncio nasce retido por
+//     2 min como qualquer outro.
+//
+// O preço vai CRU, sem arredondar para baixo nem para cima: é o pedido, e é
+// também o que o jogo faz no botão "usar" do card de média (L1221).
+const SELLER_CONFIRMA_MS = 30000;
+
+// Os itens que o Mercado negocia, na mesma regra do cliente do jogo
+// (/js/menus2.js L264, a função NEGOCIAVEL). A tela de ajustes já só oferece
+// esta lista, mas um id avulso digitado à mão chegaria aqui: anunciar um item
+// que o Mercado não aceita é um comando recusado a cada volta, para sempre.
+const SELLER_PREFIXOS = ['chip-', 'fragmento-', 'zmove-', 'data-'];
+const SELLER_AVULSOS = new Set([
+  'token-boss', 'peca-aoe', 'disco-aoe', 'mystic-ticket', 'safari-ticket', 'ovo-shiny', 'evoluter',
+]);
+const sellerNegociavel = (id) => SELLER_PREFIXOS.some((p) => String(id).startsWith(p)) || SELLER_AVULSOS.has(id);
+
+class ToolSeller extends HeadlessTool {
+  constructor(client, config) {
+    super(client, 'seller', config);
+    // As listagens à espera de resposta, em ordem de pedido. Mesma fila FIFO do
+    // sniper, e pelo mesmo motivo: 'mercado.mudou' pode disparar um step() em
+    // paralelo ao periódico, e um slot único deixaria a primeira promise sem
+    // resolver nunca — um await eterno no meio do laço.
+    this.listaPend = [];
+    // O que foi anunciado e ainda não deu sinal de vida: item -> o que se tentou.
+    // A prova de que o anúncio saiu é o inventário DIMINUIR (o item sai da
+    // mochila e vai para o Mercado), porque o jogo não responde ao comando.
+    this.esperando = new Map();
+    this.timers = new Map();
+    this.anuncios = [];        // instantes dos anúncios, para o limite por hora
+    this.avisouSemMedia = {};  // o aviso de "sem média" sai uma vez por item
+    this.aoMercado = (m) => {
+      const r = this.listaPend.shift();
+      if (r) r(m);
+    };
+    this.ouvirMercado();
+  }
+
+  /** Liga o ouvinte do mercado uma única vez, mesmo se chamado de novo. */
+  ouvirMercado() {
+    this.client.removeListener('mercado', this.aoMercado);
+    this.client.on('mercado', this.aoMercado);
+  }
+
+  start() {
+    if (this.running) return;
+    this.ouvirMercado();
+    super.start();
+  }
+
+  stop() {
+    this.client.removeListener('mercado', this.aoMercado);
+    super.stop();
+    for (const t of this.timers.values()) clearTimeout(t);
+    this.timers.clear();
+    this.esperando.clear();
+    // Ninguém mais vai receber estas respostas: resolver com null faz os
+    // 'await listar()' em curso desistirem em vez de ficarem presos num laço
+    // que já foi parado.
+    for (const r of this.listaPend.splice(0)) r(null);
+  }
+
+  // Vender é mais lento que comprar de propósito: não há corrida a ganhar. O
+  // mínimo é alto porque cada volta é um comando de anúncio por item.
+  getInterval() { return Math.max(60000, (this.config.intervaloSec || 300) * 1000); }
+
+  /**
+   * Os itens que valem anunciar — um por item configurado.
+   *
+   * É um getter, e não um valor guardado no constructor, porque startTool()
+   * troca this.config na ferramenta que já roda: uma cópia feita no constructor
+   * ficaria velha, e o seller seguiria vendendo o que foi removido da lista.
+   *
+   * Item sem id não anuncia nada, e id que o Mercado não negocia é descartado
+   * aqui: o comando seria recusado a cada volta, para sempre.
+   */
+  get itens() {
+    const out = [];
+    for (const it of this.config.itens || []) {
+      if (!it || !it.item) continue;
+      if (!sellerNegociavel(it.item)) continue;
+      out.push({
+        item: it.item,
+        moeda: it.moeda === 'gemas' ? 'gemas' : 'bits',
+        precoManual: Math.max(0, +it.precoManual || 0),
+        precoMinimo: Math.max(0, +it.precoMinimo || 0),
+      });
+    }
+    return out;
+  }
+
+  /** Quantas unidades deste item a conta tem na mochila. */
+  temNaMochila(item) {
+    const E = this.estado;
+    if (!E) return 0;
+    return Math.max(0, (E.itens || {})[item] || 0);
+  }
+
+  /** Pede uma listagem e espera o pacote 'mercado'. null se não vier. */
+  listar(filtro) {
+    return new Promise((resolve) => {
+      if (!filtro) { resolve(null); return; }
+      this.listaPend.push(resolve);
+      if (!this.send('mercado.listar', filtro)) {
+        const i = this.listaPend.indexOf(resolve);
+        if (i >= 0) this.listaPend.splice(i, 1);
+        resolve(null);
+        return;
+      }
+      const t = setTimeout(() => {
+        const i = this.listaPend.indexOf(resolve);
+        if (i >= 0) { this.listaPend.splice(i, 1); resolve(null); }
+      }, 8000);
+      if (t.unref) t.unref();
+    });
+  }
+
+  /**
+   * A média de 7 dias deste item nesta moeda, e o menor anúncio aberto.
+   *
+   * O pedido é o mesmo que o jogo monta na tela de anúncio (menus2.js L1114):
+   * { tipo:'item', especie:<id>, moeda }. Sem 'ordem' — para item o jogo não
+   * manda esse campo, e a lista já vem do mais barato para o mais caro.
+   */
+  async referencia(it) {
+    const m = await this.listar({ tipo: 'item', especie: it.item, moeda: it.moeda });
+    if (!m) return null;
+    const md = (m.media || {})[it.moeda];
+    const lista = (m.lista || []).filter((a) => a.item === it.item && a.moeda === it.moeda);
+    const outros = lista.filter((a) => !a.meu);
+    const meu = lista.find((a) => a.meu) || null;
+    return {
+      // Arredondado como o jogo arredonda o card e o botão "usar" (L1254).
+      media: md && md.media > 0 ? Math.round(md.media) : 0,
+      mediaQtd: (md && md.qtd) || 0,
+      menor: (outros[0] && outros[0].preco) || 0,
+      // O nosso anúncio já aberto deste item, se houver. Não impede anunciar
+      // (o jogo soma as unidades no lote existente), mas o Painel precisa
+      // dizer que foi soma, e não anúncio novo.
+      jaAberto: meu ? { id: meu.id, qtd: meu.qtd || 0, preco: meu.preco || 0 } : null,
+    };
+  }
+
+  noLimite() {
+    const max = Math.max(0, this.config.maxPorHora || 0);
+    if (!max) return false;
+    const corte = Date.now() - 3600000;
+    this.anuncios = this.anuncios.filter((t) => t > corte);
+    return this.anuncios.length >= max;
+  }
+
+  /** O que o Painel precisa saber sobre um anúncio nosso, em campos. */
+  descrever(it, qtd, preco, ref) {
+    return {
+      item: it.item,
+      qtd,
+      preco,
+      moeda: it.moeda,
+      total: preco * qtd,
+      // A comissão que o jogo desconta do vendedor: 15% para item em qualquer
+      // moeda (menus2.js L1066, comissaoVenda). Mostrada para que o "você
+      // recebe" do Painel seja o mesmo número da tela do jogo.
+      taxa: Math.round(preco * qtd * 0.15),
+      media: (ref && ref.media) || 0,
+      mediaQtd: (ref && ref.mediaQtd) || 0,
+      menor: (ref && ref.menor) || 0,
+      manual: it.precoManual > 0,
+      somou: !!(ref && ref.jaAberto),
+    };
+  }
+
+  /**
+   * Anuncia. Só é chamada quando já há preço e quantidade.
+   *
+   * Marca a espera ANTES de enviar: se o envio falhar, melhor perder uma volta
+   * do que mandar o mesmo anúncio duas vezes na volta seguinte.
+   */
+  async anunciar(it, qtd, preco, ref) {
+    const d = this.descrever(it, qtd, preco, ref);
+    const antes = this.temNaMochila(it.item);
+    this.esperando.set(it.item, { ...d, antes, em: Date.now() });
+    this.evento('seller', { fase: 'anunciando', ...d });
+    if (!this.send('mercado.anunciar', {
+      tipo: 'item', item: it.item, qtd, moeda: it.moeda, preco,
+    })) {
+      this.esperando.delete(it.item);
+      this.evento('seller', { fase: 'barrado', motivo: 'offline', ...d });
+      return;
+    }
+    this.anuncios.push(Date.now());
+    this.conferirDepois(it.item);
+    const moeda = it.moeda === 'gemas' ? 'D-Dol' : 'bits';
+    this.log(`anunciou ${qtd}× ${it.item} por ${preco} ${moeda} cada (${d.total} no total)${d.manual ? ' [preço fixo]' : ` [média de ${d.mediaQtd} venda(s)]`}`);
+  }
+
+  /**
+   * Fecha o caso de um anúncio que o inventário não confirmou.
+   *
+   * O jogo não responde a 'mercado.anunciar'. A prova é o item SAIR da mochila,
+   * o que chega no próximo pacote 'estado'. Sem isso em SELLER_CONFIRMA_MS, o
+   * comando foi recusado — saldo para a pensão, item travado, limite do
+   * servidor — e dizer isso em voz alta é o ponto: "anunciou" e "tentou e o
+   * jogo recusou" parecem iguais de fora.
+   */
+  conferirDepois(item) {
+    const t = setTimeout(() => {
+      this.timers.delete(item);
+      const p = this.esperando.get(item);
+      if (!p) return; // já confirmado pelo inventário
+      const agora = this.temNaMochila(item);
+      this.esperando.delete(item);
+      if (agora < p.antes) {
+        // Saiu da mochila: o anúncio foi aceito, só não tínhamos olhado ainda.
+        this.evento('seller', { fase: 'anunciou', ...p, saiu: p.antes - agora });
+        return;
+      }
+      this.evento('seller', { fase: 'recusado', ...p });
+      this.log(`o anúncio de ${item} não saiu: o item continua na mochila (${agora} unidade(s)). O jogo recusou.`);
+    }, SELLER_CONFIRMA_MS);
+    if (t.unref) t.unref();
+    this.timers.set(item, t);
+  }
+
+  /** O inventário confirmou: o item saiu da mochila. */
+  confirmarPorInventario() {
+    if (!this.esperando.size) return;
+    for (const [item, p] of [...this.esperando]) {
+      const agora = this.temNaMochila(item);
+      if (agora >= p.antes) continue;
+      this.esperando.delete(item);
+      const t = this.timers.get(item);
+      if (t) { clearTimeout(t); this.timers.delete(item); }
+      this.evento('seller', { fase: 'anunciou', ...p, saiu: p.antes - agora });
+      this.log(`anúncio de ${item} confirmado: ${p.antes - agora} unidade(s) saíram da mochila`);
+    }
+  }
+
+  async step() {
+    if (this.desligada || !this.estado) return;
+    // O inventário pode ter chegado desde a última volta: fecha o que estava
+    // esperando antes de decidir qualquer coisa nova.
+    this.confirmarPorInventario();
+
+    let olhados = 0;
+    let anunciados = 0;
+    for (const it of this.itens) {
+      if (this.desligada || this.noLimite()) break;
+      // Ainda esperando a confirmação do anúncio anterior deste item. Anunciar
+      // de novo agora somaria unidades que talvez já estejam à venda: o
+      // inventário é a única prova, e ele ainda não chegou.
+      if (this.esperando.has(it.item)) continue;
+
+      const qtd = this.temNaMochila(it.item);
+      if (qtd <= 0) continue;
+      olhados++;
+
+      const ref = await this.referencia(it);
+      if (!ref) continue;
+
+      const preco = it.precoManual > 0 ? it.precoManual : ref.media;
+      if (!(preco > 0)) {
+        // Sem venda nenhuma em 7 dias o servidor não tem média, e não há preço
+        // a usar. Chutar um valor aqui seria inventar o número que a ferramenta
+        // existe para NÃO inventar.
+        if (!this.avisouSemMedia[it.item]) {
+          this.avisouSemMedia[it.item] = true;
+          this.evento('seller', {
+            fase: 'barrado', motivo: 'sem-media',
+            ...this.descrever(it, qtd, 0, ref),
+          });
+          this.log(`${it.item}: o servidor não tem média em ${it.moeda === 'gemas' ? 'D-Dol' : 'bits'} (nenhuma venda em 7 dias). Não vou anunciar sem preço.`);
+        }
+        continue;
+      }
+      this.avisouSemMedia[it.item] = false;
+
+      // A trava de fundo: um piso opcional, para o caso de o mercado derreter
+      // entre duas voltas. Desligada por padrão (0).
+      if (it.precoMinimo > 0 && preco < it.precoMinimo) {
+        this.evento('seller', {
+          fase: 'barrado', motivo: 'piso',
+          ...this.descrever(it, qtd, preco, ref), piso: it.precoMinimo,
+        });
+        continue;
+      }
+
+      await this.respirar();
+      if (!this.running || this.desligada) break;
+      await this.anunciar(it, qtd, preco, ref);
+      anunciados++;
+    }
+    // Uma linha discreta por volta, para o Painel provar que a ferramenta está
+    // viva — mesmo quando a mochila está vazia e não há nada a fazer.
+    this.evento('seller', { fase: 'varreu', olhados, anunciados });
   }
 }
 
@@ -1306,8 +1871,9 @@ function createHeadlessTool(client, toolId, config) {
     case 'lab': return new ToolLab(client, config);
     case 'passe': return new ToolPasse(client, config);
     case 'sniper': return new ToolSniper(client, config);
+    case 'seller': return new ToolSeller(client, config);
     default: return null;
   }
 }
 
-module.exports = { HeadlessTool, ToolScan, ToolRefill, ToolHunt, ToolEggs, ToolLab, ToolPasse, ToolSniper, createHeadlessTool };
+module.exports = { HeadlessTool, ToolScan, ToolRefill, ToolHunt, ToolEggs, ToolLab, ToolPasse, ToolSniper, ToolSeller, createHeadlessTool };

@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('deck', {
   keepPainting: (wcId, on) => ipcRenderer.invoke('wc:keep-painting', wcId, !!on),
   clearPartition: (p) => ipcRenderer.invoke('partition:clear', p),
   applyProxy: (partition, proxy) => ipcRenderer.invoke('proxy:apply', partition, proxy),
+  armProxy: (partition) => ipcRenderer.invoke('proxy:arm', partition),
   testProxy: (proxy) => ipcRenderer.invoke('proxy:test', proxy),
   setBadge: (n) => ipcRenderer.invoke('badge', n),
   flash: () => ipcRenderer.invoke('flash'),
@@ -57,10 +58,22 @@ contextBridge.exposeInMainWorld('deck', {
   headlessStatus: (accId) => ipcRenderer.invoke('headless:status', accId),
   headlessToolStart: (accId, toolId, config) => ipcRenderer.invoke('headless:tool:start', accId, toolId, config),
   headlessToolStop: (accId, toolId) => ipcRenderer.invoke('headless:tool:stop', accId, toolId),
+  // Só leitura, para a tela do Auto Seller mostrar "você tem N na mochila" e a
+  // média de 7 dias antes de a pessoa decidir o preço.
+  headlessMochila: (accId) => ipcRenderer.invoke('headless:mochila', accId),
+  headlessMercadoMedia: (accId, item, moeda) => ipcRenderer.invoke('headless:mercado:media', accId, item, moeda),
   onHeadlessUpdate: on('headless:account:update'),
   onHeadlessStatus: on('headless:account:status'),
   onHeadlessError: on('headless:account:error'),
   onHeadlessPainel: on('headless:account:painel'),
   onHeadlessAtividade: on('headless:account:atividade'),
   onHeadlessHistorico: on('headless:account:historico'),
+
+  // Cadastro em lote (Fase B/C)
+  cadastroStart: (config) => ipcRenderer.invoke('cadastro:start', config),
+  cadastroStatus: (id) => ipcRenderer.invoke('cadastro:status', id),
+  cadastroStop: (id) => ipcRenderer.invoke('cadastro:stop', id),
+  cadastroPresets: () => ipcRenderer.invoke('cadastro:presets'),
+  cadastroValidarSenha: (senha) => ipcRenderer.invoke('cadastro:validar-senha', senha),
+  cadastroValidarCustom: (sufixos) => ipcRenderer.invoke('cadastro:validar-custom', sufixos),
 });
