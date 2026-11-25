@@ -1568,6 +1568,44 @@ const TOOLS = [
 
 const toolById = (id) => TOOLS.find((t) => t.id === id);
 
+// O que uma conta nova já nasce com ligado.
+//
+// É gravado explicitamente (enabled: true + cfg) no momento em que a conta é
+// criada, então mexer aqui depois não muda contas que já existem — e desligar
+// algo numa conta continua valendo, porque o registro dela já existe.
+//
+// Só o que falta em cfg cai no defaults() da ferramenta na hora da leitura.
+const PADRAO_CONTA_NOVA = () => ({
+  refill: {
+    regras: [
+      { item: 'scanner-basico', min: 50, max: 300 },
+      { item: 'pocao-small', min: 10, max: 50 },
+    ],
+  },
+  scan: {
+    scanners: REFILL_ITENS.filter((i) => i.id.startsWith('scanner-')).map((i) => i.id),
+  },
+  passe: {},
+  // Labirinto entra no lobby mesmo em conta sem guild: lá a ferramenta
+  // simplesmente não acha lobby e dorme, e no dia em que a conta entrar num clã
+  // ela já começa a ir sem precisar de ajuste.
+  lab: {},
+  eggs: { tiers: ['D', 'C', 'B', 'A'], intervaloMin: 2 },
+  hunt: {},
+});
+
+// Grava o padrão de conta nova em state.tools. Recebe o próprio state.tools
+// para não depender de escopo do app.
+function aplicarPadraoContaNova(tools, accId) {
+  if (!tools || typeof tools !== 'object' || !accId) return;
+  const padrao = PADRAO_CONTA_NOVA();
+  for (const [toolId, cfg] of Object.entries(padrao)) {
+    if (!tools[toolId]) tools[toolId] = {};
+    if (tools[toolId][accId]) continue; // já tem escolha para esta conta
+    tools[toolId][accId] = { enabled: true, cfg: { ...toolById(toolId)?.defaults(), ...cfg } };
+  }
+}
+
 // Esta ferramenta está ligada nesta conta?
 //
 // Sem registro, a resposta é o padrão da ferramenta: quase todas vêm desligadas,
@@ -1584,4 +1622,4 @@ const toolLigada = (conf, tool) => (conf && typeof conf.enabled === 'boolean' ? 
 // passo. Religar depois é só aplicar a config de novo, que limpa o __off.
 const offCode = (id) => `(() => { window.__ddGame && window.__ddGame.desligar(${JSON.stringify(id)}); })();`;
 
-window.DDTools = { TOOLS, toolById, toolLigada, REFILL_ITENS, MERCADO_ITENS, acharItem, alvoValido, buscasDoAlvo, vendavel, itemVendaValido, TIERS, offCode };
+window.DDTools = { TOOLS, toolById, toolLigada, aplicarPadraoContaNova, REFILL_ITENS, MERCADO_ITENS, acharItem, alvoValido, buscasDoAlvo, vendavel, itemVendaValido, TIERS, offCode };

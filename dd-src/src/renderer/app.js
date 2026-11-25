@@ -2906,6 +2906,7 @@ function quickAddDigi() {
     enabled: true, createdAt: Date.now(), stats: { onlineMs: 0, drops: 0, recoveries: 0 },
   };
   state.accounts.push(acc);
+  padraoFerramentas(acc.id);
   log('info', acc, 'conta adicionada');
   state.ui.current = acc.id;
   if (!state.ui.mix) state.ui.groupFilter = acc.groupId;
@@ -3090,6 +3091,7 @@ function openAccountForm(acc, opts = {}) {
     if (isNew) {
       const acc2 = { ...DEFAULT_ACCOUNT, ...data, id: uid(), enabled: true, createdAt: Date.now(), stats: { onlineMs: 0, drops: 0, recoveries: 0 } };
       state.accounts.push(acc2);
+      padraoFerramentas(acc2.id);
       log('info', acc2, 'conta adicionada');
       checkLimit(acc2.groupId);
       state.ui.current = acc2.id;
@@ -3438,6 +3440,41 @@ function passwordInput(placeholder, autocomplete = 'new-password') {
 }
 
 // =============================================================== ferramentas
+
+// Liga nas contas novas o conjunto de ferramentas que a pessoa quase sempre
+// quer. Chamado em todo lugar que cria conta, antes do save().
+function padraoFerramentas(accId) {
+  if (!state.tools || typeof state.tools !== 'object') state.tools = {};
+  window.DDTools?.aplicarPadraoContaNova?.(state.tools, accId);
+}
+
+// Copia a configuração de UMA ferramenta de uma conta para outras. Devolve
+// quantas contas foram escritas. Não salva nem aplica: quem chama decide.
+function copiarConfigFerramenta(toolId, deId, paraIds) {
+  const tool = window.DDTools?.toolById(toolId);
+  if (!tool) return 0;
+  if (!state.tools[toolId]) state.tools[toolId] = {};
+  const porConta = state.tools[toolId];
+  const origem = porConta[deId];
+  const enabled = window.DDTools.toolLigada(origem, tool);
+  const cfg = { ...tool.defaults(), ...(origem?.cfg || {}) };
+  let n = 0;
+  for (const id of paraIds) {
+    if (id === deId) continue;
+    porConta[id] = { enabled, cfg: JSON.parse(JSON.stringify(cfg)) };
+    n++;
+  }
+  return n;
+}
+
+// Copia TODAS as ferramentas de uma conta para outras (usado na duplicação).
+function copiarFerramentas(deId, paraIds) {
+  for (const toolId of Object.keys(state.tools || {})) {
+    if (!state.tools[toolId]?.[deId]) continue;
+    copiarConfigFerramenta(toolId, deId, paraIds);
+  }
+}
+
 // Lista as ferramentas prontas; cada uma é ligada e configurada por conta.
 function openTools() {
   if (!state.tools || typeof state.tools !== 'object') state.tools = {};
@@ -3520,11 +3557,11 @@ async function importarContasDoLote(contas) {
     state.accounts.push(acc);
     novas.push(acc);
 
-    // Conta nova nasce na cidade, sem hunt. A "Auto Melhor Hunt" marcada aqui
-    // é ligada pelo applyToolsHeadless quando o socket conecta, e a primeira
-    // passada dela já leva a conta para a melhor área.
-    if (!state.tools.hunt) state.tools.hunt = {};
-    state.tools.hunt[acc.id] = { enabled: true, cfg: {} };
+    // Conta nova nasce na cidade, sem hunt. As ferramentas padrão marcadas aqui
+    // (entre elas a "Auto Melhor Hunt") são ligadas pelo applyToolsHeadless
+    // quando o socket conecta, e a primeira passada já leva a conta para a
+    // melhor área.
+    padraoFerramentas(acc.id);
 
     log('info', acc, 'conta criada pelo cadastro em lote');
   }
@@ -3558,10 +3595,16 @@ function openCadastro() {
 }
 
 // Uma ferramenta, conta a conta: liga/desliga e abre os ajustes daquela conta.
-function openToolAccounts(tool) {
+// scrollTop existe porque "Ajustar" e "Replicar" trocam o modal inteiro: ao
+// voltar, a lista é remontada do zero e precisa ser recolocada onde estava.
+function openToolAccounts(tool, scrollTop = 0) {
   if (!state.tools[tool.id]) state.tools[tool.id] = {};
   const porConta = state.tools[tool.id];
   const list = h('div', {});
+
+  // Posição atual da rolagem desta lista, para quem vai abrir um submodal.
+  const scrollAtual = () => list.closest('.modal-body')?.scrollTop || 0;
+  const voltar = () => { const y = scrollAtual(); return () => openToolAccounts(tool, y); };
 
   const draw = () => {
     list.replaceChildren();
@@ -3584,14 +3627,16 @@ function openToolAccounts(tool) {
           onchange: (e) => {
             conf.enabled = e.target.checked;
             save();
-            draw();
+            // Nada mais na lista depende deste valor, então não há redesenho:
+            // é o que mantém o scroll e o foco onde a pessoa deixou.
             applyToolLive(tool.id, acc.id); // liga/desliga na hora, sem F5
           },
         }),
         h('div', { style: { flex: 1, minWidth: 0 } },
           h('div', {}, acc.name),
           h('span', { class: 'about' }, tool.summary(cfg))),
-        h('button', { class: 'btn sm', type: 'button', onclick: () => openToolConfig(tool, acc, () => openToolAccounts(tool)) }, 'Ajustar')));
+        h('button', { class: 'btn sm', type: 'button', title: `Copiar os ajustes de ${acc.name} para outras contas`, onclick: () => openToolCopy(tool, acc, voltar()) }, 'Replicar'),
+        h('button', { class: 'btn sm', type: 'button', onclick: () => openToolConfig(tool, acc, voltar()) }, 'Ajustar')));
     }
   };
 
@@ -3601,6 +3646,64 @@ function openToolAccounts(tool) {
     wide: true,
     body: h('div', {}, h('p', { class: 'about' }, tool.desc), list),
     foot: [h('button', { class: 'btn', onclick: () => { closeModal(); openTools(); } }, 'Voltar')],
+  });
+  if (scrollTop) {
+    // Depois do modal entrar no DOM; o modal() já usa setTimeout para o foco.
+    requestAnimationFrame(() => { const box = list.closest('.modal-body'); if (box) box.scrollTop = scrollTop; });
+  }
+}
+
+// Copia os ajustes desta ferramenta nesta conta para as contas escolhidas.
+function openToolCopy(tool, origem, onDone) {
+  const marcadas = new Set();
+  const outras = state.accounts.filter((a) => a.id !== origem.id);
+  const list = h('div', { style: { maxHeight: '260px', overflowY: 'auto', marginTop: '6px' } });
+
+  const todos = h('input', { type: 'checkbox' });
+  todos.onchange = () => {
+    for (const a of outras) (todos.checked ? marcadas.add(a.id) : marcadas.delete(a.id));
+    for (const cb of list.querySelectorAll('input[type=checkbox]')) cb.checked = todos.checked;
+  };
+
+  if (!outras.length) {
+    list.append(h('p', { class: 'about' }, 'Não há outra conta para receber estes ajustes.'));
+  } else {
+    for (const a of outras) {
+      list.append(h('label', { class: 'check' },
+        h('input', {
+          type: 'checkbox',
+          onchange: (e) => (e.target.checked ? marcadas.add(a.id) : marcadas.delete(a.id)),
+        }),
+        h('span', {}, a.name)));
+    }
+  }
+
+  const cfgOrigem = { ...tool.defaults(), ...(state.tools[tool.id]?.[origem.id]?.cfg || {}) };
+  const ligada = window.DDTools.toolLigada(state.tools[tool.id]?.[origem.id], tool);
+
+  modal({
+    title: `Replicar · ${tool.name}`,
+    wide: true,
+    body: h('div', {},
+      h('p', { class: 'about' }, `Copia os ajustes de "${origem.name}" (${tool.summary(cfgOrigem)}) e o estado ${ligada ? 'ligado' : 'desligado'} para as contas marcadas, substituindo o que elas tiverem hoje.`),
+      field('Copiar para quais contas?', list),
+      outras.length ? checkRow(todos, 'Marcar todas') : null),
+    foot: [
+      h('button', { class: 'btn', onclick: () => { closeModal(); onDone(); } }, 'Cancelar'),
+      h('button', {
+        class: 'btn primary',
+        onclick: async () => {
+          const alvos = [...marcadas];
+          if (!alvos.length) { toast('Marque pelo menos uma conta.', 'warn', 3000); return; }
+          const n = copiarConfigFerramenta(tool.id, origem.id, alvos);
+          save();
+          closeModal();
+          onDone();
+          for (const id of alvos) await applyToolLive(tool.id, id);
+          toast(`Ajustes de "${tool.name}" copiados para ${n} conta(s).`, 'ok', 4000);
+        },
+      }, 'Copiar'),
+    ],
   });
 }
 
@@ -4959,6 +5062,10 @@ function duplicateAccount(id) {
   const n = state.accounts.filter((a) => a.name.replace(/\s\d+$/, '') === base).length + 1;
   const copy = { ...JSON.parse(JSON.stringify(acc)), id: uid(), name: `${base} ${n}`, enabled: true, createdAt: Date.now(), stats: { onlineMs: 0, drops: 0, recoveries: 0 } };
   state.accounts.splice(state.accounts.indexOf(acc) + 1, 0, copy);
+  // A cópia herda as ferramentas da conta de origem; o que a origem nunca
+  // configurou cai no padrão de conta nova.
+  copiarFerramentas(acc.id, [copy.id]);
+  padraoFerramentas(copy.id);
   log('info', copy, 'conta criada (duplicada)');
   checkLimit(copy.groupId);
   save();
