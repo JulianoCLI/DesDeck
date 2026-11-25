@@ -29,7 +29,14 @@ const fs = require('fs');
 const DATA_DIR = require('./perfil-real').usar();
 const SAIDA = path.join(__dirname, 'sniper-fila.txt');
 const out = [];
-const log = (...a) => { const t = a.join(' '); out.push(t); console.log(t); try { fs.writeFileSync(SAIDA, out.join('\n') + '\n'); } catch {} };
+// Esta sonda fica 8 minutos no ar. Se quem a chamou fechar a saida antes disso,
+// o console.log seguinte escreve num cano sem a outra ponta e estoura EPIPE —
+// e como ninguem trata, o Electron levanta o dialogo de "erro no processo
+// principal" minutos depois, sem relacao com o que a sonda media. O arquivo
+// continua sendo a saida de verdade.
+process.stdout.on('error', () => {});
+process.stderr.on('error', () => {});
+const log = (...a) => { const t = a.join(' '); out.push(t); try { console.log(t); } catch {} try { fs.writeFileSync(SAIDA, out.join('\n') + '\n'); } catch {} };
 
 const { SESSION_COOKIE } = require('./src/headless/cookies');
 const COMPRAR = process.argv.includes('--comprar');
