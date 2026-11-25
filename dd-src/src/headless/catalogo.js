@@ -1,5 +1,5 @@
 'use strict';
-const { net } = require('electron');
+const { buscarJson } = require('./rede');
 
 // Os catálogos públicos do jogo (/shared/*.json). As ferramentas no webview
 // buscam esses arquivos com fetch; no headless não há página, então a busca é
@@ -13,26 +13,10 @@ const BASE = 'https://digiidle.com/shared/';
 const TTL_MS = 60 * 60 * 1000; // 1 h: estes arquivos quase não mudam
 const cache = new Map(); // nome -> { em, dados }
 
-function baixar(url) {
-  return new Promise((resolve, reject) => {
-    const req = net.request(url);
-    let body = '';
-    req.on('response', (res) => {
-      if (res.statusCode !== 200) {
-        res.resume();
-        reject(new Error(`HTTP ${res.statusCode}`));
-        return;
-      }
-      res.on('data', (c) => { body += c.toString('utf8'); });
-      res.on('end', () => {
-        try { resolve(JSON.parse(body)); } catch (err) { reject(new Error('JSON inválido: ' + err.message)); }
-      });
-      res.on('error', reject);
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
+// Antes era net.request(url) com uma string, que usa a sessão PADRÃO - sem
+// proxy nenhum. Isso vazava o IP real para digiidle.com mesmo com a conta
+// proxiada. Agora o pedido sai pela sessão da conta (rede.js).
+const baixar = (url) => buscarJson(url);
 
 /**
  * Carrega um catálogo público, com cache.

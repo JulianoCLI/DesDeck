@@ -174,6 +174,11 @@ class HeadlessManager extends EventEmitter {
       this.clients.delete(accountIndex);
     }
     this.painelEm.delete(accountIndex);
+    // Última conta a sair: os catálogos voltam para a sessão pública, em vez de
+    // seguirem presos à partição de uma conta que já não está rodando.
+    if (!this.clients.size) {
+      try { require('./rede').esquecerParticao(); } catch { /* opcional */ }
+    }
   }
 
   /**

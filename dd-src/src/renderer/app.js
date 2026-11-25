@@ -827,6 +827,10 @@ function createRuntime(acc) {
     const proxy = group?.proxy || null;
     if (proxy) {
       try {
+        // Trava a partição ANTES de tentar aplicar. Se o applyProxy falhar ou
+        // a conta navegar por outro caminho, nada sai: a trava só abre quando
+        // o setProxy confirma.
+        await deck.armProxy(partitionOf(id));
         const ok = await deck.applyProxy(partitionOf(id), proxy);
         if (!ok) throw new Error('setProxy recusou');
       } catch (err) {
@@ -1156,10 +1160,18 @@ async function toggleHeadlessMode(accId, enable) {
 
       const group = groupOf(acc);
       if (group?.proxy) {
+        // applyProxy devolve false em vez de lançar, então o catch sozinho não
+        // pegava falha de setProxy: a página carregava pelo IP real.
+        let ok = false;
         try {
-          await deck.applyProxy(`persist:acc-${accId}`, group.proxy);
+          await deck.armProxy(`persist:acc-${accId}`);
+          ok = await deck.applyProxy(`persist:acc-${accId}`, group.proxy);
         } catch (err) {
-          raiseAlert(acc, 'Proxy', 'Erro ao aplicar');
+          console.error('[proxy] falhou ao aplicar:', err);
+        }
+        if (!ok) {
+          raiseAlert(acc, 'Proxy', 'Não consegui aplicar o proxy desta tela.');
+          log('erro', acc, 'Saída do headless cancelada: proxy não aplicado');
           return false;
         }
       }
@@ -3080,9 +3092,28 @@ function openGroupForm(g) {
         const accsInGroup = state.accounts.filter((a) => a.groupId === g.id);
         for (const acc of accsInGroup) {
           const r = rt.get(acc.id);
-          if (r && r.wv) {
-            const partition = `persist:acc-${acc.id}`;
-            await deck.applyProxy(partition, proxy);
+          if (!r || !r.wv) continue; // conta parada: pega o proxy novo ao ligar
+          const partition = `persist:acc-${acc.id}`;
+          if (proxy) {
+            // O retorno era jogado fora e o reload() acontecia de qualquer
+            // jeito - inclusive quando o proxy não subia.
+            let ok = false;
+            try {
+              await deck.armProxy(partition);
+              ok = await deck.applyProxy(partition, proxy);
+            } catch (err) {
+              console.error('[proxy] falhou ao aplicar:', err);
+            }
+            if (!ok) {
+              raiseAlert(acc, 'Proxy', 'Não consegui aplicar o proxy desta tela.');
+              drop(acc.id, `proxy não aplicado (${n})`);
+              continue;
+            }
+            r.wv.reload();
+          } else {
+            // Tirar o proxy de uma tela é passar as contas dela para conexão
+            // direta: isso é uma escolha, e precisa ser consciente.
+            await deck.applyProxy(partition, null);
             r.wv.reload();
           }
         }
@@ -3094,11 +3125,26 @@ function openGroupForm(g) {
   };
   
   const remove = async () => {
-    const count = state.accounts.filter((a) => a.groupId === g.id).length;
-    const ok = await confirmBox('Excluir tela', count ? `As ${count} conta(s) desta tela vão para "Sem grupo". Nenhuma conta é apagada.` : 'A tela está vazia.', 'Excluir tela', true);
+    const naTela = state.accounts.filter((a) => a.groupId === g.id);
+    const count = naTela.length;
+    // "Sem grupo" não tem proxy: apagar uma tela proxiada passava as contas
+    // dela para conexão direta sem dizer nada. Quem confirma precisa saber.
+    const aviso = count && g.proxy
+      ? `As ${count} conta(s) desta tela vão para "Sem grupo", que NÃO tem proxy. Elas serão desligadas: religue só depois de pôr o proxy numa tela nova.`
+      : count ? `As ${count} conta(s) desta tela vão para "Sem grupo". Nenhuma conta é apagada.` : 'A tela está vazia.';
+    const ok = await confirmBox('Excluir tela', aviso, 'Excluir tela', true);
     if (!ok) return;
+    // Derruba antes de soltar o grupo: enquanto a conta está ligada, a sessão
+    // dela já está proxiada, e o próximo reload sairia direto.
+    if (g.proxy) {
+      for (const a of naTela) if (rt.has(a.id)) drop(a.id, `tela "${g.name}" (com proxy) foi excluída`);
+    }
     state.groups = state.groups.filter((x) => x.id !== g.id);
-    for (const a of state.accounts) if (a.groupId === g.id) a.groupId = null;
+    for (const a of state.accounts) {
+      if (a.groupId !== g.id) continue;
+      a.groupId = null;
+      if (g.proxy) a.enabled = false;
+    }
     save();
     refresh();
   };

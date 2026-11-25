@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('deck', {
   keepPainting: (wcId, on) => ipcRenderer.invoke('wc:keep-painting', wcId, !!on),
   clearPartition: (p) => ipcRenderer.invoke('partition:clear', p),
   applyProxy: (partition, proxy) => ipcRenderer.invoke('proxy:apply', partition, proxy),
+  armProxy: (partition) => ipcRenderer.invoke('proxy:arm', partition),
   testProxy: (proxy) => ipcRenderer.invoke('proxy:test', proxy),
   setBadge: (n) => ipcRenderer.invoke('badge', n),
   flash: () => ipcRenderer.invoke('flash'),

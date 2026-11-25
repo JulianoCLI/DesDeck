@@ -1,7 +1,8 @@
 'use strict';
 const path = require('path');
 const fs = require('fs');
-const { app, net, nativeImage } = require('electron');
+const { app, nativeImage } = require('electron');
+const { buscar } = require('./rede');
 
 // O retrato de cada Digimon, para o card da conta em headless mostrar quem esta
 // lutando contra quem.
@@ -34,20 +35,9 @@ function dir() {
   return cacheDir;
 }
 
-function baixar(url) {
-  return new Promise((resolve, reject) => {
-    const req = net.request(url);
-    const partes = [];
-    req.on('response', (res) => {
-      if (res.statusCode !== 200) { res.resume(); reject(new Error(`HTTP ${res.statusCode}`)); return; }
-      res.on('data', (c) => partes.push(c));
-      res.on('end', () => resolve(Buffer.concat(partes)));
-      res.on('error', reject);
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
+// Pela sessão da conta, nao pela sessao padrao: a folha de sprites vinha do IP
+// real mesmo com a conta atras de proxy (ver rede.js).
+const baixar = (url) => buscar(url);
 
 // A coluna em que o bicho aparece de frente. Vem do proprio jogo (app.js):
 //
