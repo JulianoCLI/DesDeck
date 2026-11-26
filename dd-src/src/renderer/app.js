@@ -160,11 +160,30 @@ let sniperPulso = null;
 // "não está rodando" ficam indistinguíveis.
 let sellerPulso = null;
 
-// Teto do Historico de Ovos guardado no disco. Cada entrada carrega um retrato
-// em data-URL (poucos KB), entao o custo e no arquivo de estado, nao na tela:
-// 2000 ovos ja cobrem semanas de caca de 15 contas, e o filtro por tier torna
-// qualquer numero acima disso irrelevante para quem le.
-const OVOS_MAX = 2000;
+// O retrato de cada especie, por id, para a lista de ovos desenhar.
+//
+// O cache de verdade vive no processo principal (memoria + userData/sprites);
+// este aqui so evita repetir o IPC a cada redesenho da lista.
+const retratosCache = new Map(); // especie -> data-URL | null
+let retratosEmVoo = null;
+
+/**
+ * Garante os retratos das especies pedidas e redesenha quando chegarem.
+ *
+ * Desenha primeiro sem imagem (a inicial do nome) e preenche depois: esperar o
+ * IPC deixaria a lista em branco, e a linha sem foto ja informa.
+ */
+function carregaRetratos(especies, aoChegar) {
+  const faltam = [...new Set(especies.filter((s) => s && !retratosCache.has(s)))];
+  if (!faltam.length || retratosEmVoo) return;
+  retratosEmVoo = deck.retratos(faltam)
+    .then((mapa) => {
+      for (const id of faltam) retratosCache.set(id, (mapa && mapa[id]) || null);
+      if (aoChegar) aoChegar();
+    })
+    .catch(() => { for (const id of faltam) retratosCache.set(id, null); })
+    .finally(() => { retratosEmVoo = null; });
+}
 
 // Quais itens sao raros quem diz e o JOGO: o manager marca cada drop com
 // `raro`, pela mesma lista da aba "Itens Raros" da Mochila (shared/itens.json,
@@ -399,10 +418,11 @@ function defaultState() {
     scripts: [],
     tools: {}, // { [toolId]: { [accountId]: { enabled, cfg } } }
     log: [],
-    // O Historico de Ovos do Painel. Acumula entre sessoes (o jogo so guarda os
-    // ultimos 60 e os esquece no logout) e tem botao de apagar.
-    ovos: [],
-    // Os filtros que o usuario monta no Historico de Ovos ("SSS P1-P5, SS
+    // A lista "Ovos nas contas" NAO tem estado guardado: ela mostra a bolsa que
+    // o servidor manda, e isso so vale enquanto a conta esta ligada (ver
+    // `bolsas` no renderer).
+    //
+    // Os filtros que o usuario monta ("SSS P1-P5, SS
     // P4-P5"). Ficam no estado, e nao em variavel de modulo como o ovoFilter:
     // montar um da trabalho, e perde-lo ao reiniciar seria perder o trabalho.
     ovoFiltros: [],
@@ -411,6 +431,10 @@ function defaultState() {
     muteAll: false,
   };
 }
+// O estado lido tinha um histórico de ovos guardado e ele foi descartado (ver
+// normalize). Força uma gravação no start() para o arquivo encolher na hora.
+let ovosMigrados = false;
+
 function normalize(s) {
   const d = defaultState();
   const out = { ...d, ...s };
@@ -432,7 +456,19 @@ function normalize(s) {
   }));
   out.tools = s.tools && typeof s.tools === 'object' ? s.tools : {};
   out.log = Array.isArray(s.log) ? s.log.slice(-800) : [];
-  out.ovos = Array.isArray(s.ovos) ? s.ovos.slice(-OVOS_MAX) : [];
+  // O histórico de ovos acumulado é descartado na leitura: a lista do Painel
+  // agora mostra a bolsa atual das contas, que não se guarda em disco.
+  //
+  // Era a causa medida do app travar: 2000 capturas com o retrato em data-URL
+  // dentro de cada uma dava 17,23 MB (96% do arquivo) para 18 espécies
+  // distintas, e o estado inteiro era reserializado, recriptografado e regravado
+  // a cada gravação.
+  //
+  // 'ovosMigrados' avisa o start() para gravar logo: sem isso o arquivo só
+  // encolheria na próxima mudança de verdade, e um app parado (nenhuma conta
+  // ligada) seguiria carregando os 24 MB a cada abertura.
+  ovosMigrados = Array.isArray(s.ovos) && s.ovos.length > 0;
+  delete out.ovos;
   // Só os filtros com id, nome e ao menos uma regra: um registro meio gravado
   // viraria um chip que não filtra nada e não dá para apagar.
   out.ovoFiltros = Array.isArray(s.ovoFiltros)
@@ -473,15 +509,33 @@ function today() {
 }
 
 // ---------------------------------------------------------------- persistência
+//
+// Gravar custa caro: o estado inteiro atravessa o IPC, é criptografado e vai ao
+// disco. Por isso há DOIS níveis de "sujo", e a diferença importa.
+//
+//   dirty     -> mudança de verdade (conta criada, ajuste trocado, ovo novo).
+//                Vale gravar logo: perder isso é perder uma decisão da pessoa.
+//   softDirty -> só contadores que andam sozinhos (o "tempo online" soma a cada
+//                segundo). Perder os últimos segundos num fechamento abrupto não
+//                custa nada.
+//
+// Antes só existia 'dirty', e tick() o levantava a cada segundo para cada conta
+// online: o estado estava permanentemente sujo, então o laço de 10 s gravava
+// para sempre, mesmo sem nada ter mudado. Com um arquivo grande, era isso que
+// travava o app de forma periódica.
 let dirty = false;
+let softDirty = false;
 let saveTimer = null;
 function flush() {
   dirty = false;
+  softDirty = false;
   clearTimeout(saveTimer);
   return deck.saveState(state);
 }
 function save() { dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(flush, 350); }
 function markDirty() { dirty = true; }
+/** Contador que anda sozinho: grava na próxima gravação lenta, não agora. */
+function markSoftDirty() { softDirty = true; }
 
 /**
  * Como a conta deve ser chamada no log.
@@ -498,11 +552,44 @@ function nickDe(acc) {
   return nick || acc.name || '';
 }
 
+// Redesenha a lista do log no máximo 1x por frame.
+//
+// log() é chamado em rajada (uma conta que cai gera várias linhas, e 16 contas
+// caem juntas quando a internet oscila), e cada chamada redesenhava a lista
+// inteira. Agrupar no próximo frame faz uma rajada de 20 linhas custar um
+// redesenho em vez de 20.
+// requestAnimationFrame NÃO serve aqui: com a janela minimizada ou escondida o
+// navegador não entrega frame nenhum, e o redesenho ficaria pendurado até a
+// pessoa voltar — justamente quando as contas estão rodando sozinhas. Um
+// setTimeout curto agrupa a rajada do mesmo jeito e sempre dispara.
+const AGRUPA_MS = 50;
+
+let logPendente = false;
+function pedeRenderLog() {
+  if (logPendente || state.ui.view !== 'dash') return;
+  logPendente = true;
+  setTimeout(() => {
+    logPendente = false;
+    if (state.ui.view === 'dash') renderLog();
+  }, AGRUPA_MS);
+}
+
+// O mesmo agrupamento para a lista de ovos.
+let ovosPendente = false;
+function pedeRenderOvos() {
+  if (ovosPendente || state.ui.view !== 'dash') return;
+  ovosPendente = true;
+  setTimeout(() => {
+    ovosPendente = false;
+    if (state.ui.view === 'dash') renderOvos();
+  }, AGRUPA_MS);
+}
+
 function log(type, acc, msg, nome) {
   state.log.push({ t: Date.now(), type, accId: acc ? acc.id : null, name: nome || (acc ? acc.name : ''), msg });
   if (state.log.length > 800) state.log.splice(0, state.log.length - 800);
   markDirty();
-  if (state.ui.view === 'dash') renderLog();
+  pedeRenderLog();
 }
 
 // =============================================================== alertas
@@ -765,12 +852,11 @@ function createRuntime(acc) {
     registraAtividade(id, atividade);
   });
 
-  // O histórico de ovos da conta. O servidor manda os últimos 60 no login e um
-  // a cada captura; aqui eles são somados ao histórico guardado, que é o único
-  // lugar onde o passado além desses 60 continua existindo.
-  const unsubHeadlessHistorico = deck.onHeadlessHistorico(({index, historico}) => {
+  // A bolsa de ovos da conta: o que ela tem AGORA. Chega inteira a cada vez (o
+  // servidor manda a lista toda, não um delta), então substitui a anterior.
+  const unsubHeadlessBolsa = deck.onHeadlessBolsa(({index, ovos}) => {
     if (index !== id) return;
-    guardaOvos(id, historico);
+    guardaBolsa(id, ovos);
   });
 
   // O motivo da falha. Sem isto, o card dizia só "disconnected" e a explicação
@@ -828,7 +914,9 @@ function createRuntime(acc) {
     if (unsubHeadlessError) unsubHeadlessError();
     if (unsubHeadlessPainel) unsubHeadlessPainel();
     if (unsubHeadlessAtividade) unsubHeadlessAtividade();
-    if (unsubHeadlessHistorico) unsubHeadlessHistorico();
+    if (unsubHeadlessBolsa) unsubHeadlessBolsa();
+    // A conta saiu: os ovos dela não são mais "o que está nas contas".
+    esqueceBolsa(id);
     if (isHeadless(id)) deck.headlessStop(id).catch(() => {});
   };
 
@@ -942,6 +1030,7 @@ function desenhaPainel(accId) {
   const r = rt.get(accId);
   if (!r || !r.els.painel) return;
   const el = r.els.painel;
+  invalidaLive(); // o painel é reconstruído inteiro: os nós de antes saem do DOM
 
   // Fora do headless o painel não aparece: a página é a própria informação.
   if (!isHeadless(accId)) { el.replaceChildren(); return; }
@@ -1002,42 +1091,73 @@ function desenhaPainel(accId) {
   ));
 }
 
-// ---- Histórico de Ovos e Atividade (headless)
+// ---- Ovos das contas e Atividade
 //
-// Por que acumular aqui: o servidor só guarda os últimos 60 ovos e os manda uma
-// vez, no login. Quem fecha o app perde o resto. Este histórico é o único lugar
-// onde a captura de ontem continua existindo — por isso vive no estado
-// criptografado, com botão de apagar.
+// A lista mostra os ovos que as contas TÊM agora — os que a venda automática não
+// levou. Nada disso é guardado em disco: o servidor manda a bolsa inteira a cada
+// vez, e ela só vale enquanto a conta está ligada. A versão anterior acumulava
+// cada captura para sempre no estado criptografado, e foi assim que o arquivo
+// chegou a 24 MB (eram 17,23 MB só de retratos repetidos).
+//
+// accId -> { ovos: [...], em: timestamp }
+const bolsas = new Map();
 
-/** A chave de um ovo, para não gravar o mesmo duas vezes. */
-const chaveOvo = (accId, o) => `${accId}|${o.especie}|${o.em}|${o.potencia}|${o.nota}`;
+/** Troca a bolsa de uma conta pela recém-chegada. */
+function guardaBolsa(accId, lista) {
+  if (!Array.isArray(lista)) return;
+  bolsas.set(accId, { ovos: lista, em: Date.now() });
+  // Mesmo agrupamento do log: 16 contas conectando juntas mandam a bolsa quase
+  // ao mesmo tempo, e sem isto a lista seria redesenhada 16 vezes em sequência.
+  pedeRenderOvos();
+}
+
+/** Conta desligada não tem bolsa: a lista não pode mostrar ovos que já foram. */
+function esqueceBolsa(accId) {
+  if (bolsas.delete(accId)) pedeRenderOvos();
+}
+
+// A bolsa das contas em modo WEBVIEW.
+//
+// Em headless o manager avisa sozinho (evento 'bolsa'). No webview não há
+// cliente headless: a lista crua está na ponte injetada na página (G.ovos, que
+// ela guarda a cada pacote 'ovos'), e é lida daqui de tempo em tempo. O nome e a
+// letra vêm do processo principal, que é quem tem os catálogos do jogo.
+const BOLSA_WEBVIEW_MS = 60000;
+let bolsaWebviewOcupado = false;
+
+async function bolsaLoop() {
+  if (bolsaWebviewOcupado || lockedUI || !started) return;
+  bolsaWebviewOcupado = true;
+  try {
+    for (const [id, r] of rt) {
+      // Headless tem o seu próprio caminho; página dormindo ou sem carregar não
+      // responde (e acordá-la só por causa da lista não se justifica).
+      if (isHeadless(id) || !r.wv || !r.ready || r.sleeping || r.status !== 'online') continue;
+      let cruas;
+      try {
+        cruas = await withTimeout(r.wv.executeJavaScript(
+          '(() => { const g = window.__ddGame; return g && Array.isArray(g.ovos) ? g.ovos : null; })()'), 5000);
+      } catch { continue; } // página ocupada: fica para a próxima rodada
+      if (!Array.isArray(cruas)) continue; // a ponte ainda não viu o pacote 'ovos'
+      try { guardaBolsa(id, await deck.ovosBolsa(cruas)); } catch { /* sem catálogo, tenta depois */ }
+    }
+  } finally {
+    bolsaWebviewOcupado = false;
+  }
+}
 
 /**
- * Soma os ovos de uma conta ao histórico guardado.
- *
- * Chamado a cada login (com os 60 do 'welcome') e a cada captura. Os 60 se
- * repetem a cada reconexão: sem a chave, uma conta que cai e volta 10x no dia
- * gravaria os mesmos ovos 10x.
+ * Todos os ovos de todas as contas ligadas, com o nome da conta em cada linha.
+ * Contas que já não existem são ignoradas (e limpas no caminho).
  */
-function guardaOvos(accId, lista) {
-  if (!Array.isArray(lista) || !lista.length) return;
-  const acc = accById(accId);
-  const vistos = new Set(state.ovos.map((o) => o.k));
-  let novos = 0;
-  for (const o of lista) {
-    if (!o) continue;
-    const k = chaveOvo(accId, o);
-    if (vistos.has(k)) continue;
-    vistos.add(k);
-    state.ovos.push({ ...o, k, accId, nomeConta: acc ? acc.name : '' });
-    novos++;
+function todosOsOvos() {
+  const out = [];
+  for (const [accId, b] of bolsas) {
+    const acc = accById(accId);
+    if (!acc) { bolsas.delete(accId); continue; }
+    for (const o of b.ovos) out.push({ ...o, accId, nomeConta: acc.name });
   }
-  if (!novos) return;
-  // Mais novo por último na lista; o corte tira os mais antigos.
-  state.ovos.sort((a, b) => (a.em || 0) - (b.em || 0));
-  if (state.ovos.length > OVOS_MAX) state.ovos.splice(0, state.ovos.length - OVOS_MAX);
-  save();
-  if (state.ui.view === 'dash') renderOvos();
+  return out;
 }
 
 // A venda de ovos e a compra do sniper não são pacotes do jogo: são decisões
@@ -1607,7 +1727,10 @@ function tick() {
     if (contaOnline(r)) {
       acc.stats.onlineMs += dt;
       today().onlineMs += dt;
-      markDirty();
+      // 'soft': este contador anda a cada segundo por conta. Marcá-lo como
+      // mudança real deixava o estado sempre sujo e fazia o app regravar o
+      // arquivo inteiro a cada 10 s, para sempre.
+      markSoftDirty();
     }
     // Daqui para baixo é vigilância de PÁGINA (travou, não responde, recarga
     // automática). Nada disso existe sem webview, então segue olhando r.status.
@@ -1658,16 +1781,41 @@ async function freezeLoop() {
 // Conta dormindo ganha miniatura nova no máximo a cada PEEK_MS (cada espiada acorda o jogo por um instante).
 const PEEK_MS = 30000;
 let thumbBusy = false;
+
+// Quanto tempo uma rodada de miniaturas pode levar. Cada espiada numa conta
+// dormindo custa 400 ms (peekThumb espera a cena ser desenhada), e o laço roda a
+// cada 4 s: com 8 contas dormindo uma rodada passava de 3 s e encavalava na
+// seguinte, deixando o app capturando tela quase sem pausa. Com orçamento, as
+// contas que não couberam ficam para a próxima rodada — elas só perdem alguns
+// segundos de atualização da miniatura, que ninguém percebe.
+const THUMB_ORCAMENTO_MS = 2500;
+
+// Por onde a próxima rodada começa, para as contas do fim da lista não ficarem
+// sempre sem vez quando o orçamento estoura.
+let thumbCursor = 0;
+
 async function thumbLoop() {
   const view = state.ui.view;
   if (thumbBusy || lockedUI || document.hidden || (view !== 'main' && view !== 'dash')) return;
   thumbBusy = true;
+  const ate = Date.now() + THUMB_ORCAMENTO_MS;
   try {
-    for (const [id, r] of rt) {
+    const ids = [...rt.keys()];
+    if (!ids.length) return;
+    if (thumbCursor >= ids.length) thumbCursor = 0;
+    for (let n = 0; n < ids.length; n++) {
+      const i = (thumbCursor + n) % ids.length;
+      const id = ids[i];
+      const r = rt.get(id);
+      if (!r) continue;
+      // O orçamento estourou: guarda onde paramos e deixa o resto para a
+      // próxima rodada, em vez de atrasar todos os outros laços.
+      if (Date.now() > ate) { thumbCursor = i; return; }
       if (!r.wcId || r.status === 'reconnecting' || r.goingToSleep) continue;
       if (view === 'main' && id === state.ui.current) continue;
       if (r.sleeping) { if (Date.now() - r.thumbAt >= PEEK_MS) await peekThumb(r); } else await captureThumb(r);
     }
+    thumbCursor = 0; // a rodada fechou inteira
   } finally {
     thumbBusy = false;
   }
@@ -1848,14 +1996,26 @@ function desenhaRostos(el, accId) {
   );
 }
 
+// Os nós que o updateLive atualiza, guardados entre chamadas.
+//
+// updateLive roda 1x por segundo e varria o documento inteiro com
+// querySelectorAll duas vezes. Com 16 contas no Painel são ~150 nós por
+// segundo, e a lista só muda quando a tela é redesenhada — então ela é
+// recolhida uma vez e invalidada por invalidaLive().
+let liveEls = null;
+let dotEls = null;
+function invalidaLive() { liveEls = null; dotEls = null; }
+
 function updateLive() {
-  for (const el of $$('[data-live]')) {
+  if (!liveEls) liveEls = $$('[data-live]');
+  if (!dotEls) dotEls = $$('[data-dot]');
+  for (const el of liveEls) {
     const chave = el.dataset.live;
     if (chave.startsWith('faces:')) { desenhaRostos(el, chave.slice(6)); continue; }
     const v = liveValue(chave);
     if (el.textContent !== v) el.textContent = v;
   }
-  for (const el of $$('[data-dot]')) {
+  for (const el of dotEls) {
     const c = 'dot ' + dotClass(el.dataset.dot);
     if (el.className !== c) el.className = c;
   }
@@ -1920,6 +2080,7 @@ function cycleScreen(dir) {
 }
 
 function renderScreenbar() {
+  invalidaLive();
   const bar = $('#screenbar');
   const tabs = screens().map((key) => {
     const g = groupById(key);
@@ -1952,8 +2113,9 @@ function renderScreenbar() {
 // =============================================================== layout / views
 function syncTiles() {
   const want = new Set(enabledAccounts().map((a) => a.id));
-  for (const id of [...rt.keys()]) if (!want.has(id)) destroyRuntime(id);
-  for (const acc of state.accounts) if (acc.enabled && !rt.has(acc.id)) createRuntime(acc);
+  // Entrar ou sair um tile muda os nós data-live (cada card tem os seus).
+  for (const id of [...rt.keys()]) if (!want.has(id)) { destroyRuntime(id); invalidaLive(); }
+  for (const acc of state.accounts) if (acc.enabled && !rt.has(acc.id)) { createRuntime(acc); invalidaLive(); }
   // A ordem visual vem do CSS "order": mover não recria o webview (o jogo não recarrega).
   state.accounts.forEach((a, i) => { const r = rt.get(a.id); if (r) { r.tile.style.order = i; updateTileMeta(a, r); } });
 }
@@ -2233,6 +2395,7 @@ function toggleFocus(id) {
 }
 
 function refresh() {
+  invalidaLive(); // a tela vai ser redesenhada: os nós de antes não valem mais
   syncTiles();
   ensureScreen();
   ensureCurrent();
@@ -2361,6 +2524,7 @@ function sideFade(el) {
 }
 const sideScrollObs = new ResizeObserver((entries) => { for (const e of entries) sideFade(e.target); });
 function renderSidebar() {
+  invalidaLive();
   const side = $('#sideList');
   const prevTop = $('.side-scroll', side)?.scrollTop || 0; // redesenhar não pode jogar a lista de volta ao topo
   const scroll = h('div', { class: 'side-scroll', onscroll: () => sideFade(scroll) });
@@ -2512,6 +2676,7 @@ function shot(acc) {
 }
 
 function renderThumbs() {
+  invalidaLive();
   const box = $('#thumbs');
   const cur = ensureCurrent();
   const others = visibleAccounts().filter((a) => a.id !== cur);
@@ -2528,6 +2693,7 @@ function renderThumbs() {
 // =============================================================== painel
 let logFilter = 'all';
 function renderDash() {
+  invalidaLive();
   const dash = $('#dash');
   const stat = (label, key, hint, cls = '') => h('div', { class: 'card stat ' + cls },
     h('div', { class: 'label' }, label), h('div', { class: 'value', dataset: { live: key } }), hint ? h('div', { class: 'hint' }, hint) : null);
@@ -2590,10 +2756,12 @@ function renderDash() {
           h('div', { class: 'log', id: 'logList' })),
         h('div', { class: 'card logbox' },
           h('div', { class: 'inline' },
-            h('h3', { class: 'section-title', style: { margin: '0' } }, 'Histórico de Ovos'),
+            // Não é histórico: é o que as contas TÊM agora. Por isso não há
+            // botão de apagar — não existe nada guardado para apagar, e a lista
+            // esvazia sozinha quando a venda automática leva os ovos.
+            h('h3', { class: 'section-title', style: { margin: '0' } }, 'Ovos nas contas'),
             h('span', { class: 'grow' }),
-            h('span', { class: 'acc-meta', id: 'ovosCount' }),
-            h('button', { class: 'btn sm', id: 'ovosClear', onclick: apagarOvos }, icon('trash', 14), 'Apagar')),
+            h('span', { class: 'acc-meta', id: 'ovosCount' })),
           h('div', { class: 'chips', id: 'ovoChips' }),
           h('div', { class: 'ovo-list', id: 'ovoList' })))),
   );
@@ -2608,11 +2776,16 @@ function renderDash() {
 // uma escolha do momento, não uma preferência que deva sobreviver ao reinício.
 let ovoFilter = 'all';
 
-// As letras na ordem do jogo (ovo-tier.js), mais a potência e o scanner UX, que
-// são os outros dois eixos pelos quais um ovo se destaca.
+// As letras na ordem do jogo (ovo-tier.js), mais os outros eixos pelos quais um
+// ovo se destaca na bolsa.
+//
+// Não há filtro "UX": medido numa conta real, o pacote 'ovos' não traz
+// 'scanner'. Ele existia só no histórico de capturas, que não é mais a fonte.
+// 'travado' entrou no lugar — é o que diz quais ovos a venda automática nunca
+// vai levar, e é a pergunta que de fato se faz olhando a bolsa.
 const OVO_FILTROS = [
   ['all', 'Tudo'], ['SSS', 'SSS'], ['SS', 'SS'], ['S', 'S'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D'],
-  ['shiny', '✦ Shiny'], ['ux', 'UX'], ['p5', 'P5'], ['p4', 'P4'],
+  ['shiny', '✦ Shiny'], ['travado', '🔒 Travado'], ['p5', 'P5'], ['p4', 'P4'],
 ];
 
 /**
@@ -2622,8 +2795,11 @@ const OVO_FILTROS = [
  * SS P4 ao P5": cada regra é uma letra com uma faixa de potência. É OU porque
  * nenhum ovo é SSS e SS ao mesmo tempo — E não deixaria passar nada.
  *
- * 'ux' e 'shiny' são exigências dentro da regra, não regras próprias: "SSS UX"
- * pede as duas coisas no mesmo ovo.
+ * 'shiny' é exigência dentro da regra, não regra própria: "SSS ✦" pede as duas
+ * coisas no mesmo ovo.
+ *
+ * Filtros salvos antes podem ter 'r.ux'. Ele é ignorado: o campo 'scanner' não
+ * existe na bolsa, e exigi-lo esconderia todos os ovos sem dizer por quê.
  */
 function ovoPassaNoFiltro(o, f) {
   if (!f || !Array.isArray(f.regras) || !f.regras.length) return true;
@@ -2632,7 +2808,6 @@ function ovoPassaNoFiltro(o, f) {
     const p = o.potencia || 0;
     if (r.pMin != null && p < r.pMin) return false;
     if (r.pMax != null && p > r.pMax) return false;
-    if (r.ux && o.scanner !== 'ux') return false;
     if (r.shiny && !o.shiny) return false;
     return true;
   });
@@ -2669,38 +2844,55 @@ function renderOvos() {
   const match = (o) => (salvo ? ovoPassaNoFiltro(o, salvo)
     : ovoFilter === 'all'
     || (ovoFilter === 'shiny' && o.shiny)
-    || (ovoFilter === 'ux' && o.scanner === 'ux')
+    || (ovoFilter === 'travado' && o.travado)
     || (ovoFilter === 'p5' && o.potencia === 5)
     || (ovoFilter === 'p4' && o.potencia === 4)
     || o.letra === ovoFilter);
 
-  const todos = state.ovos.filter(match);
-  // Mais novo primeiro, e um teto na tela: 2000 linhas com imagem travariam a
-  // rolagem, e ninguém lê além das primeiras dezenas.
-  const rows = todos.slice(-200).reverse();
-  if (cont) cont.textContent = `${fmtNum(todos.length)} de ${fmtNum(state.ovos.length)}`;
-  const btn = $('#ovosClear');
-  if (btn) btn.disabled = !state.ovos.length;
+  const bolsa = todosOsOvos();
+  const todos = bolsa.filter(match);
+  // Os melhores primeiro: é a pergunta que se faz olhando a bolsa ("sobrou algo
+  // bom?"), não "o que entrou agora". Empate de letra desempata pela nota.
+  todos.sort((a, b) => (ORDEM_LETRA[b.letra] || 0) - (ORDEM_LETRA[a.letra] || 0)
+    || (b.nota || 0) - (a.nota || 0)
+    || (b.em || 0) - (a.em || 0));
+  // Um teto na tela: centenas de linhas com imagem travariam a rolagem.
+  const rows = todos.slice(0, 200);
+  if (cont) cont.textContent = `${fmtNum(todos.length)} de ${fmtNum(bolsa.length)}`;
 
   list.replaceChildren(...(rows.length ? rows.map(ovoRow)
-    : [h('div', { class: 'log-empty' }, state.ovos.length ? 'Nenhum ovo com este filtro.' : 'Nenhum ovo registrado ainda.')]));
+    : [h('div', { class: 'log-empty' }, bolsa.length
+      ? 'Nenhum ovo com este filtro.'
+      : (bolsas.size ? 'Nenhuma conta tem ovos na bolsa agora.' : 'Ligue as contas para ver os ovos delas.'))]));
+
+  // Os retratos que ainda não estão em cache. Só as linhas visíveis.
+  carregaRetratos(rows.map((o) => o.especie), () => {
+    if (state.ui.view === 'dash') renderOvos();
+  });
 }
+
+// Para ordenar: a letra é texto, e 'SSS' > 'A' por acaso alfabético não serve.
+const ORDEM_LETRA = { D: 1, C: 2, B: 3, A: 4, S: 5, SS: 6, SSS: 7 };
 
 function ovoRow(o) {
   const d = new Date(o.em || 0);
-  const quando = dayKey(o.em) === dayKey() ? fmtTime(o.em) : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`;
-  return h('div', { class: 'ovo-row', title: `${o.nome} · ${new Date(o.em || 0).toLocaleString('pt-BR')}` },
-    retratoEl(o.nome, o.img, 'ovo'),
+  const quando = o.em ? (dayKey(o.em) === dayKey() ? fmtTime(o.em) : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`) : '';
+  return h('div', { class: 'ovo-row', title: `${o.nome}${o.em ? ' · capturado em ' + d.toLocaleString('pt-BR') : ''}` },
+    // O retrato vem do cache por espécie: a imagem nunca entra na lista de ovos.
+    retratoEl(o.nome, retratosCache.get(o.especie) || null, 'ovo'),
     h('div', { class: 'ovo-info' },
       h('div', { class: 'ovo-nome' }, (o.shiny ? '✦ ' : '') + o.nome),
       h('div', { class: 'ovo-sub' },
         o.nomeConta ? h('span', {}, o.nomeConta) : null,
-        h('span', {}, quando),
+        quando ? h('span', {}, quando) : null,
         // A nota de 0 a 10 é o número por trás da letra: duas letras iguais
         // podem estar bem longe uma da outra dentro da mesma faixa.
         o.nota != null ? h('span', {}, `nota ${Number(o.nota).toFixed(2)}`) : null,
-        o.scanner === 'ux' ? h('span', { class: 'ovo-ux' }, 'UX') : null)),
+        // O +N de energia: é o que a venda automática olha para poupar o ovo.
+        o.data ? h('span', {}, `+${o.data}`) : null)),
     h('div', { class: 'ovo-tags' },
+      // Cadeado: a venda automática nunca leva este ovo.
+      o.travado ? h('span', { class: 'ovo-pot', title: 'Travado: a venda automática não leva' }, '🔒') : null,
       h('span', { class: 'ovo-tier t' + (o.letra || 'x') }, o.letra || '?'),
       o.potencia ? h('span', { class: 'ovo-pot p' + o.potencia }, 'P' + o.potencia) : null));
 }
@@ -2710,7 +2902,7 @@ function descreveFiltroOvo(f) {
   if (!f || !f.regras || !f.regras.length) return 'Mostra todos os ovos';
   return f.regras.map((r) => {
     const faixa = r.pMin === r.pMax ? `P${r.pMin}` : `P${r.pMin}–P${r.pMax}`;
-    return [r.letra || 'qualquer', faixa, r.ux ? 'UX' : '', r.shiny ? '✦' : ''].filter(Boolean).join(' ');
+    return [r.letra || 'qualquer', faixa, r.shiny ? '✦' : ''].filter(Boolean).join(' ');
   }).join(' · ');
 }
 
@@ -2725,8 +2917,8 @@ const LETRAS_OVO = ['SSS', 'SS', 'S', 'A', 'B', 'C', 'D'];
  */
 function novoFiltroOvo() {
   // Começa vazio: um padrão marcado viraria um filtro salvo sem querer.
-  const linhas = new Map(); // letra -> { on, pMin, pMax, ux, shiny }
-  for (const l of LETRAS_OVO) linhas.set(l, { on: false, pMin: 1, pMax: 5, ux: false, shiny: false });
+  const linhas = new Map(); // letra -> { on, pMin, pMax, shiny }
+  for (const l of LETRAS_OVO) linhas.set(l, { on: false, pMin: 1, pMax: 5, shiny: false });
 
   const nomeIn = h('input', { class: 'inp', placeholder: 'ex.: Os bons', maxlength: 24 });
   const resumo = h('p', { class: 'help', style: { margin: '2px 0 0' } }, 'Marque pelo menos uma letra.');
@@ -2737,8 +2929,9 @@ function novoFiltroOvo() {
     // Quantos ovos o filtro pegaria AGORA. Sem isto, só se descobre que o
     // filtro está errado depois de salvar e clicar nele.
     if (f.regras.length) {
-      const n = state.ovos.filter((o) => ovoPassaNoFiltro(o, f)).length;
-      resumo.textContent += ` — ${fmtNum(n)} de ${fmtNum(state.ovos.length)} ovo(s)`;
+      const bolsa = todosOsOvos();
+      const n = bolsa.filter((o) => ovoPassaNoFiltro(o, f)).length;
+      resumo.textContent += ` — ${fmtNum(n)} de ${fmtNum(bolsa.length)} ovo(s) nas contas`;
     }
   };
 
@@ -2747,7 +2940,7 @@ function novoFiltroOvo() {
       const v = linhas.get(l);
       // Invertido pelo usuário (min 5, max 1) não devolveria nada: ordena.
       const a = Math.min(v.pMin, v.pMax), b = Math.max(v.pMin, v.pMax);
-      return { letra: l, pMin: a, pMax: b, ux: v.ux, shiny: v.shiny };
+      return { letra: l, pMin: a, pMax: b, shiny: v.shiny };
     }),
   });
 
@@ -2762,12 +2955,10 @@ function novoFiltroOvo() {
   const linha = (letra) => {
     const v = linhas.get(letra);
     const cb = h('input', { type: 'checkbox', onchange: (e) => { v.on = e.target.checked; atualiza(); } });
-    const ux = h('input', { type: 'checkbox', onchange: (e) => { v.ux = e.target.checked; atualiza(); } });
     const sh = h('input', { type: 'checkbox', onchange: (e) => { v.shiny = e.target.checked; atualiza(); } });
     return h('div', { class: 'ovof-linha' },
       h('label', { class: 'ovof-letra' }, cb, h('span', { class: 'ovo-tier t' + letra }, letra)),
       h('div', { class: 'ovof-faixa' }, selP(letra, 'pMin'), h('span', {}, 'até'), selP(letra, 'pMax')),
-      h('label', { class: 'ovof-mini', title: 'Só os capturados com scanner UX' }, ux, h('span', {}, 'UX')),
       h('label', { class: 'ovof-mini', title: 'Só os shiny' }, sh, h('span', {}, '✦')));
   };
 
@@ -2808,20 +2999,6 @@ async function apagarFiltroOvo(id) {
   if (ovoFilter === 'f:' + id) ovoFilter = 'all';
   save();
   renderOvos();
-}
-
-async function apagarOvos() {
-  if (!state.ovos.length) return;
-  // Pergunta antes: é o único lugar onde o histórico além dos últimos 60 do
-  // servidor existe. Apagado, não volta.
-  const ok = await confirmBox('Apagar histórico de ovos',
-    `Apaga as ${fmtNum(state.ovos.length)} captura(s) registradas. O jogo só guarda as últimas 60, então o resto não volta.`,
-    'Apagar', true);
-  if (!ok) return;
-  state.ovos = [];
-  save();
-  renderOvos();
-  toast('Histórico de ovos apagado.', 'ok');
 }
 
 function renderLog() {
@@ -5147,7 +5324,10 @@ function toast(msg, type = '', ms = 4000) {
 function start(loaded) {
   state = normalize(loaded || defaultState());
   started = true;
-  if (!loaded) flush();
+  // Grava já quando não havia estado (primeira execução) ou quando a leitura
+  // jogou fora os retratos embutidos: aí o arquivo de 24 MB encolhe na abertura,
+  // em vez de esperar a próxima mudança que talvez nunca venha.
+  if (!loaded || ovosMigrados) flush();
   applySide();
   refresh();
   updateSecureBadge();
@@ -5155,7 +5335,14 @@ function start(loaded) {
   setInterval(freezeLoop, 30000);
   setInterval(thumbLoop, 4000);
   setInterval(metricsLoop, 5000);
+  // A bolsa das contas em modo webview (em headless ela chega sozinha).
+  setInterval(bolsaLoop, BOLSA_WEBVIEW_MS);
+  bolsaLoop();
+  // Mudança de verdade: grava em até 10 s.
   setInterval(() => { if (dirty) flush(); }, 10000);
+  // Só os contadores de tempo online: a cada 5 min. Eles sobem sozinhos a cada
+  // segundo, e gravar o estado inteiro por causa deles era trabalho jogado fora.
+  setInterval(() => { if (softDirty && !dirty) flush(); }, 5 * 60000);
   metricsLoop();
   updateSleep();
 }
@@ -5300,7 +5487,9 @@ async function boot() {
     updateLive();
     metricsLoop();
   });
-  window.addEventListener('beforeunload', () => { if (started && dirty) deck.saveState(state); });
+  // Ao fechar vale gravar os dois níveis: aqui o custo é pago uma vez, e é o que
+  // garante que o "tempo online" do dia não perca os últimos minutos.
+  window.addEventListener('beforeunload', () => { if (started && (dirty || softDirty)) deck.saveState(state); });
   new ResizeObserver(() => { if (started) layout(); }).observe($('#stage'));
 
   if (res.locked) {

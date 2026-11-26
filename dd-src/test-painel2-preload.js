@@ -30,7 +30,7 @@ contextBridge.exposeInMainWorld('deck', {
     vault: { mode: null },
     state: { version: 2, groups: [{ id: 'g1', name: 'DigiIdle', color: '#4ade80', limit: 0 }], accounts: CONTAS, scripts: [], tools: {}, log: [], ovos: [], daily: {}, ui: { view: 'dash', current: 'a1', groupFilter: 'g1', mix: false } },
   }),
-  // Guardar o que foi salvo é o que prova que o histórico de ovos persiste.
+  // Guardar o que foi salvo é o que prova o que persiste e o que não persiste.
   saveState: (s) => { salvo = s; return Promise.resolve({ ok: true }); },
   info: () => Promise.resolve({ version: 'teste', platform: process.platform }),
   updateStatus: () => Promise.resolve({ state: 'unsupported' }),
@@ -53,7 +53,11 @@ contextBridge.exposeInMainWorld('deck', {
   onHeadlessError: on('hl:error'),
   onHeadlessPainel: on('hl:painel'),
   onHeadlessAtividade: on('hl:atividade'),
-  onHeadlessHistorico: on('hl:historico'),
+  onHeadlessBolsa: on('hl:bolsa'),
+  // A bolsa das contas em modo webview passa por aqui para ganhar nome e letra.
+  // No teste os ovos já chegam prontos, então é a identidade.
+  ovosBolsa: (l) => Promise.resolve(l || []),
+  retratos: () => Promise.resolve({}),
 });
 
 // A torneira do teste: dispara um evento como se viesse do processo principal.

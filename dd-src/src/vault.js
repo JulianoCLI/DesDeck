@@ -10,6 +10,7 @@
 //   O arquivo pode viajar por e-mail, nuvem, pen drive: só quem tem a senha abre.
 const crypto = require('crypto');
 const fs = require('fs');
+const fsp = require('fs/promises');
 const path = require('path');
 
 const KDF = { alg: 'scrypt', N: 1 << 17, r: 8, p: 1 };
@@ -67,6 +68,7 @@ class Vault {
     this.wrapped = null;   // chave protegida, como vai para o disco
     this.pending = null;   // arquivo esperando a senha mestra
     this.failures = 0;
+    this.writing = null;   // a gravação em andamento (ver write)
   }
 
   dpapiOk() {
@@ -214,6 +216,16 @@ class Vault {
     this.failures = 0;
   }
 
+  // Serializa, criptografa e grava o estado.
+  //
+  // A gravação em si é ASSÍNCRONA. Era writeFileSync, e com o arquivo grande
+  // (chegou a 24 MB) isso bloqueava o processo principal a cada gravação: a
+  // janela inteira congelava junto, porque o processo principal é quem atende
+  // todo o IPC. O escrever-e-renomear continua igual, então uma queda de energia
+  // no meio não corrompe o arquivo: ou vale o antigo, ou vale o novo.
+  //
+  // As gravações são encadeadas (this.writing) para que duas não disputem o
+  // mesmo .tmp — era um risco que o modo síncrono não tinha.
   write(state) {
     if (!this.key || this.pending || !state) return false;
     const file = {
@@ -224,12 +236,45 @@ class Vault {
       key: this.wrapped,
       data: seal(this.key, Buffer.from(JSON.stringify(state), 'utf8'), AAD_STATE),
     };
-    fs.mkdirSync(path.dirname(this.file), { recursive: true });
+    const texto = JSON.stringify(file);
     const tmp = this.file + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(file));
-    fs.renameSync(tmp, this.file);
+    this.writing = (this.writing || Promise.resolve())
+      .then(async () => {
+        await fsp.mkdir(path.dirname(this.file), { recursive: true });
+        await fsp.writeFile(tmp, texto);
+        await fsp.rename(tmp, this.file);
+      })
+      .catch((err) => { console.error('[vault] não deu para gravar:', err.message); });
     return true;
   }
+
+  // Grava agora, bloqueando. Só para a saída do app: no 'before-quit' não há
+  // tempo para esperar uma promessa, e perder a última gravação ali seria perder
+  // o trabalho da sessão.
+  writeSync(state) {
+    if (!this.key || this.pending || !state) return false;
+    const file = {
+      format: 'digideck-vault',
+      v: 2,
+      cipher: 'aes-256-gcm',
+      mode: this.mode,
+      key: this.wrapped,
+      data: seal(this.key, Buffer.from(JSON.stringify(state), 'utf8'), AAD_STATE),
+    };
+    try {
+      fs.mkdirSync(path.dirname(this.file), { recursive: true });
+      const tmp = this.file + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(file));
+      fs.renameSync(tmp, this.file);
+      return true;
+    } catch (err) {
+      console.error('[vault] não deu para gravar na saída:', err.message);
+      return false;
+    }
+  }
+
+  /** Espera a última gravação terminar. */
+  flushed() { return this.writing || Promise.resolve(); }
 }
 
 async function encryptBackup(password, payload) {

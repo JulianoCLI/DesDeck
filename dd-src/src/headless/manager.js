@@ -156,13 +156,16 @@ class HeadlessManager extends EventEmitter {
       this.emit('account:atividade', { index: accountIndex, atividade: a });
     });
 
-    client.on('historico', (h) => {
-      require('./ovos').enriquecerLista(h)
-        .then((lista) => {
+    // A bolsa de ovos da conta. A letra D..SSS e o nome bonito só existem aqui
+    // (ovo-tier.js precisa dos catálogos do jogo, que só se baixam no processo
+    // principal via net.request).
+    client.on('bolsa', (lista) => {
+      require('./ovos').enriquecerBolsa(lista)
+        .then((ovos) => {
           if (this.clients.get(accountIndex) !== client) return;
-          this.emit('account:historico', { index: accountIndex, historico: lista });
+          this.emit('account:bolsa', { index: accountIndex, ovos });
         })
-        .catch((err) => console.error(`[headless:ovos] conta ${accountIndex}:`, err.message));
+        .catch((err) => console.error(`[headless:bolsa] conta ${accountIndex}:`, err.message));
     });
 
     this.clients.set(accountIndex, client);

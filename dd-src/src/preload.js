@@ -62,12 +62,19 @@ contextBridge.exposeInMainWorld('deck', {
   // média de 7 dias antes de a pessoa decidir o preço.
   headlessMochila: (accId) => ipcRenderer.invoke('headless:mochila', accId),
   headlessMercadoMedia: (accId, item, moeda) => ipcRenderer.invoke('headless:mercado:media', accId, item, moeda),
+  // Os retratos pedidos por espécie. A lista de ovos guarda só o id da
+  // espécie; a imagem vem daqui, do cache de sprites do processo principal.
+  retratos: (especies) => ipcRenderer.invoke('sprites:retratos', especies),
+  // A bolsa crua de uma conta em modo webview ganha nome e letra aqui.
+  ovosBolsa: (lista) => ipcRenderer.invoke('ovos:bolsa', lista),
   onHeadlessUpdate: on('headless:account:update'),
   onHeadlessStatus: on('headless:account:status'),
   onHeadlessError: on('headless:account:error'),
   onHeadlessPainel: on('headless:account:painel'),
   onHeadlessAtividade: on('headless:account:atividade'),
-  onHeadlessHistorico: on('headless:account:historico'),
+  // Os ovos que a conta tem agora. Não é histórico: é um retrato da bolsa, que
+  // chega inteiro a cada vez e substitui o anterior.
+  onHeadlessBolsa: on('headless:account:bolsa'),
 
   // Cadastro em lote (Fase B/C)
   cadastroStart: (config) => ipcRenderer.invoke('cadastro:start', config),

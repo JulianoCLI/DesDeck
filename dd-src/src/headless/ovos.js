@@ -57,11 +57,61 @@ async function enriquecer(ovo) {
   };
 }
 
-/** O mesmo, para uma lista. Em paralelo: os catalogos ficam em cache. */
-async function enriquecerLista(lista) {
-  if (!Array.isArray(lista)) return [];
-  const out = await Promise.all(lista.filter(Boolean).map((o) => enriquecer(o).catch(() => null)));
-  return out.filter(Boolean);
+/**
+ * A bolsa de ovos da conta, pronta para o Painel listar.
+ *
+ * Diferente de enriquecer(): aqui NÃO vai retrato. O retrato é por espécie e o
+ * renderer já o busca no cache de sprites (canal 'sprites:retratos'); mandar um
+ * data-URL por ovo foi exatamente o que inflou o estado para 24 MB.
+ *
+ * Os campos são os que o pacote 'ovos' realmente traz, medidos em conta real:
+ * id, especie, de, estagio, familia, nivel, data, potencia, ivs, u, em. Note o
+ * que NÃO vem: 'scanner' (por isso o filtro UX não existe nesta lista) nem
+ * 'nota' (ela é calculada aqui). 'shiny', 'travado' e 'protegido' só aparecem
+ * quando o ovo os tem.
+ */
+async function enriquecerBolsa(lista) {
+  if (!Array.isArray(lista) || !lista.length) return [];
+
+  let especies = {};
+  let tier = null;
+  try {
+    const [esp, t] = await Promise.all([especiePorId(), tierOvo()]);
+    especies = esp;
+    tier = t;
+  } catch {
+    // Sem catalogo da para mostrar nome cru e potencia - so nao a letra.
+  }
+
+  const out = [];
+  for (const o of lista) {
+    if (!o) continue;
+    const ficha = especies[o.especie];
+    let letra = '?';
+    let nota = null;
+    if (tier) {
+      try { letra = tier.letraOvo(o); nota = tier.notaOvo(o); } catch { /* ovo sem sorteio */ }
+    }
+    out.push({
+      // O id do ovo no servidor: é a identidade estável da linha (o mesmo ovo
+      // chega de novo em cada pacote 'ovos', e some quando choca ou é vendido).
+      id: o.id,
+      especie: o.especie || null,
+      nome: ficha ? ficha.nome : (o.especie || '—'),
+      letra,
+      nota,
+      potencia: o.potencia || 0,
+      nivel: o.nivel || 0,
+      // O +N de energia do ovo.
+      data: o.data || 0,
+      shiny: !!o.shiny,
+      // Cadeado: a venda automática nunca leva um ovo travado.
+      travado: !!o.travado,
+      protegido: !!o.protegido,
+      em: o.em || 0,
+    });
+  }
+  return out;
 }
 
 /**
@@ -90,4 +140,4 @@ async function nomeDoNegocio(a) {
   return null;
 }
 
-module.exports = { enriquecer, enriquecerLista, nomeDoNegocio };
+module.exports = { enriquecer, enriquecerBolsa, nomeDoNegocio };

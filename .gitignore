@@ -51,3 +51,10 @@ seller-tool.txt
 seller-vivo.txt
 # A saída do grep do Painel 2 no JS do jogo: arquivo gerado, não fonte.
 painel2-grep.txt
+# Idem: a sonda da bolsa de ovos roda numa conta real e despeja os ovos dela
+# (espécie, IVs, nível) com o nick no cabeçalho.
+bolsa-campos.txt
+# Saídas dos testes de tamanho do estado e de correção da abertura. Não trazem
+# dado de conta, mas são geradas.
+tamanho-test.txt
+boot-correcao.txt

@@ -128,11 +128,6 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       labBauPorDia: null,
     };
 
-    // O historico de ovos deste login. O servidor manda os ultimos 60 no
-    // 'welcome' e cada ovo novo chega no pacote 'captura'. Quem acumula alem
-    // disso e o renderer (o painel guarda o seu proprio, com botao de apagar).
-    this.historicoOvos = [];
-
     this.sessionStartTime = Date.now();
 
     // Ferramentas headless (Phase 3)
@@ -285,15 +280,13 @@ class DigiiIdleHeadlessClient extends EventEmitter {
         this.emit('update');
         break;
 
-      // Os últimos 60 ovos capturados, mandados uma vez no login. É a semente
-      // do Histórico de Ovos do painel: sem isto, o histórico só começaria a
-      // existir depois da próxima captura (minutos ou horas de tela vazia).
-      case 'welcome':
-        if (Array.isArray(msg.historico)) {
-          this.historicoOvos = msg.historico.filter(Boolean);
-          this.emit('historico', this.historicoOvos);
-        }
-        break;
+      // 'welcome' traz msg.historico, os últimos 60 ovos capturados. Já não é
+      // lido: a lista do Painel mostra a BOLSA (pacote 'ovos'), isto é, os ovos
+      // que a conta ainda tem. O histórico das capturas passadas era acumulado
+      // no disco e foi o que levou o arquivo de estado a 24 MB.
+      //
+      // As capturas novas continuam aparecendo na Atividade, pelo 'captura'
+      // abaixo — ali elas são um acontecimento, não uma lista que cresce.
 
       // O diario do jogo. Interessa o abate: e a unica fonte do NOME do
       // inimigo que acabou de cair ("Gaomon derrotado! +20 xp tamer").
@@ -336,22 +329,21 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       // A captura de um ovo. Atenção ao ok:false: medido em conta real, o
       // pacote da FALHA não traz 'ovo' nem 'historico' — só
       // { corpo, esp, ok, scanner }. Tratar todo 'captura' como sucesso
-      // encheria o histórico de entradas vazias (foram 7 falhas em 90 s).
+      // encheria a Atividade de linhas vazias (foram 7 falhas em 90 s).
       case 'captura':
         if (msg.ok && msg.historico) {
-          this.historicoOvos.unshift(msg.historico);
-          // O mesmo teto do cliente do jogo. O acúmulo de longo prazo é do
-          // renderer; aqui é só a janela desta sessão.
-          this.historicoOvos = this.historicoOvos.slice(0, 60);
           this.emit('atividade', {
             tipo: 'captura', em: msg.historico.em || Date.now(), ovo: msg.historico,
           });
-          this.emit('historico', this.historicoOvos);
         }
         break;
 
+      // A bolsa de ovos da conta AGORA. É um retrato completo (o servidor manda
+      // a lista inteira, não um delta), e é o que o Painel mostra: os ovos que
+      // ainda estão na conta, isto é, os que a venda automática não levou.
       case 'ovos':
         this.state.ovos = msg.lista || [];
+        this.emit('bolsa', this.state.ovos);
         this.emit('update');
         break;
 

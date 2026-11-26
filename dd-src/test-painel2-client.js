@@ -143,7 +143,7 @@ app.whenReady().then(async () => {
   ok(fer && fer.txt === 'vendeu 7 (tiers D/D/C)', 'com o texto inteiro (veio: ' + (fer && fer.txt) + ')');
 
   // ---- 13. o enriquecimento do ovo: a letra NAO vem do servidor
-  const { enriquecer, enriquecerLista } = require('./src/headless/ovos');
+  const { enriquecer } = require('./src/headless/ovos');
   const e1 = await enriquecer(ovoCru);
   ok(!!e1, 'o ovo foi enriquecido');
   ok(e1.nome === 'Agumon', 'o id da especie virou nome (veio: ' + e1.nome + ')');
@@ -159,9 +159,37 @@ app.whenReady().then(async () => {
   const p1 = await enriquecer({ ...ovoCru, potencia: 1, nota: null });
   const p5 = await enriquecer({ ...ovoCru, potencia: 5, nota: null });
   ok(p5.nota > p1.nota, 'P5 da nota maior que P1 com os mesmos IVs (' + p1.nota + ' -> ' + p5.nota + ')');
-  const lista = await enriquecerLista([ovoCru, null, ovoCru]);
-  ok(lista.length === 2, 'a lista ignora os nulos (veio: ' + lista.length + ')');
-  ok((await enriquecerLista(null)).length === 0, 'lista nula nao estoura');
+
+  // ---- 13b. a BOLSA: os ovos que a conta tem agora
+  //
+  // O ovo abaixo e uma copia fiel de um ovo real da bolsa, medido numa conta
+  // (bolsa-campos.txt). Note o que o pacote 'ovos' NAO traz: 'scanner' (por
+  // isso o filtro UX saiu da tela) e 'nota' (calculada aqui).
+  const { enriquecerBolsa } = require('./src/headless/ovos');
+  const daBolsa = {
+    id: 6023, especie: 'candmon', de: 'desconhecido-551', estagio: 0,
+    familia: 'devil', nivel: 48, data: 0, potencia: 4,
+    ivs: [28, 18, 14, 11, 22, 22], u: [0.4687347163591573, 0.5495661211673422],
+    em: 1795659530816,
+  };
+  const b = await enriquecerBolsa([daBolsa]);
+  ok(b.length === 1, 'o ovo da bolsa foi enriquecido (veio: ' + b.length + ')');
+  ok(b[0].id === 6023, 'o id do servidor foi preservado (e a identidade da linha)');
+  ok(b[0].nome === 'Candmon', 'o slug virou nome (veio: ' + b[0].nome + ')');
+  ok(b[0].letra === 'A', 'a letra foi calculada e e a medida na conta real (veio: ' + b[0].letra + ')');
+  ok(b[0].nota != null && Math.abs(b[0].nota - 2.293) < 0.01, 'e a nota tambem (veio: ' + b[0].nota + ')');
+  // O retrato NAO pode estar aqui: foi o que inflou o estado para 24 MB.
+  ok(b[0].img === undefined, 'a bolsa NAO carrega retrato (vem do cache por especie)');
+  ok(!JSON.stringify(b).includes('data:image'), 'nenhum data-URL na bolsa enriquecida');
+  // Campos que so existem quando o ovo os tem: nao podem virar undefined.
+  ok(b[0].travado === false && b[0].shiny === false, 'travado/shiny ausentes viram false, nao undefined');
+  const b2 = await enriquecerBolsa([{ ...daBolsa, travado: true, shiny: true, data: 3 }]);
+  ok(b2[0].travado === true && b2[0].shiny === true && b2[0].data === 3, 'e quando existem, chegam na tela');
+  // Ovo sem o sorteio: ainda e uma linha util, com letra '?'.
+  const b3 = await enriquecerBolsa([{ id: 1, especie: 'agumon', potencia: 1 }]);
+  ok(b3[0].letra === '?', 'ovo sem ivs/u fica com letra "?" (veio: ' + b3[0].letra + ')');
+  ok((await enriquecerBolsa(null)).length === 0, 'bolsa nula nao estoura');
+  ok((await enriquecerBolsa([null, undefined])).length === 0, 'bolsa com lixo nao gera linha');
 
   // ---- 14. o item raro vem do CATALOGO, nao de uma lista escrita a mao
   const raros = await require('./src/headless/catalogo').nomesRaros();

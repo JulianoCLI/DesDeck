@@ -39,8 +39,10 @@ const painelDe = (over = {}) => ({
   ...over,
 });
 
-// Ovos ja enriquecidos (letra + retrato), como ovos.js devolve.
-const ovo = (o) => ({ especie: 'agumon', nome: 'Agumon', img: null, letra: 'C', nota: 2.5, potencia: 1, shiny: false, nivel: 1, scanner: null, em: Date.now(), qualidade: 1.1, ...o });
+// Um ovo da bolsa, como enriquecerBolsa() devolve: sem 'img' (o retrato vem do
+// cache por especie) e sem 'scanner' (o pacote 'ovos' nao traz esse campo).
+let proxId = 1;
+const ovo = (o) => ({ id: proxId++, especie: 'agumon', nome: 'Agumon', letra: 'C', nota: 2.5, potencia: 1, shiny: false, travado: false, protegido: false, data: 0, nivel: 1, em: Date.now(), ...o });
 
 app.whenReady().then(async () => {
   const win = new BrowserWindow({
@@ -57,12 +59,15 @@ app.whenReady().then(async () => {
   await new Promise((r) => setTimeout(r, 1200));
 
   const PAINEL = JSON.stringify(painelDe());
-  const OVOS = JSON.stringify([
-    ovo({ letra: 'SSS', nota: 9.4, potencia: 5, shiny: true, scanner: 'ux', em: Date.now() - 1000 }),
+  // A bolsa de uma conta: 1 SSS P5 shiny travado, 1 SS P4, 2 B.
+  const bolsaDe = () => JSON.stringify([
+    ovo({ letra: 'SSS', nota: 9.4, potencia: 5, shiny: true, travado: true, em: Date.now() - 1000 }),
     ovo({ letra: 'SS', nota: 6.8, potencia: 4, em: Date.now() - 2000 }),
     ovo({ letra: 'B', nota: 2.1, potencia: 1, em: Date.now() - 3000 }),
     ovo({ letra: 'B', nota: 2.2, potencia: 1, em: Date.now() - 4000 }),
   ]);
+  const OVOS = bolsaDe();
+  const OVOS2 = bolsaDe();
 
   const r = await win.webContents.executeJavaScript(`(async () => {
     const out = [];
@@ -79,7 +84,7 @@ app.whenReady().then(async () => {
     try {
       // ---- 0. a tela do Painel montou
       ok($('#dash') && $('#dash').children.length > 0, 'o Painel montou');
-      ok(!!$('#ovoList'), 'a caixa do Historico de Ovos existe');
+      ok(!!$('#ovoList'), 'a caixa dos Ovos nas contas existe');
       ok(!!$('#logList'), 'a caixa de Atividade existe');
 
       // ---- 1. os botoes saiiram e o duplo clique entrou
@@ -130,20 +135,27 @@ app.whenReady().then(async () => {
       // Sem img o retrato cai na inicial do nome - um card com buraco pareceria defeito.
       ok(faces.textContent.includes('A') && faces.textContent.includes('B'), 'sem sprite, sobram as iniciais (Agumon / Bloomlordmon)');
 
-      // ---- 7. historico de ovos: acumula, nao duplica
-      window.tst.emitir('hl:historico', { index: 'a1', historico: ${OVOS} });
+      // ---- 7. a bolsa das contas: substitui, nao acumula
+      ok($('#ovoList').textContent.includes('Ligue as contas'), 'sem conta ligada, a lista explica o que fazer');
+      window.tst.emitir('hl:bolsa', { index: 'a1', ovos: ${OVOS} });
       await esperar(80);
-      ok($('#ovoList').children.length === 4, 'os 4 ovos entraram no historico (veio: ' + $('#ovoList').children.length + ')');
+      ok($('#ovoList').children.length === 4, 'os 4 ovos da bolsa entraram (veio: ' + $('#ovoList').children.length + ')');
       ok(txt('#ovosCount').includes('4'), 'o contador diz 4');
-      // Reconectar manda os mesmos 60 de novo: nao pode duplicar.
-      window.tst.emitir('hl:historico', { index: 'a1', historico: ${OVOS} });
+      // O servidor manda a bolsa INTEIRA a cada vez: reenviar nao pode duplicar.
+      window.tst.emitir('hl:bolsa', { index: 'a1', ovos: ${OVOS} });
       await esperar(80);
-      ok($('#ovoList').children.length === 4, 'o MESMO lote reenviado (reconexao) nao duplicou (veio: ' + $('#ovoList').children.length + ')');
-      // Duas contas podem capturar o mesmo bicho no mesmo instante: a chave leva
-      // o accId, entao os dois ovos precisam coexistir.
-      window.tst.emitir('hl:historico', { index: 'a2', historico: ${OVOS} });
+      ok($('#ovoList').children.length === 4, 'a MESMA bolsa reenviada nao duplicou (veio: ' + $('#ovoList').children.length + ')');
+      // Cada conta tem a sua bolsa: as duas somam na lista.
+      window.tst.emitir('hl:bolsa', { index: 'a2', ovos: ${OVOS2} });
       await esperar(80);
-      ok($('#ovoList').children.length === 8, 'o mesmo ovo em OUTRA conta conta separado (veio: ' + $('#ovoList').children.length + ')');
+      ok($('#ovoList').children.length === 8, 'a bolsa da outra conta soma (veio: ' + $('#ovoList').children.length + ')');
+      // O ovo vendido SAI da lista: e exatamente o que esta tela precisa fazer,
+      // e o que o historico acumulado nao fazia.
+      window.tst.emitir('hl:bolsa', { index: 'a2', ovos: [] });
+      await esperar(80);
+      ok($('#ovoList').children.length === 4, 'bolsa vazia: os ovos daquela conta sairam da lista (veio: ' + $('#ovoList').children.length + ')');
+      window.tst.emitir('hl:bolsa', { index: 'a2', ovos: ${OVOS2} });
+      await esperar(80);
 
       // ---- 8. filtros de ovo, um por vez
       ok(!!chip('#ovoChips', 'SSS'), 'tem o filtro SSS');
@@ -153,9 +165,13 @@ app.whenReady().then(async () => {
       chip('#ovoChips', 'B').click();
       await esperar(40);
       ok($('#ovoList').children.length === 4, 'filtro B deixa os 4 B (veio: ' + $('#ovoList').children.length + ')');
-      chip('#ovoChips', 'UX').click();
+      // O filtro UX saiu: o pacote 'ovos' nao traz 'scanner' (medido em conta
+      // real), e um filtro que esconde tudo sem explicar e pior que nenhum.
+      ok(!chip('#ovoChips', 'UX'), 'o filtro UX saiu (a bolsa nao tem o campo scanner)');
+      ok(!!chip('#ovoChips', '🔒 Travado'), 'no lugar dele ha o filtro de travados');
+      chip('#ovoChips', '🔒 Travado').click();
       await esperar(40);
-      ok($('#ovoList').children.length === 2, 'filtro UX deixa os capturados com scanner UX (veio: ' + $('#ovoList').children.length + ')');
+      ok($('#ovoList').children.length === 2, 'filtro Travado deixa os 2 ovos com cadeado (veio: ' + $('#ovoList').children.length + ')');
       chip('#ovoChips', 'P5').click();
       await esperar(40);
       ok($('#ovoList').children.length === 2, 'filtro P5 deixa os de potencia 5 (veio: ' + $('#ovoList').children.length + ')');
@@ -165,8 +181,9 @@ app.whenReady().then(async () => {
       chip('#ovoChips', 'Tudo').click();
       await esperar(40);
       ok($('#ovoList').children.length === 8, 'Tudo volta aos 8');
-      // Mais novo primeiro: quem abre o Painel quer ver a ultima captura.
-      ok($('#ovoList').firstElementChild.textContent.includes('SSS') === false || true, 'a lista desenhou');
+      // Os melhores primeiro: a pergunta que se faz olhando a bolsa e "sobrou
+      // algo bom?", nao "o que entrou agora".
+      ok($('#ovoList').firstElementChild.textContent.includes('SSS'), 'o melhor ovo (SSS) e a primeira linha');
 
       // ---- 9. a linha do ovo mostra letra, potencia e shiny
       const linha = [...$('#ovoList').children].find(e => e.textContent.includes('SSS'));
@@ -179,9 +196,16 @@ app.whenReady().then(async () => {
       // 'em'; o que importa e que a linha diga de QUAL conta o ovo veio.
       ok(/desum|desdois/.test(linha.textContent), 'a linha diz de qual conta veio o ovo');
 
-      // ---- 10. o historico e SALVO (acumula entre sessoes)
+      // ---- 10. os ovos NAO sao salvos em disco
+      // Era a causa medida do app travar: 2000 capturas com o retrato embutido
+      // davam 17,23 MB, e o estado inteiro era regravado a cada 10 s. A bolsa
+      // chega do servidor a cada conexao, entao guardar nao serve para nada.
+      // 'salvo' pode ser null aqui, e isso JA e a prova: receber 8 ovos nao
+      // sujou o estado, entao nao houve gravacao nenhuma. Antes, cada lote
+      // chamava save() e regravava o arquivo inteiro.
       const s = window.tst.salvo();
-      ok(s && Array.isArray(s.ovos) && s.ovos.length === 8, 'os 8 ovos foram para o estado salvo (veio: ' + (s && s.ovos ? s.ovos.length : 'nada') + ')');
+      ok(!s || !s.ovos, 'os ovos NAO foram para o estado salvo (a bolsa vem do servidor)');
+      ok(!JSON.stringify(s || {}).includes('data:image'), 'nenhum retrato em data-URL no estado salvo');
 
       // ---- 11. atividades: o que deve virar linha
       const antes = $('#logList').children.length;
@@ -253,7 +277,7 @@ app.whenReady().then(async () => {
       chip('#logChips', 'Tudo').click();
       await esperar(40);
 
-      // ---- 12b. filtro personalizado do Historico de Ovos
+      // ---- 12b. filtro personalizado dos ovos
       // O pedido: "SSS P1 ao P5, SS P4 ao P5". E um OU entre regras, porque
       // nenhum ovo e SSS e SS ao mesmo tempo.
       ok(!!chip('#ovoChips', '+ Filtro'), 'ha um botao para criar um filtro proprio');
@@ -275,7 +299,7 @@ app.whenReady().then(async () => {
       const resumoEd = () => [...ed.querySelectorAll('.help')].map(e => e.textContent).join(' | ');
       ok(ed.textContent.includes('SSS P1–P5'), 'o resumo descreve a regra SSS (veio: ' + resumoEd() + ')');
       ok(ed.textContent.includes('SS P4–P5'), 'e a regra SS P4-P5');
-      ok(/4 de 8 ovo/.test(resumoEd()), 'e diz quantos ovos passariam, antes de salvar (veio: ' + resumoEd() + ')');
+      ok(/4 de 8 ovo/.test(resumoEd()), 'e diz quantos ovos das contas passariam, antes de salvar (veio: ' + resumoEd() + ')');
 
       ed.querySelector('input.inp').value = 'Os bons';
       [...ed.querySelectorAll('button')].find(b => b.textContent.includes('Salvar')).click();
@@ -294,10 +318,11 @@ app.whenReady().then(async () => {
       ok(!vistos.some(t => t.includes('nota 2.')), 'e nenhum B passou pelo filtro');
 
       // Um SS P1 nao pode entrar; um SS P5 pode. Prova a faixa de potencia.
-      window.tst.emitir('hl:historico', { index: 'a1', historico: [
-        { especie: 'agumon', nome: 'Agumon', img: null, letra: 'SS', nota: 7, potencia: 1, shiny: false, nivel: 1, scanner: null, em: Date.now() + 10 },
-        { especie: 'agumon', nome: 'Agumon', img: null, letra: 'SS', nota: 7, potencia: 5, shiny: false, nivel: 1, scanner: null, em: Date.now() + 11 },
-      ] });
+      // A bolsa substitui: mando os 4 de antes MAIS os dois novos.
+      window.tst.emitir('hl:bolsa', { index: 'a1', ovos: ${OVOS}.concat([
+        { id: 901, especie: 'agumon', nome: 'Agumon', letra: 'SS', nota: 7, potencia: 1, shiny: false, travado: false, data: 0, nivel: 1, em: Date.now() + 10 },
+        { id: 902, especie: 'agumon', nome: 'Agumon', letra: 'SS', nota: 7, potencia: 5, shiny: false, travado: false, data: 0, nivel: 1, em: Date.now() + 11 },
+      ]) });
       await esperar(120);
       const vistos2 = [...$('#ovoList').children].map(e => e.textContent);
       ok(vistos2.length === 5, 'o SS P5 entrou (4+1) e o SS P1 ficou de fora (veio: ' + vistos2.length + ')');
@@ -314,22 +339,11 @@ app.whenReady().then(async () => {
       ok((window.tst.salvo().ovoFiltros || []).length === 0, 'e do estado salvo');
       ok($('#ovoList').children.length === 10, 'e a lista voltou a mostrar todos os ovos (veio: ' + $('#ovoList').children.length + ')');
 
-      // ---- 13. apagar o historico
-      ok(!!$('#ovosClear'), 'tem o botao de apagar o historico');
-      $('#ovosClear').click();
-      await esperar(120);
-      // Pergunta antes: e o unico lugar onde o passado dos ovos existe.
-      const cx = $('#modalRoot');
-      ok(cx && cx.children.length > 0, 'apagar PERGUNTA antes (nao apaga no primeiro clique)');
-      ok(cx.textContent.includes('60'), 'o aviso explica que o jogo so guarda as ultimas 60');
-      const btApagar = [...cx.querySelectorAll('button')].find(b => b.textContent.trim() === 'Apagar');
-      ok(!!btApagar, 'o modal tem o botao Apagar');
-      btApagar.click();
-      // save() e debounced em 350ms: esperar menos leria o estado anterior.
-      await esperar(700);
-      ok($('#ovoList').textContent.includes('Nenhum ovo registrado'), 'depois de confirmar, o historico esta vazio');
-      const s2 = window.tst.salvo();
-      ok(s2 && Array.isArray(s2.ovos) && s2.ovos.length === 0, 'e o estado salvo tambem foi zerado');
+      // ---- 13. nao ha botao de apagar
+      // Nao existe nada guardado para apagar: a lista esvazia sozinha quando a
+      // venda automatica leva os ovos (testado no passo 7).
+      ok(!$('#ovosClear'), 'nao ha botao de apagar (nada e guardado em disco)');
+      ok(txt('#dash').includes('Ovos nas contas'), 'o titulo diz o que a lista e: os ovos que as contas tem agora');
     } catch (e) {
       out.push('FALHA excecao: ' + ((e && e.stack) || e));
     }

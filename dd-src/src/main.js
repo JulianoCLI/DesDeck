@@ -546,6 +546,42 @@ function registerIpc() {
     headlessManager.mediaDoItem(accId, String(item || ''), moeda === 'gemas' ? 'gemas' : 'bits')
   ));
 
+  // Os retratos das espécies pedidas, como data-URL: { [especie]: url|null }.
+  //
+  // Existe porque o Histórico de Ovos guardava a imagem DENTRO de cada ovo, no
+  // estado. Medido: 17,23 MB de retratos em 2000 ovos — 96% do arquivo — para
+  // apenas 18 espécies distintas, cada uma repetida ~111 vezes. E esse arquivo
+  // é reserializado, recriptografado e regravado inteiro a cada gravação.
+  //
+  // Agora o estado guarda só o id da espécie e a imagem é pedida aqui. O custo
+  // é zero na prática: sprites.js já tem cache em memória e em disco
+  // (userData/sprites), e os retratos não mudam.
+  handle('sprites:retratos', async (_e, especies = []) => {
+    const { retrato } = require('./headless/sprites');
+    const { especiePorId } = require('./headless/catalogo');
+    const ids = [...new Set((Array.isArray(especies) ? especies : [])
+      .filter((s) => typeof s === 'string' && /^[\w-]{1,64}$/.test(s)))].slice(0, 400);
+    if (!ids.length) return {};
+    let fichas = {};
+    try { fichas = await especiePorId(); } catch { /* sem catálogo: só o que já está em cache */ }
+    const out = {};
+    await Promise.all(ids.map(async (id) => {
+      try { out[id] = await retrato(id, fichas[id]); } catch { out[id] = null; }
+    }));
+    return out;
+  });
+
+  // A bolsa de ovos de uma conta em modo WEBVIEW, pronta para listar.
+  //
+  // Em headless o manager já faz isto sozinho (evento 'bolsa'). No modo webview
+  // não há cliente headless: a lista crua é lida da página pela ponte (G.ovos) e
+  // chega aqui para ganhar nome e letra — que dependem dos catálogos do jogo, e
+  // esses só se baixam no processo principal (net.request).
+  handle('ovos:bolsa', async (_e, lista) => {
+    const { enriquecerBolsa } = require('./headless/ovos');
+    try { return await enriquecerBolsa(lista); } catch { return []; }
+  });
+
   // ---- Cadastro em lote (Fase B)
   const { registrarHandlersCadastro } = require('./cadastro/ipc-handlers');
   registrarHandlersCadastro(handle, net);
@@ -664,13 +700,14 @@ if (!app.requestSingleInstanceLock()) {
     headlessManager.on('account:painel', ({ index, painel }) => {
       send('headless:account:painel', { index, painel });
     });
-    // As atividades (ovo capturado, ovo chocado, drop, log das ferramentas) e o
-    // historico de ovos. Vao para o renderer porque e la que vive o Painel.
+    // As atividades (ovo capturado, ovo chocado, drop, log das ferramentas) e a
+    // bolsa de ovos. Vao para o renderer porque e la que vive o Painel.
     headlessManager.on('account:atividade', ({ index, atividade }) => {
       send('headless:account:atividade', { index, atividade });
     });
-    headlessManager.on('account:historico', ({ index, historico }) => {
-      send('headless:account:historico', { index, historico });
+    // Os ovos que a conta TEM agora (os que a venda automatica nao levou).
+    headlessManager.on('account:bolsa', ({ index, ovos }) => {
+      send('headless:account:bolsa', { index, ovos });
     });
     headlessManager.on('account:error', ({ index, message }) => {
       send('headless:account:error', { index, message });
@@ -694,6 +731,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => {
     quitting = true;
     flushAccountCookies();
+    // A gravação normal é assíncrona (ver vault.write): na saída ela pode não
+    // ter terminado. Aqui, uma vez só, vale bloquear para não perder a última.
+    if (vault && state) vault.writeSync(state);
   });
   // Rede de segurança: se o app cair sem passar pelo before-quit, o login mais
   // recente já está no disco (perde no máximo 5 min).
