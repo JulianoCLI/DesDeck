@@ -73,6 +73,21 @@ const TIERS_OVO = [
 ];
 
 /**
+ * A letra D..SSS de uma nota de 0 a 10.
+ *
+ * Existe separada porque os DIGIMONS (pacotes 'estado'.equipe e 'depot') já
+ * chegam com 'nota' pronta do servidor, na mesma escala dos ovos — medido em
+ * conta real: um wargrowlmon veio nota 3.526 / faixa "Razoável". Eles NÃO
+ * trazem 'u' (o sorteio de qualidade), então notaOvo() devolveria null e a
+ * letra sairia '?' para todos. Reaproveitar o corte aqui é o que faz o filtro
+ * "SSS" significar a mesma coisa para um ovo e para um digimon.
+ */
+function letraDeNota(n) {
+  if (n == null || !Number.isFinite(n)) return '?';
+  return (TIERS_OVO.find((t) => n < t[1]) || TIERS_OVO[TIERS_OVO.length - 1])[0];
+}
+
+/**
  * Monta o calculador de tier a partir dos catálogos públicos do jogo.
  * @param {Array} especies conteúdo de /shared/especies.json
  * @param {object} itens conteúdo de /shared/itens.json
@@ -112,13 +127,9 @@ function criarTierOvo(especies, itens) {
   };
 
   // A letra do card é a do +N máximo (a qualidade só sobe com o +N).
-  const letraOvo = (o) => {
-    const n = notaOvo(o);
-    if (n == null) return '?';
-    return (TIERS_OVO.find((t) => n < t[1]) || TIERS_OVO[TIERS_OVO.length - 1])[0];
-  };
+  const letraOvo = (o) => letraDeNota(notaOvo(o));
 
   return { letraOvo, notaOvo };
 }
 
-module.exports = { criarTierOvo, TIERS: TIERS_OVO.map((t) => t[0]) };
+module.exports = { criarTierOvo, letraDeNota, TIERS: TIERS_OVO.map((t) => t[0]) };

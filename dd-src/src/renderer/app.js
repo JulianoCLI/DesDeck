@@ -859,6 +859,13 @@ function createRuntime(acc) {
     guardaBolsa(id, ovos);
   });
 
+  // Os digimons da conta: equipe + DigiBank + coleção, tudo o que ela tem.
+  // Também chega inteiro a cada vez.
+  const unsubHeadlessDigimons = deck.onHeadlessDigimons(({index, digimons}) => {
+    if (index !== id) return;
+    guardaDigimons(id, digimons);
+  });
+
   // O motivo da falha. Sem isto, o card dizia só "disconnected" e a explicação
   // do client ("abra a conta e faça login uma vez") era emitida e jogada fora —
   // a pessoa via a conta não conectar sem nenhuma pista do porquê.
@@ -915,6 +922,7 @@ function createRuntime(acc) {
     if (unsubHeadlessPainel) unsubHeadlessPainel();
     if (unsubHeadlessAtividade) unsubHeadlessAtividade();
     if (unsubHeadlessBolsa) unsubHeadlessBolsa();
+    if (unsubHeadlessDigimons) unsubHeadlessDigimons();
     // A conta saiu: os ovos dela não são mais "o que está nas contas".
     esqueceBolsa(id);
     if (isHeadless(id)) deck.headlessStop(id).catch(() => {});
@@ -1099,31 +1107,54 @@ function desenhaPainel(accId) {
 // cada captura para sempre no estado criptografado, e foi assim que o arquivo
 // chegou a 24 MB (eram 17,23 MB só de retratos repetidos).
 //
-// accId -> { ovos: [...], em: timestamp }
+// accId -> { ovos: [...], digimons: [...], em: timestamp }
 const bolsas = new Map();
 
-/** Troca a bolsa de uma conta pela recém-chegada. */
+const bolsaDe = (accId) => bolsas.get(accId) || { ovos: [], digimons: [], em: 0 };
+
+/** Troca a bolsa de ovos de uma conta pela recém-chegada. */
 function guardaBolsa(accId, lista) {
   if (!Array.isArray(lista)) return;
-  bolsas.set(accId, { ovos: lista, em: Date.now() });
+  bolsas.set(accId, { ...bolsaDe(accId), ovos: lista, em: Date.now() });
   // Mesmo agrupamento do log: 16 contas conectando juntas mandam a bolsa quase
   // ao mesmo tempo, e sem isto a lista seria redesenhada 16 vezes em sequência.
   pedeRenderOvos();
 }
 
-/** Conta desligada não tem bolsa: a lista não pode mostrar ovos que já foram. */
+/** O mesmo para os digimons: equipe + DigiBank + coleção, já enriquecidos. */
+function guardaDigimons(accId, lista) {
+  if (!Array.isArray(lista)) return;
+  bolsas.set(accId, { ...bolsaDe(accId), digimons: lista, em: Date.now() });
+  pedeRenderOvos();
+}
+
+/** Conta desligada: a lista não pode mostrar o que aquela conta tinha. */
 function esqueceBolsa(accId) {
   if (bolsas.delete(accId)) pedeRenderOvos();
 }
 
-// A bolsa das contas em modo WEBVIEW.
+// O que as contas em modo WEBVIEW têm.
 //
-// Em headless o manager avisa sozinho (evento 'bolsa'). No webview não há
-// cliente headless: a lista crua está na ponte injetada na página (G.ovos, que
-// ela guarda a cada pacote 'ovos'), e é lida daqui de tempo em tempo. O nome e a
-// letra vêm do processo principal, que é quem tem os catálogos do jogo.
+// Em headless o manager avisa sozinho (eventos 'bolsa' e 'digimons'). No webview
+// não há cliente headless: as listas cruas estão na ponte injetada na página
+// (G.ovos, G.depot, G.colecao e G.estado.equipe, que ela guarda a cada pacote),
+// e são lidas daqui de tempo em tempo. O nome e a letra vêm do processo
+// principal, que é quem tem os catálogos do jogo.
 const BOLSA_WEBVIEW_MS = 60000;
 let bolsaWebviewOcupado = false;
+
+// Uma leitura só, para não pagar dois executeJavaScript por conta. A equipe
+// mora no 'estado'; o resto vem do pacote 'depot'.
+const LE_BOLSA_JS = `(() => {
+  const g = window.__ddGame;
+  if (!g) return null;
+  return {
+    ovos: Array.isArray(g.ovos) ? g.ovos : null,
+    equipe: g.estado && Array.isArray(g.estado.equipe) ? g.estado.equipe : null,
+    depot: Array.isArray(g.depot) ? g.depot : null,
+    colecao: Array.isArray(g.colecao) ? g.colecao : null,
+  };
+})()`;
 
 async function bolsaLoop() {
   if (bolsaWebviewOcupado || lockedUI || !started) return;
@@ -1133,13 +1164,23 @@ async function bolsaLoop() {
       // Headless tem o seu próprio caminho; página dormindo ou sem carregar não
       // responde (e acordá-la só por causa da lista não se justifica).
       if (isHeadless(id) || !r.wv || !r.ready || r.sleeping || r.status !== 'online') continue;
-      let cruas;
+      let cru;
       try {
-        cruas = await withTimeout(r.wv.executeJavaScript(
-          '(() => { const g = window.__ddGame; return g && Array.isArray(g.ovos) ? g.ovos : null; })()'), 5000);
+        cru = await withTimeout(r.wv.executeJavaScript(LE_BOLSA_JS), 5000);
       } catch { continue; } // página ocupada: fica para a próxima rodada
-      if (!Array.isArray(cruas)) continue; // a ponte ainda não viu o pacote 'ovos'
-      try { guardaBolsa(id, await deck.ovosBolsa(cruas)); } catch { /* sem catálogo, tenta depois */ }
+      if (!cru) continue; // a ponte ainda não foi injetada
+      // Cada lista é independente: a ponte pode já ter visto 'ovos' e ainda não
+      // 'depot'. Guardar só o que chegou evita apagar o que já estava na tela.
+      if (Array.isArray(cru.ovos)) {
+        try { guardaBolsa(id, await deck.ovosBolsa(cru.ovos)); } catch { /* sem catálogo, tenta depois */ }
+      }
+      if (cru.equipe || cru.depot || cru.colecao) {
+        try {
+          guardaDigimons(id, await deck.ovosDigimons({
+            equipe: cru.equipe || [], depot: cru.depot || [], colecao: cru.colecao || [],
+          }));
+        } catch { /* idem */ }
+      }
     }
   } finally {
     bolsaWebviewOcupado = false;
@@ -1147,15 +1188,16 @@ async function bolsaLoop() {
 }
 
 /**
- * Todos os ovos de todas as contas ligadas, com o nome da conta em cada linha.
- * Contas que já não existem são ignoradas (e limpas no caminho).
+ * Tudo o que as contas ligadas têm — ovos e digimons —, com o nome da conta em
+ * cada linha. Contas que já não existem são ignoradas (e limpas no caminho).
  */
 function todosOsOvos() {
   const out = [];
   for (const [accId, b] of bolsas) {
     const acc = accById(accId);
     if (!acc) { bolsas.delete(accId); continue; }
-    for (const o of b.ovos) out.push({ ...o, accId, nomeConta: acc.name });
+    for (const o of b.ovos || []) out.push({ ...o, accId, nomeConta: acc.name });
+    for (const d of b.digimons || []) out.push({ ...d, accId, nomeConta: acc.name });
   }
   return out;
 }
@@ -2759,7 +2801,7 @@ function renderDash() {
             // Não é histórico: é o que as contas TÊM agora. Por isso não há
             // botão de apagar — não existe nada guardado para apagar, e a lista
             // esvazia sozinha quando a venda automática leva os ovos.
-            h('h3', { class: 'section-title', style: { margin: '0' } }, 'Ovos nas contas'),
+            h('h3', { class: 'section-title', style: { margin: '0' } }, 'Ovos e digimons nas contas'),
             h('span', { class: 'grow' }),
             h('span', { class: 'acc-meta', id: 'ovosCount' })),
           h('div', { class: 'chips', id: 'ovoChips' }),
@@ -2777,14 +2819,22 @@ function renderDash() {
 let ovoFilter = 'all';
 
 // As letras na ordem do jogo (ovo-tier.js), mais os outros eixos pelos quais um
-// ovo se destaca na bolsa.
+// ovo ou digimon se destaca.
+//
+// A letra vale para os dois: o servidor manda a 'nota' do digimon já calculada
+// na MESMA escala de 0 a 10 do ovo, então o corte D..SSS é o mesmo (ver
+// letraDeNota em ovo-tier.js). "SSS" quer dizer a mesma coisa nas duas linhas.
+//
+// 'Ovos'/'Digimons' existem porque a pergunta mais comum é justamente separar
+// os dois ("o que ainda não chocou?" / "o que eu tenho?").
 //
 // Não há filtro "UX": medido numa conta real, o pacote 'ovos' não traz
 // 'scanner'. Ele existia só no histórico de capturas, que não é mais a fonte.
 // 'travado' entrou no lugar — é o que diz quais ovos a venda automática nunca
-// vai levar, e é a pergunta que de fato se faz olhando a bolsa.
+// vai levar.
 const OVO_FILTROS = [
-  ['all', 'Tudo'], ['SSS', 'SSS'], ['SS', 'SS'], ['S', 'S'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D'],
+  ['all', 'Tudo'], ['ovo', '🥚 Ovos'], ['digi', 'Digimons'],
+  ['SSS', 'SSS'], ['SS', 'SS'], ['S', 'S'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D'],
   ['shiny', '✦ Shiny'], ['travado', '🔒 Travado'], ['p5', 'P5'], ['p4', 'P4'],
 ];
 
@@ -2843,6 +2893,10 @@ function renderOvos() {
 
   const match = (o) => (salvo ? ovoPassaNoFiltro(o, salvo)
     : ovoFilter === 'all'
+    // 'tipo' separa as duas naturezas da mesma lista. Um item sem tipo é
+    // tratado como ovo: era o que a lista tinha antes dos digimons.
+    || (ovoFilter === 'ovo' && (o.tipo || 'ovo') === 'ovo')
+    || (ovoFilter === 'digi' && o.tipo === 'digi')
     || (ovoFilter === 'shiny' && o.shiny)
     || (ovoFilter === 'travado' && o.travado)
     || (ovoFilter === 'p5' && o.potencia === 5)
@@ -2851,7 +2905,7 @@ function renderOvos() {
 
   const bolsa = todosOsOvos();
   const todos = bolsa.filter(match);
-  // Os melhores primeiro: é a pergunta que se faz olhando a bolsa ("sobrou algo
+  // Os melhores primeiro: é a pergunta que se faz olhando isto ("sobrou algo
   // bom?"), não "o que entrou agora". Empate de letra desempata pela nota.
   todos.sort((a, b) => (ORDEM_LETRA[b.letra] || 0) - (ORDEM_LETRA[a.letra] || 0)
     || (b.nota || 0) - (a.nota || 0)
@@ -2862,8 +2916,8 @@ function renderOvos() {
 
   list.replaceChildren(...(rows.length ? rows.map(ovoRow)
     : [h('div', { class: 'log-empty' }, bolsa.length
-      ? 'Nenhum ovo com este filtro.'
-      : (bolsas.size ? 'Nenhuma conta tem ovos na bolsa agora.' : 'Ligue as contas para ver os ovos delas.'))]));
+      ? 'Nada com este filtro.'
+      : (bolsas.size ? 'As contas ligadas não têm ovos nem digimons agora.' : 'Ligue as contas para ver o que elas têm.'))]));
 
   // Os retratos que ainda não estão em cache. Só as linhas visíveis.
   carregaRetratos(rows.map((o) => o.especie), () => {
@@ -2874,22 +2928,37 @@ function renderOvos() {
 // Para ordenar: a letra é texto, e 'SSS' > 'A' por acaso alfabético não serve.
 const ORDEM_LETRA = { D: 1, C: 2, B: 3, A: 4, S: 5, SS: 6, SSS: 7 };
 
+// Onde o digimon está guardado, em uma palavra. 'equipe' é o único que muda o
+// que a conta faz (são os que lutam), por isso é o que ganha destaque.
+const LOCAL_DIGI = { equipe: 'equipe', depot: 'DigiBank', colecao: '★ coleção', mercado: 'anunciado' };
+
 function ovoRow(o) {
+  const digi = o.tipo === 'digi';
   const d = new Date(o.em || 0);
   const quando = o.em ? (dayKey(o.em) === dayKey() ? fmtTime(o.em) : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`) : '';
-  return h('div', { class: 'ovo-row', title: `${o.nome}${o.em ? ' · capturado em ' + d.toLocaleString('pt-BR') : ''}` },
-    // O retrato vem do cache por espécie: a imagem nunca entra na lista de ovos.
+  // A dica diz por extenso o que a linha abrevia: a faixa do jogo ("Mítico") e
+  // quando o bicho entrou na conta.
+  const dica = [o.nome, digi && o.faixa ? o.faixa : '', o.em ? 'capturado em ' + d.toLocaleString('pt-BR') : '']
+    .filter(Boolean).join(' · ');
+  return h('div', { class: 'ovo-row', title: dica },
+    // O retrato vem do cache por espécie: a imagem nunca entra nesta lista.
     retratoEl(o.nome, retratosCache.get(o.especie) || null, 'ovo'),
     h('div', { class: 'ovo-info' },
-      h('div', { class: 'ovo-nome' }, (o.shiny ? '✦ ' : '') + o.nome),
+      // O 🥚 distingue o que ainda não chocou do que já é digimon — as duas
+      // coisas moram na mesma lista e podem ser a mesma espécie.
+      h('div', { class: 'ovo-nome' }, (digi ? '' : '🥚 ') + (o.shiny ? '✦ ' : '') + o.nome),
       h('div', { class: 'ovo-sub' },
         o.nomeConta ? h('span', {}, o.nomeConta) : null,
+        // Nível e poder só existem no digimon, e são o que se olha nele.
+        digi && o.nivel ? h('span', {}, `Nv ${fmtNum(o.nivel)}`) : null,
+        digi && o.poder ? h('span', {}, `${fmtNum(o.poder)} poder`) : null,
+        digi && o.local ? h('span', {}, LOCAL_DIGI[o.local] || o.local) : null,
         quando ? h('span', {}, quando) : null,
         // A nota de 0 a 10 é o número por trás da letra: duas letras iguais
         // podem estar bem longe uma da outra dentro da mesma faixa.
         o.nota != null ? h('span', {}, `nota ${Number(o.nota).toFixed(2)}`) : null,
         // O +N de energia: é o que a venda automática olha para poupar o ovo.
-        o.data ? h('span', {}, `+${o.data}`) : null)),
+        !digi && o.data ? h('span', {}, `+${o.data}`) : null)),
     h('div', { class: 'ovo-tags' },
       // Cadeado: a venda automática nunca leva este ovo.
       o.travado ? h('span', { class: 'ovo-pot', title: 'Travado: a venda automática não leva' }, '🔒') : null,

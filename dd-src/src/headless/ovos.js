@@ -96,6 +96,8 @@ async function enriquecerBolsa(lista) {
       // O id do ovo no servidor: é a identidade estável da linha (o mesmo ovo
       // chega de novo em cada pacote 'ovos', e some quando choca ou é vendido).
       id: o.id,
+      // A mesma lista mostra ovos e digimons: é isto que diz qual é qual.
+      tipo: 'ovo',
       especie: o.especie || null,
       nome: ficha ? ficha.nome : (o.especie || '—'),
       letra,
@@ -110,6 +112,78 @@ async function enriquecerBolsa(lista) {
       protegido: !!o.protegido,
       em: o.em || 0,
     });
+  }
+  return out;
+}
+
+/**
+ * Os digimons que a conta tem, prontos para o Painel listar.
+ *
+ * As três origens, todas no mesmo formato (medido em conta real):
+ *   - equipe : pacote 'estado'.equipe  (quem luta)
+ *   - depot  : pacote 'depot'.lista    (o DigiBank da Babamon)
+ *   - colecao: pacote 'depot'.colecao  (os marcados com ★)
+ * É a mesma soma que o cliente do jogo chama de todosDigimons (app.js).
+ *
+ * A letra sai de 'nota', que o servidor JÁ manda calculada e na mesma escala
+ * de 0 a 10 dos ovos (um wargrowlmon real veio nota 3.526, faixa "Razoável").
+ * Não dá para recalcular: os digimons não trazem 'u', o sorteio de qualidade —
+ * passá-los por notaOvo() devolveria null e todos ficariam com letra '?'.
+ *
+ * Como em enriquecerBolsa, nada de retrato: ele vem do cache por espécie.
+ */
+async function enriquecerDigimons({ equipe, depot, colecao } = {}) {
+  const grupos = [
+    ['equipe', equipe],
+    ['depot', depot],
+    ['colecao', colecao],
+  ];
+  if (!grupos.some(([, l]) => Array.isArray(l) && l.length)) return [];
+
+  let especies = {};
+  try {
+    especies = await especiePorId();
+  } catch {
+    // Sem catalogo sobra o slug como nome - ainda e uma linha util.
+  }
+  const { letraDeNota } = require('./ovo-tier');
+
+  const out = [];
+  const vistos = new Set();
+  for (const [grupo, lista] of grupos) {
+    if (!Array.isArray(lista)) continue;
+    for (const d of lista) {
+      if (!d || d.id == null) continue;
+      // O mesmo digimon pode aparecer em dois grupos (ele está na equipe E
+      // marcado como coleção). Uma linha por bicho, e a primeira vence.
+      if (vistos.has(d.id)) continue;
+      vistos.add(d.id);
+      const ficha = especies[d.especie];
+      const nota = typeof d.nota === 'number' ? d.nota : null;
+      out.push({
+        id: d.id,
+        tipo: 'digi',
+        especie: d.especie || null,
+        nome: ficha ? ficha.nome : (d.especie || '—'),
+        letra: letraDeNota(nota),
+        nota,
+        // O rótulo da nota que o jogo mostra ("Razoável", "Mítico"…). Vem
+        // pronto; é o que a dica da linha diz por extenso.
+        faixa: d.faixa || null,
+        potencia: d.potencia || 0,
+        nivel: d.nivel || 0,
+        shiny: !!d.shiny,
+        // O que só o digimon tem, e é o que se olha nele.
+        poder: d.poder || 0,
+        hp: d.hp || 0,
+        hpMax: d.hpMax || 0,
+        // 'equipe' | 'depot' | 'colecao' | 'mercado'. O servidor manda em
+        // 'local'; o grupo onde veio é a reserva para quando não mandar.
+        local: d.local || grupo,
+        // Quando foi capturado, para empatar a ordenação por data.
+        em: d.capturadoEm || 0,
+      });
+    }
   }
   return out;
 }
@@ -140,4 +214,4 @@ async function nomeDoNegocio(a) {
   return null;
 }
 
-module.exports = { enriquecer, enriquecerBolsa, nomeDoNegocio };
+module.exports = { enriquecer, enriquecerBolsa, enriquecerDigimons, nomeDoNegocio };

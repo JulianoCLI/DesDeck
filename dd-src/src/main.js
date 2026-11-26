@@ -582,6 +582,13 @@ function registerIpc() {
     try { return await enriquecerBolsa(lista); } catch { return []; }
   });
 
+  // Os digimons de uma conta em modo WEBVIEW: equipe + DigiBank + colecao.
+  // Mesmo caminho da bolsa (a ponte le da pagina, o nome vem do catalogo).
+  handle('ovos:digimons', async (_e, grupos) => {
+    const { enriquecerDigimons } = require('./headless/ovos');
+    try { return await enriquecerDigimons(grupos || {}); } catch { return []; }
+  });
+
   // ---- Cadastro em lote (Fase B)
   const { registrarHandlersCadastro } = require('./cadastro/ipc-handlers');
   registrarHandlersCadastro(handle, net);
@@ -708,6 +715,10 @@ if (!app.requestSingleInstanceLock()) {
     // Os ovos que a conta TEM agora (os que a venda automatica nao levou).
     headlessManager.on('account:bolsa', ({ index, ovos }) => {
       send('headless:account:bolsa', { index, ovos });
+    });
+    // E os digimons: equipe + DigiBank + colecao.
+    headlessManager.on('account:digimons', ({ index, digimons }) => {
+      send('headless:account:digimons', { index, digimons });
     });
     headlessManager.on('account:error', ({ index, message }) => {
       send('headless:account:error', { index, message });

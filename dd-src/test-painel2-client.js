@@ -191,6 +191,55 @@ app.whenReady().then(async () => {
   ok((await enriquecerBolsa(null)).length === 0, 'bolsa nula nao estoura');
   ok((await enriquecerBolsa([null, undefined])).length === 0, 'bolsa com lixo nao gera linha');
 
+  // ---- 13c. os DIGIMONS: nao so os ovos
+  //
+  // O digimon abaixo e copia fiel de um digimon real, medido numa conta
+  // (depot-campos.txt). Note o que ele NAO traz: 'u', o sorteio de qualidade.
+  // Passa-lo por notaOvo() devolveria null e a letra sairia '?' para todos os
+  // digimons da conta. Em troca o servidor manda 'nota' e 'faixa' prontas, na
+  // mesma escala de 0 a 10 dos ovos - e dai sai a letra.
+  const { enriquecerDigimons } = require('./src/headless/ovos');
+  const wargrow = {
+    id: 26473, especie: 'wargrowlmon', max: 'wargrowlmon', linha: ['guilmon', 'growlmon', 'wargrowlmon'],
+    nivel: 112, xp: 22584574, ivs: [18, 20, 25, 31, 19, 31], ivTotal: 144,
+    qualidade: 1.58, qualPct: 2, potencia: 2, shiny: false, hp: 2664, hpMax: 2664,
+    stats: [222, 237, 219, 270, 181, 258], nota: 3.526, faixa: 'Razoável', poder: 409,
+    local: 'equipe', ordem: 0, starter: true, capturadoEm: 1795045062346,
+    capturadoPor: 'ms3', precoVenda: 88255, tamanho: 175.6,
+  };
+  ok(wargrow.u === undefined, 'o digimon real NAO traz "u" (por isso a letra nao vem de notaOvo)');
+  const g = await enriquecerDigimons({ equipe: [wargrow] });
+  ok(g.length === 1, 'o digimon foi enriquecido (veio: ' + g.length + ')');
+  ok(g[0].tipo === 'digi', 'marcado como digimon: e o que separa as duas naturezas da mesma lista');
+  ok(g[0].nome === 'Wargrowlmon', 'o slug virou nome (veio: ' + g[0].nome + ')');
+  // nota 3.526 cai na faixa 3.0-4.2 do corte TIERS_OVO: letra S.
+  ok(g[0].letra === 'S', 'a letra sai do corte da nota do servidor (veio: ' + g[0].letra + ')');
+  ok(g[0].nota === 3.526, 'a nota do servidor passa intacta');
+  ok(g[0].faixa === 'Razoável', 'e a faixa por extenso, que a dica da linha mostra');
+  ok(g[0].nivel === 112 && g[0].poder === 409, 'nivel e poder, que so o digimon tem');
+  ok(g[0].em === 1795045062346, 'capturadoEm virou "em", para empatar a ordenacao com os ovos');
+  // O retrato NAO pode estar aqui, pelo mesmo motivo da bolsa.
+  ok(g[0].img === undefined, 'o digimon NAO carrega retrato (vem do cache por especie)');
+  ok(!JSON.stringify(g).includes('data:image'), 'nenhum data-URL nos digimons enriquecidos');
+  // Os tres grupos somam, como todosDigimons do cliente do jogo.
+  const g3 = await enriquecerDigimons({
+    equipe: [wargrow],
+    depot: [{ id: 2, especie: 'agumon', nota: 9.9 }],
+    colecao: [{ id: 3, especie: 'gabumon', nota: 0.1 }],
+  });
+  ok(g3.length === 3, 'equipe + DigiBank + colecao somam (veio: ' + g3.length + ')');
+  ok(g3[1].letra === 'SSS' && g3[2].letra === 'D', 'os extremos da nota dao SSS e D');
+  // O grupo onde veio e a reserva quando o servidor nao manda 'local'.
+  ok(g3[1].local === 'depot' && g3[2].local === 'colecao', 'sem "local", vale o grupo onde o digimon veio');
+  // O mesmo bicho pode estar na equipe E marcado como colecao: uma linha so.
+  const gdup = await enriquecerDigimons({ equipe: [wargrow], colecao: [wargrow] });
+  ok(gdup.length === 1, 'o mesmo digimon em dois grupos nao duplica a linha (veio: ' + gdup.length + ')');
+  // Digimon sem nota: ainda e uma linha util, com letra '?'.
+  const gsn = await enriquecerDigimons({ depot: [{ id: 9, especie: 'agumon' }] });
+  ok(gsn[0].letra === '?', 'digimon sem nota fica com letra "?" (veio: ' + gsn[0].letra + ')');
+  ok((await enriquecerDigimons()).length === 0, 'chamada sem grupos nao estoura');
+  ok((await enriquecerDigimons({ equipe: [null], depot: [{ semId: 1 }] })).length === 0, 'lixo nao gera linha');
+
   // ---- 14. o item raro vem do CATALOGO, nao de uma lista escrita a mao
   const raros = await require('./src/headless/catalogo').nomesRaros();
   ok(raros.has('Boss Token'), 'Boss Token e raro (esta no bolso Itens Raros)');

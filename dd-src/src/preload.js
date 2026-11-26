@@ -67,6 +67,8 @@ contextBridge.exposeInMainWorld('deck', {
   retratos: (especies) => ipcRenderer.invoke('sprites:retratos', especies),
   // A bolsa crua de uma conta em modo webview ganha nome e letra aqui.
   ovosBolsa: (lista) => ipcRenderer.invoke('ovos:bolsa', lista),
+  // Idem para os digimons ({ equipe, depot, colecao }).
+  ovosDigimons: (grupos) => ipcRenderer.invoke('ovos:digimons', grupos),
   onHeadlessUpdate: on('headless:account:update'),
   onHeadlessStatus: on('headless:account:status'),
   onHeadlessError: on('headless:account:error'),
@@ -75,6 +77,8 @@ contextBridge.exposeInMainWorld('deck', {
   // Os ovos que a conta tem agora. Não é histórico: é um retrato da bolsa, que
   // chega inteiro a cada vez e substitui o anterior.
   onHeadlessBolsa: on('headless:account:bolsa'),
+  // Os digimons da conta: equipe + DigiBank + colecao, no mesmo esquema.
+  onHeadlessDigimons: on('headless:account:digimons'),
 
   // Cadastro em lote (Fase B/C)
   cadastroStart: (config) => ipcRenderer.invoke('cadastro:start', config),

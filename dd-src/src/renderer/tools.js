@@ -27,6 +27,8 @@ const PONTE_JS = `
 if (!window.__ddGame) {
   const G = window.__ddGame = {
     sock: null, estado: null, ovos: null, campo: null, offCfg: null, pronto: false,
+    // Os digimons guardados (pacote 'depot'). A equipe vive em estado.equipe.
+    depot: null, colecao: null,
     // O lobby do Labirinto da Guild: pacote 'lab', resposta de 'lab.info'.
     // aoLabMudou: chamados quando o servidor avisa 'lab.mudou'.
     lab: null, aoLabMudou: [],
@@ -97,6 +99,10 @@ if (!window.__ddGame) {
         if (!G.pronto) { G.pronto = true; G.espera.splice(0).forEach((f) => { try { f(); } catch (e) { console.error(e); } }); }
       }
       else if (m.t === 'ovos') G.ovos = m.lista || [];
+      // Os digimons guardados: 'lista' é o DigiBank, 'colecao' os marcados com
+      // ★. A equipe não vem aqui: ela está em G.estado.equipe. Chega sozinho no
+      // login, junto com os ovos.
+      else if (m.t === 'depot') { G.depot = m.lista || []; G.colecao = m.colecao || []; }
       // 'campo' é a cena. No Labirinto ele vem como delta (campo-delta.js); não
       // remontamos nada: só guardamos o pacote cheio, que é onde os corpos aparecem.
       else if (m.t === 'campo') { if (!m.delta) G.campo = m; }

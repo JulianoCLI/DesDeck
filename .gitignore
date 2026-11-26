@@ -54,6 +54,11 @@ painel2-grep.txt
 # Idem: a sonda da bolsa de ovos roda numa conta real e despeja os ovos dela
 # (espécie, IVs, nível) com o nick no cabeçalho.
 bolsa-campos.txt
+# Idem: a sonda do pacote 'depot' roda numa conta real e despeja os digimons
+# dela (espécie, IVs, nível, preço) com o nick de quem capturou.
+depot-campos.txt
+# A saída do grep da coleção no JS do jogo: arquivo gerado, não fonte.
+colecao-grep.txt
 # Saídas dos testes de tamanho do estado e de correção da abertura. Não trazem
 # dado de conta, mas são geradas.
 tamanho-test.txt

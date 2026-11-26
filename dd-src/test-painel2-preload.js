@@ -57,6 +57,10 @@ contextBridge.exposeInMainWorld('deck', {
   // A bolsa das contas em modo webview passa por aqui para ganhar nome e letra.
   // No teste os ovos já chegam prontos, então é a identidade.
   ovosBolsa: (l) => Promise.resolve(l || []),
+  onHeadlessDigimons: on('hl:digimons'),
+  ovosDigimons: (g) => Promise.resolve([
+    ...((g && g.equipe) || []), ...((g && g.depot) || []), ...((g && g.colecao) || []),
+  ]),
   retratos: () => Promise.resolve({}),
 });
 

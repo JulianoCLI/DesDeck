@@ -42,7 +42,16 @@ const painelDe = (over = {}) => ({
 // Um ovo da bolsa, como enriquecerBolsa() devolve: sem 'img' (o retrato vem do
 // cache por especie) e sem 'scanner' (o pacote 'ovos' nao traz esse campo).
 let proxId = 1;
-const ovo = (o) => ({ id: proxId++, especie: 'agumon', nome: 'Agumon', letra: 'C', nota: 2.5, potencia: 1, shiny: false, travado: false, protegido: false, data: 0, nivel: 1, em: Date.now(), ...o });
+const ovo = (o) => ({ id: proxId++, tipo: 'ovo', especie: 'agumon', nome: 'Agumon', letra: 'C', nota: 2.5, potencia: 1, shiny: false, travado: false, protegido: false, data: 0, nivel: 1, em: Date.now(), ...o });
+
+// Um digimon, como enriquecerDigimons() devolve. Medido em conta real: o
+// servidor manda 'nota' e 'faixa' prontas, e NAO manda 'u' - por isso a letra
+// vem do corte da nota, nao de notaOvo().
+const digi = (d) => ({
+  id: proxId++, tipo: 'digi', especie: 'agumon', nome: 'Agumon', letra: 'B', nota: 3.5,
+  faixa: 'Razoável', potencia: 1, nivel: 112, shiny: false, poder: 409, hp: 2664, hpMax: 2664,
+  local: 'equipe', em: Date.now(), ...d,
+});
 
 app.whenReady().then(async () => {
   const win = new BrowserWindow({
@@ -68,6 +77,12 @@ app.whenReady().then(async () => {
   ]);
   const OVOS = bolsaDe();
   const OVOS2 = bolsaDe();
+  // Os digimons de uma conta, um por lugar onde podem estar.
+  const DIGIS = JSON.stringify([
+    digi({ especie: 'wargrowlmon', nome: 'Wargrowlmon', letra: 'B', nota: 3.526, local: 'depot' }),
+    digi({ letra: 'SSS', nota: 9.9, faixa: 'Divino', local: 'colecao', nivel: 90, poder: 1200 }),
+    digi({ nome: 'Gabumon', especie: 'gabumon', letra: 'C', nota: 2.4, local: 'equipe' }),
+  ]);
 
   const r = await win.webContents.executeJavaScript(`(async () => {
     const out = [];
@@ -177,13 +192,54 @@ app.whenReady().then(async () => {
       ok($('#ovoList').children.length === 2, 'filtro P5 deixa os de potencia 5 (veio: ' + $('#ovoList').children.length + ')');
       chip('#ovoChips', 'D').click();
       await esperar(40);
-      ok($('#ovoList').children.length === 1 && $('#ovoList').textContent.includes('Nenhum ovo'), 'filtro sem resultado avisa, em vez de ficar vazio');
+      ok($('#ovoList').children.length === 1 && $('#ovoList').textContent.includes('Nada com este filtro'), 'filtro sem resultado avisa, em vez de ficar vazio');
       chip('#ovoChips', 'Tudo').click();
       await esperar(40);
       ok($('#ovoList').children.length === 8, 'Tudo volta aos 8');
       // Os melhores primeiro: a pergunta que se faz olhando a bolsa e "sobrou
       // algo bom?", nao "o que entrou agora".
       ok($('#ovoList').firstElementChild.textContent.includes('SSS'), 'o melhor ovo (SSS) e a primeira linha');
+
+      // ---- 8b. os DIGIMONS entram na MESMA lista
+      // O pedido: nao so os ovos. A conta tem equipe + DigiBank + colecao, e o
+      // pacote 'depot' chega sozinho no login (medido: +0,2s).
+      window.tst.emitir('hl:digimons', { index: 'a1', digimons: ${DIGIS} });
+      await esperar(80);
+      ok($('#ovoList').children.length === 11, 'os 3 digimons somaram aos 8 ovos (veio: ' + $('#ovoList').children.length + ')');
+      // Os dois tipos moram juntos, e cada filtro separa um.
+      chip('#ovoChips', 'Digimons').click();
+      await esperar(40);
+      ok($('#ovoList').children.length === 3, 'o filtro Digimons deixa so os 3 digimons (veio: ' + $('#ovoList').children.length + ')');
+      ok(!$('#ovoList').textContent.includes('🥚'), 'e nenhum ovo passou (o 🥚 marca os ovos)');
+      chip('#ovoChips', '🥚 Ovos').click();
+      await esperar(40);
+      ok($('#ovoList').children.length === 8, 'o filtro Ovos deixa so os 8 ovos (veio: ' + $('#ovoList').children.length + ')');
+      // A letra vale para os dois: o SSS do digimon aparece junto com o do ovo.
+      chip('#ovoChips', 'SSS').click();
+      await esperar(40);
+      ok($('#ovoList').children.length === 3, 'filtro SSS pega os 2 ovos SSS E o digimon SSS (veio: ' + $('#ovoList').children.length + ')');
+      chip('#ovoChips', 'Tudo').click();
+      await esperar(40);
+
+      // ---- 8c. a linha do digimon diz o que so ele tem
+      const ld = [...$('#ovoList').children].find(e => e.textContent.includes('Wargrowlmon'));
+      ok(!!ld, 'ha uma linha do digimon');
+      ok(!ld.textContent.includes('🥚'), 'o digimon NAO leva o 🥚 (ele nao e um ovo)');
+      ok(ld.textContent.includes('Nv 112'), 'mostra o nivel (veio: ' + ld.textContent + ')');
+      ok(ld.textContent.includes('409'), 'mostra o poder');
+      ok(ld.textContent.includes('DigiBank'), 'e diz ONDE o digimon esta guardado');
+      ok(ld.getAttribute('title').includes('Razoável'), 'a dica traz a faixa que o jogo mostra por extenso');
+      const lo = [...$('#ovoList').children].find(e => e.textContent.includes('🥚'));
+      ok(!!lo, 'e os ovos continuam marcados com 🥚');
+      // Digimon desaparecido (evoluiu, foi vendido) sai da lista.
+      window.tst.emitir('hl:digimons', { index: 'a1', digimons: [] });
+      await esperar(80);
+      ok($('#ovoList').children.length === 8, 'digimons sumiram: sobraram os 8 ovos (veio: ' + $('#ovoList').children.length + ')');
+      window.tst.emitir('hl:digimons', { index: 'a1', digimons: ${DIGIS} });
+      await esperar(80);
+      ok($('#ovoList').children.length === 11, 'e voltaram quando o pacote chegou de novo');
+      window.tst.emitir('hl:digimons', { index: 'a1', digimons: [] });
+      await esperar(80);
 
       // ---- 9. a linha do ovo mostra letra, potencia e shiny
       const linha = [...$('#ovoList').children].find(e => e.textContent.includes('SSS'));
@@ -343,7 +399,7 @@ app.whenReady().then(async () => {
       // Nao existe nada guardado para apagar: a lista esvazia sozinha quando a
       // venda automatica leva os ovos (testado no passo 7).
       ok(!$('#ovosClear'), 'nao ha botao de apagar (nada e guardado em disco)');
-      ok(txt('#dash').includes('Ovos nas contas'), 'o titulo diz o que a lista e: os ovos que as contas tem agora');
+      ok(txt('#dash').includes('Ovos e digimons nas contas'), 'o titulo diz o que a lista e: o que as contas TEM agora, ovo e digimon');
     } catch (e) {
       out.push('FALHA excecao: ' + ((e && e.stack) || e));
     }

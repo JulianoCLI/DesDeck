@@ -168,6 +168,17 @@ class HeadlessManager extends EventEmitter {
         .catch((err) => console.error(`[headless:bolsa] conta ${accountIndex}:`, err.message));
     });
 
+    // Os digimons da conta: equipe + DigiBank + coleção. Mesmo motivo de estar
+    // aqui — o nome bonito vem do catálogo, que só se baixa no main.
+    client.on('digimons', (grupos) => {
+      require('./ovos').enriquecerDigimons(grupos)
+        .then((digimons) => {
+          if (this.clients.get(accountIndex) !== client) return;
+          this.emit('account:digimons', { index: accountIndex, digimons });
+        })
+        .catch((err) => console.error(`[headless:digimons] conta ${accountIndex}:`, err.message));
+    });
+
     this.clients.set(accountIndex, client);
 
     // A primeira conta entra na hora; cada seguinte espera a sua vez na fila.

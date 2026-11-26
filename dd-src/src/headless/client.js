@@ -13,6 +13,10 @@ const LAB_INTERVAL_MS = 5 * 60 * 1000;
 // anúncios de outras pessoas. Pedir 'mercado.meus' a cada aviso seria um pedido
 // por segundo em horário cheio, então os avisos são juntados nesta janela.
 const MERCADO_DEBOUNCE_MS = 4000;
+// A equipe chega dentro do pacote 'estado', que vem várias vezes por segundo
+// (o HP muda a cada golpe). A lista de digimons do Painel não precisa desse
+// ritmo: os avisos são juntados nesta janela.
+const DIGI_DEBOUNCE_MS = 5000;
 const RECONNECT_MIN_MS = 2000;
 const RECONNECT_MAX_MS = 30000;
 const AUTH_TIMEOUT_MS = 15000;
@@ -89,6 +93,10 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       local: null,
       itens: {},
       ovos: [],
+      // Os digimons guardados, do pacote 'depot'. A equipe mora em
+      // state.equipe, preenchida pelo pacote 'estado'.
+      depot: [],
+      colecao: [],
       a: { segundos: 0, xph: 0, bitsph: 0 },
       vip: false,
       vipAte: 0,
@@ -277,6 +285,9 @@ class DigiiIdleHeadlessClient extends EventEmitter {
           const vend = this.tools.get('seller');
           if (vend && vend.confirmarPorInventario) vend.confirmarPorInventario();
         } catch { /* a ferramenta não pode atrapalhar o estado */ }
+        // A equipe chega aqui dentro, e ela faz parte da lista de digimons do
+        // Painel. Agrupado: 'estado' vem várias vezes por segundo.
+        this.emitDigimons();
         this.emit('update');
         break;
 
@@ -344,6 +355,19 @@ class DigiiIdleHeadlessClient extends EventEmitter {
       case 'ovos':
         this.state.ovos = msg.lista || [];
         this.emit('bolsa', this.state.ovos);
+        this.emit('update');
+        break;
+
+      // Os digimons guardados: 'lista' é o DigiBank (a Babamon) e 'colecao' os
+      // marcados com ★. Medido em conta real: chega sozinho no login (+0,2 s),
+      // junto com a bolsa, e nenhum comando do cliente o pede.
+      //
+      // Com a equipe (que vem no 'estado') isto fecha TODOS os digimons da
+      // conta — a mesma soma que o cliente do jogo chama de todosDigimons.
+      case 'depot':
+        this.state.depot = msg.lista || [];
+        this.state.colecao = msg.colecao || [];
+        this.emitDigimons();
         this.emit('update');
         break;
 
@@ -497,6 +521,29 @@ class DigiiIdleHeadlessClient extends EventEmitter {
     if (this.labTimer) { clearInterval(this.labTimer); this.labTimer = null; }
   }
 
+  // ------------------------------------------- Digimons da conta
+  /**
+   * Avisa os digimons que a conta tem: equipe + DigiBank + coleção.
+   *
+   * Agrupado porque as duas fontes mexem na mesma lista e em ritmos muito
+   * diferentes: 'depot' chega uma vez no login, mas 'estado' (que traz a
+   * equipe, com o HP mudando a cada golpe) chega várias vezes por segundo.
+   * Sem o agrupamento, cada tique de batalha reenriqueceria a lista inteira.
+   */
+  emitDigimons() {
+    if (this.digiTimer) return;
+    this.digiTimer = setTimeout(() => {
+      this.digiTimer = null;
+      if (!this.connected) return;
+      this.emit('digimons', {
+        equipe: this.state.equipe || [],
+        depot: this.state.depot || [],
+        colecao: this.state.colecao || [],
+      });
+    }, DIGI_DEBOUNCE_MS);
+    if (this.digiTimer.unref) this.digiTimer.unref();
+  }
+
   // ------------------------------------------- Mercado da Comunidade
   // As vendas e compras ENTRE PLAYERS, que é o que o Painel mostra. A venda de
   // ovos para o NPC ('market.vender') é outra coisa e sai pelo log da
@@ -580,6 +627,9 @@ class DigiiIdleHeadlessClient extends EventEmitter {
   stopMercadoMarco() {
     if (this.mercadoMarco) { clearTimeout(this.mercadoMarco); this.mercadoMarco = null; }
     if (this.mercadoTimer) { clearTimeout(this.mercadoTimer); this.mercadoTimer = null; }
+    // A conta está saindo: um aviso de digimons pendente falaria de um cliente
+    // que já não vale.
+    if (this.digiTimer) { clearTimeout(this.digiTimer); this.digiTimer = null; }
   }
 
   startPingTimer() {
