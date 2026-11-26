@@ -1112,10 +1112,28 @@ const bolsas = new Map();
 
 const bolsaDe = (accId) => bolsas.get(accId) || { ovos: [], digimons: [], em: 0 };
 
+// A última lista já desenhada de cada conta, para não redesenhar à toa.
+//
+// O emissor headless já compara antes de avisar, mas as contas em modo webview
+// chegam por outro caminho (bolsaLoop relê a página a cada 60 s e manda sempre,
+// mudado ou não). Como um redesenho reconstrói os chips e até 200 linhas, com
+// 34 contas isso bastava para a tela engasgar sem nada ter mudado.
+const bolsaAssina = new Map(); // accId -> 'ovos' + 'digimons' assinados
+
+/** A conta mudou o que a lista mostra? Só então vale redesenhar. */
+function marcaMudou(accId, campo, lista) {
+  const chave = accId + ':' + campo;
+  const assina = JSON.stringify(lista);
+  if (bolsaAssina.get(chave) === assina) return false;
+  bolsaAssina.set(chave, assina);
+  return true;
+}
+
 /** Troca a bolsa de ovos de uma conta pela recém-chegada. */
 function guardaBolsa(accId, lista) {
   if (!Array.isArray(lista)) return;
   bolsas.set(accId, { ...bolsaDe(accId), ovos: lista, em: Date.now() });
+  if (!marcaMudou(accId, 'ovos', lista)) return;
   // Mesmo agrupamento do log: 16 contas conectando juntas mandam a bolsa quase
   // ao mesmo tempo, e sem isto a lista seria redesenhada 16 vezes em sequência.
   pedeRenderOvos();
@@ -1125,11 +1143,16 @@ function guardaBolsa(accId, lista) {
 function guardaDigimons(accId, lista) {
   if (!Array.isArray(lista)) return;
   bolsas.set(accId, { ...bolsaDe(accId), digimons: lista, em: Date.now() });
+  if (!marcaMudou(accId, 'digimons', lista)) return;
   pedeRenderOvos();
 }
 
 /** Conta desligada: a lista não pode mostrar o que aquela conta tinha. */
 function esqueceBolsa(accId) {
+  // A assinatura sai junto: sem isto, religar a conta com a MESMA lista não
+  // redesenharia nada, e ela ficaria fora da tela até o primeiro ovo mudar.
+  bolsaAssina.delete(accId + ':ovos');
+  bolsaAssina.delete(accId + ':digimons');
   if (bolsas.delete(accId)) pedeRenderOvos();
 }
 

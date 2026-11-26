@@ -240,6 +240,60 @@ app.whenReady().then(async () => {
   ok((await enriquecerDigimons()).length === 0, 'chamada sem grupos nao estoura');
   ok((await enriquecerDigimons({ equipe: [null], depot: [{ semId: 1 }] })).length === 0, 'lixo nao gera linha');
 
+  // ---- 13d. o aviso de digimons so sai quando a LISTA muda
+  //
+  // Esta e a regressao do segundo travamento, e ela foi MEDIDA: o pacote
+  // 'estado' chega 1x/s para sempre (o HP da equipe muda a cada golpe), entao
+  // o debounce de 5 s nunca ficava em repouso - emitia a cada ~5,8 s por
+  // conta, sem fim, e em 9 de 9 comparacoes o que a lista mostra era
+  // IDENTICO. Com 34 contas davam 5,7 avisos/s, cada um custando um
+  // enriquecer + um IPC + um renderOvos inteiro para nao mudar um pixel.
+  const dg = new DigiiIdleHeadlessClient('a7', 'persist:nao-existe', { name: 'dg' });
+  const avisos = [];
+  dg.on('digimons', (g) => avisos.push(g));
+  dg.connected = true; // emitDigimons desiste se a conta caiu
+  const umDigi = (over = {}) => ({ id: 1, especie: 'agumon', nivel: 50, nota: 5, poder: 100, local: 'equipe', hp: 500, hpMax: 500, ...over });
+
+  dg.state.equipe = [umDigi()];
+  dg.emitDigimons();
+  await new Promise((r) => setTimeout(r, 60));
+  ok(avisos.length === 1, 'o primeiro aviso sai (a lista era desconhecida)');
+
+  // O caso que travava: so o HP mudou, e a lista nem mostra HP.
+  dg.state.equipe = [umDigi({ hp: 120 })];
+  dg.emitDigimons();
+  await new Promise((r) => setTimeout(r, 60));
+  ok(avisos.length === 1, 'o HP mudando NAO gera aviso (era o moinho que travava o app)');
+  dg.state.equipe = [umDigi({ hp: 7 })];
+  dg.emitDigimons();
+  dg.state.equipe = [umDigi({ hp: 2664 })];
+  dg.emitDigimons();
+  await new Promise((r) => setTimeout(r, 60));
+  ok(avisos.length === 1, 'nem depois de varios golpes seguidos');
+
+  // Mas o que a lista MOSTRA tem de passar, senao a correcao congelaria a tela.
+  dg.state.equipe = [umDigi({ nivel: 51 })];
+  dg.emitDigimons();
+  await new Promise((r) => setTimeout(r, 60));
+  ok(avisos.length === 2, 'subir de nivel avisa (a lista mostra o nivel)');
+  dg.state.depot = [umDigi({ id: 2, nota: 9.9 })];
+  dg.emitDigimons();
+  await new Promise((r) => setTimeout(r, 60));
+  ok(avisos.length === 3, 'um digimon novo no DigiBank avisa');
+  ok(avisos[2].depot.length === 1, 'e o aviso leva o grupo certo');
+  dg.state.depot = [];
+  dg.emitDigimons();
+  await new Promise((r) => setTimeout(r, 60));
+  ok(avisos.length === 4, 'e perder um digimon tambem avisa');
+
+  // Religar a conta: o renderer esquece a lista, entao o aviso TEM de repetir
+  // mesmo com os digimons iguais - senao a conta ficaria fora da tela.
+  dg.stopMercadoMarco();
+  dg.connected = true;
+  dg.emitDigimons();
+  await new Promise((r) => setTimeout(r, 60));
+  ok(avisos.length === 5, 'depois de desligar, a mesma lista volta a ser anunciada');
+
   // ---- 14. o item raro vem do CATALOGO, nao de uma lista escrita a mao
   const raros = await require('./src/headless/catalogo').nomesRaros();
   ok(raros.has('Boss Token'), 'Boss Token e raro (esta no bolso Itens Raros)');

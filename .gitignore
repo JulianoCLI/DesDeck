@@ -59,6 +59,8 @@ bolsa-campos.txt
 depot-campos.txt
 # A saída do grep da coleção no JS do jogo: arquivo gerado, não fonte.
 colecao-grep.txt
+# Idem: a medição do pulso dos digimons roda numa conta real e traz o nick.
+digi-pulso.txt
 # Saídas dos testes de tamanho do estado e de correção da abertura. Não trazem
 # dado de conta, mas são geradas.
 tamanho-test.txt

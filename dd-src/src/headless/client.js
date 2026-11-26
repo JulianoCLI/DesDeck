@@ -74,6 +74,10 @@ class DigiiIdleHeadlessClient extends EventEmitter {
     this.lastError = null;
 
     this.pingTimer = null;
+    this.digiTimer = null;
+    // A última lista de digimons já anunciada, para não repetir o aviso quando
+    // só o HP mudou (ver emitDigimons).
+    this.digiAssina = null;
     this.labTimer = null;
     this.labPrimeiro = null;
     this.reconnectTimer = null;
@@ -528,18 +532,37 @@ class DigiiIdleHeadlessClient extends EventEmitter {
    * Agrupado porque as duas fontes mexem na mesma lista e em ritmos muito
    * diferentes: 'depot' chega uma vez no login, mas 'estado' (que traz a
    * equipe, com o HP mudando a cada golpe) chega várias vezes por segundo.
-   * Sem o agrupamento, cada tique de batalha reenriqueceria a lista inteira.
+   *
+   * O agrupamento sozinho NÃO basta, e isso foi medido: como o 'estado' chega
+   * 1×/s para sempre, o debounce nunca ficava em repouso — disparava a cada
+   * 5,8 s por conta, sem fim. Em 34 contas davam 5,7 avisos/s, e em 9 de 9
+   * comparações seguidas o que a lista mostra era IDÊNTICO: o que mudava era o
+   * HP da equipe, que esta lista nem exibe. Cada aviso desses custava um
+   * enriquecer, um IPC e um renderOvos inteiro (chips + até 200 linhas) para
+   * não mudar um pixel. Era o app travando de novo.
+   *
+   * Por isso a emissão é comparada com a última: o aviso sai quando a LISTA
+   * muda, não quando o pacote muda.
    */
   emitDigimons() {
     if (this.digiTimer) return;
     this.digiTimer = setTimeout(() => {
       this.digiTimer = null;
       if (!this.connected) return;
-      this.emit('digimons', {
+      const grupos = {
         equipe: this.state.equipe || [],
         depot: this.state.depot || [],
         colecao: this.state.colecao || [],
-      });
+      };
+      // A assinatura é só o que a lista desenha. Deixar o HP de fora é o ponto:
+      // ele muda a cada golpe e não aparece em lugar nenhum da lista.
+      const assina = JSON.stringify(
+        [...grupos.equipe, ...grupos.depot, ...grupos.colecao]
+          .map((d) => d && [d.id, d.especie, d.nivel, d.nota, d.poder, d.local, d.shiny, d.potencia]),
+      );
+      if (assina === this.digiAssina) return;
+      this.digiAssina = assina;
+      this.emit('digimons', grupos);
     }, DIGI_DEBOUNCE_MS);
     if (this.digiTimer.unref) this.digiTimer.unref();
   }
@@ -630,6 +653,10 @@ class DigiiIdleHeadlessClient extends EventEmitter {
     // A conta está saindo: um aviso de digimons pendente falaria de um cliente
     // que já não vale.
     if (this.digiTimer) { clearTimeout(this.digiTimer); this.digiTimer = null; }
+    // E a assinatura tem de ir embora com ele: o renderer esquece a lista da
+    // conta ao desligar, então o primeiro aviso depois de religar precisa
+    // passar, mesmo que nada tenha mudado nos digimons.
+    this.digiAssina = null;
   }
 
   startPingTimer() {
