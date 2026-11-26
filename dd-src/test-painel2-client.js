@@ -44,12 +44,17 @@ app.whenReady().then(async () => {
   ok(c.state.gemas === 789, 'o D-Dol (gemas=789) foi guardado');
   ok(c.state.gemas !== c.state.diamantes, 'nao confundiu com diamantes=50, que e o DCoin da Shop');
 
-  // ---- 2. 'welcome': os 60 ovos que semeiam o historico
+  // ---- 2. 'welcome': o historico das capturas passadas e IGNORADO
+  //
+  // O pacote traz os ultimos 60 ovos capturados, e eles eram acumulados em
+  // disco: foi esse historico que levou o arquivo de estado a 24 MB. Hoje a
+  // lista do Painel mostra a BOLSA (o que a conta TEM agora, pacote 'ovos'), e
+  // as capturas novas aparecem na Atividade pelo pacote 'captura'. Entao o
+  // welcome nao pode emitir lista nenhuma - e o que este caso guarda.
   const ovoCru = { especie: 'agumon', nivel: 1, shiny: false, potencia: 1, qualidade: 1.1, nota: 2.3, scanner: 'ux', em: Date.now(), ovo: 'Rookie', ivs: [10, 10, 10, 10, 10, 10], u: [0.5, 0.5] };
   manda({ t: 'welcome', passe: null, historico: [ovoCru, { ...ovoCru, em: Date.now() - 1 }] });
-  const hist = eventos.filter((e) => e[0] === 'historico');
-  ok(hist.length === 1, 'o welcome emitiu o historico uma vez');
-  ok(hist[0][1].length === 2, 'com os 2 ovos do lote');
+  ok(eventos.filter((e) => e[0] === 'historico').length === 0,
+    'o welcome NAO emite historico: ele era o que inflava o estado em disco');
 
   // ---- 3. 'captura': ok:true entra, ok:false NAO
   manda({ t: 'captura', ok: true, esp: 'agumon', historico: { ...ovoCru, potencia: 5, shiny: true } });
@@ -59,7 +64,10 @@ app.whenReady().then(async () => {
   // sucesso encheria o historico de entradas vazias (7 falhas em 90s).
   manda({ t: 'captura', ok: false, esp: 'agumon', corpo: 1, scanner: 'ux' });
   ok(atividades().length === antes, 'a captura FALHADA (ok:false) nao gerou nada');
-  ok(c.historicoOvos.length === 3, 'o historico do client tem 3 ovos (2 do welcome + 1 capturado)');
+  // O client NAO guarda mais lista de ovos: a captura e um acontecimento na
+  // Atividade, e o que a conta TEM vem do pacote 'ovos' a cada conexao. Nada de
+  // historico acumulado - era ele que ia para o disco.
+  ok(c.historicoOvos === undefined, 'o client nao acumula historico de ovos (nada cresce na memoria nem no disco)');
 
   // ---- 4. o item dropado vem no TEXTO do abate, nao em pacote proprio
   manda({ t: 'log', tipo: 'abate', em: Date.now(), txt: 'Bloomlordmon derrotado! +11265 xp tamer, +900 bits · drop: Energia de Ovo Bird Instável' });
@@ -211,7 +219,8 @@ app.whenReady().then(async () => {
   const g = await enriquecerDigimons({ equipe: [wargrow] });
   ok(g.length === 1, 'o digimon foi enriquecido (veio: ' + g.length + ')');
   ok(g[0].tipo === 'digi', 'marcado como digimon: e o que separa as duas naturezas da mesma lista');
-  ok(g[0].nome === 'Wargrowlmon', 'o slug virou nome (veio: ' + g[0].nome + ')');
+  // O nome vem do catalogo do jogo, com a capitalizacao dele: 'WarGrowlmon'.
+  ok(g[0].nome === 'WarGrowlmon', 'o slug virou nome (veio: ' + g[0].nome + ')');
   // nota 3.526 cai na faixa 3.0-4.2 do corte TIERS_OVO: letra S.
   ok(g[0].letra === 'S', 'a letra sai do corte da nota do servidor (veio: ' + g[0].letra + ')');
   ok(g[0].nota === 3.526, 'a nota do servidor passa intacta');
@@ -251,47 +260,55 @@ app.whenReady().then(async () => {
   const dg = new DigiiIdleHeadlessClient('a7', 'persist:nao-existe', { name: 'dg' });
   const avisos = [];
   dg.on('digimons', (g) => avisos.push(g));
-  dg.connected = true; // emitDigimons desiste se a conta caiu
+  // emitDigimons desiste se a conta caiu. 'connected' e um GETTER (status +
+  // ws.readyState), nao um campo: atribuir nele estoura. Monta-se o mesmo par
+  // que o client de verdade le, como na secao 6.
+  dg.status = 'connected';
+  dg.ws = { readyState: 1 };
   const umDigi = (over = {}) => ({ id: 1, especie: 'agumon', nivel: 50, nota: 5, poder: 100, local: 'equipe', hp: 500, hpMax: 500, ...over });
+  // O aviso sai no fim do debounce de 5 s (DIGI_DEBOUNCE_MS), nao na chamada.
+  // Esperar menos que isso media sempre "nenhum aviso" e nao provava nada.
+  const assenta = () => new Promise((r) => setTimeout(r, 5300));
 
   dg.state.equipe = [umDigi()];
   dg.emitDigimons();
-  await new Promise((r) => setTimeout(r, 60));
+  await assenta();
   ok(avisos.length === 1, 'o primeiro aviso sai (a lista era desconhecida)');
 
   // O caso que travava: so o HP mudou, e a lista nem mostra HP.
   dg.state.equipe = [umDigi({ hp: 120 })];
   dg.emitDigimons();
-  await new Promise((r) => setTimeout(r, 60));
+  await assenta();
   ok(avisos.length === 1, 'o HP mudando NAO gera aviso (era o moinho que travava o app)');
   dg.state.equipe = [umDigi({ hp: 7 })];
   dg.emitDigimons();
   dg.state.equipe = [umDigi({ hp: 2664 })];
   dg.emitDigimons();
-  await new Promise((r) => setTimeout(r, 60));
+  await assenta();
   ok(avisos.length === 1, 'nem depois de varios golpes seguidos');
 
   // Mas o que a lista MOSTRA tem de passar, senao a correcao congelaria a tela.
   dg.state.equipe = [umDigi({ nivel: 51 })];
   dg.emitDigimons();
-  await new Promise((r) => setTimeout(r, 60));
+  await assenta();
   ok(avisos.length === 2, 'subir de nivel avisa (a lista mostra o nivel)');
   dg.state.depot = [umDigi({ id: 2, nota: 9.9 })];
   dg.emitDigimons();
-  await new Promise((r) => setTimeout(r, 60));
+  await assenta();
   ok(avisos.length === 3, 'um digimon novo no DigiBank avisa');
-  ok(avisos[2].depot.length === 1, 'e o aviso leva o grupo certo');
+  ok(avisos[2] && avisos[2].depot.length === 1, 'e o aviso leva o grupo certo');
   dg.state.depot = [];
   dg.emitDigimons();
-  await new Promise((r) => setTimeout(r, 60));
+  await assenta();
   ok(avisos.length === 4, 'e perder um digimon tambem avisa');
 
   // Religar a conta: o renderer esquece a lista, entao o aviso TEM de repetir
   // mesmo com os digimons iguais - senao a conta ficaria fora da tela.
   dg.stopMercadoMarco();
-  dg.connected = true;
+  dg.status = 'connected';
+  dg.ws = { readyState: 1 };
   dg.emitDigimons();
-  await new Promise((r) => setTimeout(r, 60));
+  await assenta();
   ok(avisos.length === 5, 'depois de desligar, a mesma lista volta a ser anunciada');
 
   // ---- 14. o item raro vem do CATALOGO, nao de uma lista escrita a mao

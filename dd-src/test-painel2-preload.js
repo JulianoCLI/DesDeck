@@ -22,6 +22,19 @@ const CONTAS = [
   { id: 'a2', name: 'desdois', url: 'https://digiidle.com/', enabled: true, headless: true, groupId: 'g1', createdAt: 2, stats: { onlineMs: 0, drops: 0, recoveries: 0 } },
 ];
 
+// Duas contas bastam para o COMPORTAMENTO, que é o que a suíte de UI testa. Mas
+// medir o custo do Painel precisa da ESCALA de uso real, então DD_CONTAS pede
+// mais (ver test-live-custo.js). Sem a variável nada muda, e os 112 casos da
+// suíte continuam vendo exatamente as duas contas de sempre.
+const EXTRA = Math.max(0, Number(process.env.DD_CONTAS || 0) - CONTAS.length);
+for (let i = 0; i < EXTRA; i++) {
+  CONTAS.push({
+    id: 'x' + i, name: 'conta' + (i + 3), url: 'https://digiidle.com/', enabled: true,
+    headless: true, groupId: 'g1', createdAt: i + 3,
+    stats: { onlineMs: 0, drops: 0, recoveries: 0 },
+  });
+}
+
 let salvo = null;
 
 contextBridge.exposeInMainWorld('deck', {
@@ -70,4 +83,6 @@ contextBridge.exposeInMainWorld('tst', {
     for (const cb of ouvintes.get(canal) || []) cb(carga);
   },
   salvo: () => salvo,
+  // Quais contas existem, para quem mede precisar falar com todas elas.
+  contas: () => CONTAS.map((c) => c.id),
 });

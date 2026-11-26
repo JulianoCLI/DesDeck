@@ -585,6 +585,36 @@ function pedeRenderOvos() {
   }, AGRUPA_MS);
 }
 
+// E o mesmo agrupamento para os cards do Painel, por um motivo medido.
+//
+// Cada resumo que chegava fazia, na hora: desenhaPainel (reconstrói o card) +
+// invalidaLive (joga fora o cache de nós) + updateLive (que então tem de varrer
+// o documento inteiro de novo). O manager manda 1 resumo a cada 2 s por conta,
+// então com 20 contas são ~10 dessas rodadas por segundo: medido em 202 ms por
+// rodada de 20 resumos, ou ~101 ms/s da thread que desenha a janela — 10% dela
+// jogados fora revarrendo um DOM que não mudou.
+//
+// Agrupando, a rajada das 20 contas custa uma varredura em vez de 20: os cards
+// são redesenhados juntos e o updateLive roda UMA vez no fim, com o cache
+// remontado uma única vez.
+const painelPendente = new Set();
+let painelAgendado = false;
+function pedeDesenhaPainel(accId) {
+  painelPendente.add(accId);
+  if (painelAgendado) return;
+  painelAgendado = true;
+  setTimeout(() => {
+    painelAgendado = false;
+    const ids = [...painelPendente];
+    painelPendente.clear();
+    for (const id of ids) desenhaPainel(id);
+    // Os cards leem as métricas (XP/h, Bits, D-Dol, hunt…) de r.painel pelo
+    // data-live: sem este updateLive elas só mudariam no próximo tique do
+    // relógio, e a tela ficaria mostrando '—' com o resumo já em mãos.
+    updateLive();
+  }, AGRUPA_MS);
+}
+
 function log(type, acc, msg, nome) {
   state.log.push({ t: Date.now(), type, accId: acc ? acc.id : null, name: nome || (acc ? acc.name : ''), msg });
   if (state.log.length > 800) state.log.splice(0, state.log.length - 800);
@@ -838,11 +868,9 @@ function createRuntime(acc) {
     const rr = rt.get(id);
     if (!rr) return;
     rr.painel = painel;
-    desenhaPainel(id);
-    // O card do Painel lê as métricas (XP/h, Bits, D-Dol, hunt…) de r.painel
-    // pelo data-live. Sem este updateLive, elas só mudariam no próximo tique do
-    // relógio: o resumo chegava e a tela continuava mostrando '—'.
-    updateLive();
+    // Agrupado: com 20 contas chegam ~10 resumos/s, e redesenhar+revarrer na
+    // hora custava ~101 ms/s da thread do renderer (ver pedeDesenhaPainel).
+    pedeDesenhaPainel(id);
   });
 
   // O que aconteceu de notável na conta: ovo capturado, ovo chocado, item raro

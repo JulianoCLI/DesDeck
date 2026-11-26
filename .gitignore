@@ -65,3 +65,7 @@ digi-pulso.txt
 # dado de conta, mas são geradas.
 tamanho-test.txt
 boot-correcao.txt
+# Idem: as sondas de fluidez (custo dos laços de webview e do caminho do Painel).
+# Não trazem dado de conta, mas são medições geradas, não fonte.
+laga-webview.txt
+live-custo.txt
